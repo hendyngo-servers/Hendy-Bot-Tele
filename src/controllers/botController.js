@@ -1,6 +1,10 @@
 const { Telegraf, Markup } = require('telegraf');
 const userService = require('../services/userService');
 const appDataService = require('../services/appDataService');
+const {
+  runWithTelegramRetry,
+  formatTelegramError
+} = require('../services/telegramStartup');
 
 let bot = null;
 let adminId = null;
@@ -218,17 +222,41 @@ async function startBot(token = process.env.BOT_TOKEN, configuredAdmin = process
   setupBot(instance);
 
   try {
-    await instance.telegram.getMe();
+    const botInfo = await runWithTelegramRetry(
+      () => instance.telegram.getMe(),
+      {
+        attempts: 5,
+        initialDelayMs: 1000,
+        maxDelayMs: 8000,
+        onRetry: ({ attempt, maxAttempts, delayMs, error }) => {
+          console.warn(
+            '[BOT] Chưa kết nối được Telegram (lần ' + attempt + '/' + maxAttempts +
+            '): ' + formatTelegramError(error) +
+            '. Thử lại sau ' + delayMs + ' ms.'
+          );
+        }
+      }
+    );
+
+    // Telegraf dùng botInfo này ở launch(), tránh gọi getMe() lần thứ hai.
+    instance.botInfo = botInfo;
     bot = instance;
+
+    // launch() giữ promise trong suốt vòng đời long polling nên không await tại đây.
+    // Tuy nhiên mọi lỗi khởi chạy polling đều được ghi nhận và làm health check chuyển 503.
     instance.launch().catch(error => {
-      console.error('Telegram polling dừng:', error.message);
+      console.error('[BOT] Không thể duy trì Telegram long polling:', formatTelegramError(error));
       if (bot === instance) bot = null;
     });
-    console.log('Telegram Bot đã khởi chạy.');
+
+    console.log(
+      '[BOT] Đã xác thực Telegram Bot @' + (botInfo.username || 'unknown') +
+      '; đang khởi chạy long polling.'
+    );
     return true;
   } catch (error) {
     bot = null;
-    console.error('Không khởi chạy được Telegram Bot:', error.message);
+    console.error('[BOT] Không khởi chạy được Telegram Bot:', formatTelegramError(error));
     return false;
   }
 }
