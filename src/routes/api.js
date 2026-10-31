@@ -66,7 +66,13 @@ router.get('/session', (req, res) => {
 
 // ADMIN OVERVIEW AND SETTINGS
 router.get('/admin/overview', ...admin, (_req, res) =>
-  ok(res, appDataService.getAdminOverview(userService.getUsers()))
+  ok(res, {
+    ...appDataService.getAdminOverview(userService.getUsers()),
+    integrations: {
+      database: userService.isCloudflareD1() ? 'cloudflare-d1' : userService.isPostgres() ? 'postgres' : 'local-json',
+      objectStorage: r2StorageService.hasAnyConfig() ? 'cloudflare-r2' : 'unconfigured'
+    }
+  })
 );
 
 router.get('/admin/settings', ...admin, async (_req, res, next) => {
