@@ -202,12 +202,53 @@ async function migratePostgresUsersToMongo() {
   }
 }
 
+async function migrateD1UsersToMongo() {
+  if (!CloudflareD1Client.hasAnyEnvironmentConfig()) return 0;
+  const client = CloudflareD1Client.fromEnv();
+  client.validateConfig();
+  const result = await client.query(
+    'SELECT telegram_id, name, username, balance, vip_level, created_at FROM hendy_users'
+  );
+  const operations = (result.results || []).map(row => {
+    const user = normalizeUser(row.telegram_id, {
+      name: row.name,
+      username: row.username,
+      balance: Number(row.balance),
+      vipLevel: row.vip_level,
+      createdAt: row.created_at
+    });
+    return {
+      updateOne: {
+        filter: { _id: user.id },
+        update: {
+          $setOnInsert: {
+            _id: user.id,
+            name: user.name,
+            username: user.username,
+            balance: user.balance,
+            vipLevel: user.vipLevel,
+            createdAt: user.createdAt,
+            updatedAt: new Date()
+          }
+        },
+        upsert: true
+      }
+    };
+  });
+  for (let offset = 0; offset < operations.length; offset += 500) {
+    await mongoUsers.bulkWrite(operations.slice(offset, offset + 500), { ordered: true });
+  }
+  console.info('[DB] Đã nhập ' + operations.length + ' hồ sơ từ Cloudflare D1 vào MongoDB (không ghi đè ID đã có).');
+  return operations.length;
+}
+
 async function loadMongo() {
   const database = await mongoService.connectMongo();
   mongoUsers = database.collection('users');
   await mongoUsers.createIndex({ createdAt: -1 });
   await migrateLegacyUsersToMongo();
   await migratePostgresUsersToMongo();
+  await migrateD1UsersToMongo();
   const documents = await mongoUsers.find({}).sort({ createdAt: 1 }).toArray();
   const loaded = {};
   for (const document of documents) {
