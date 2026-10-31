@@ -11,7 +11,7 @@ const service = require('./appDataService');
 const dataFile = path.join(dataDir, 'app-data.json');
 
 async function resetData() {
-  await fs.rm(dataFile, { force: true });
+  fs.rmSync(dataFile, { force: true });
   await service.init();
 }
 
@@ -123,6 +123,6 @@ test('dịch vụ dữ liệu lưu cấu hình QR, đơn hàng, giftcode, REF v�
       assert.equal(service.listTickets('user-4')[0].status, 'answered');
     });
   } finally {
-    await fs.rm(dataDir, { recursive: true, force: true });
+    fs.rmSync(dataDir, { recursive: true, force: true });
   }
 });
