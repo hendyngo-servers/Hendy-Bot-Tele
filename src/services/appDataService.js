@@ -283,6 +283,7 @@ function publicCatalogItem(item) {
     price: Number(item.price || 0),
     durationDays: Number(item.durationDays || 0),
     stock: item.stock === null || item.stock === undefined ? null : Number(item.stock),
+    vipLevel: Number(item.vipLevel || 0),
     active: item.active !== false
   };
 }
@@ -303,6 +304,7 @@ async function saveCatalogItem(input, id = null) {
     stock: input.stock === null || input.stock === undefined || input.stock === ''
       ? null
       : Number(input.stock),
+    vipLevel: Number(input.vipLevel || 0),
     active: input.active !== false,
     updatedAt: new Date().toISOString(),
     createdAt: existing?.createdAt || new Date().toISOString()
@@ -343,6 +345,8 @@ async function createOrder(userId, itemId) {
     category: product.category,
     itemName: product.name,
     amount: Number(product.price),
+    vipLevel: Number(product.vipLevel || 0),
+    durationDays: Number(product.durationDays || 0),
     status: 'pending',
     createdAt: new Date().toISOString(),
     processedAt: null,
