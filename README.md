@@ -1,56 +1,114 @@
-# Hendy Bot Telegram
+# Hendy-Bot-Tele
 
-Hendy Bot Telegram là hệ thống Node.js gồm Telegram Bot (Telegraf), API Express và Mini App React/Vite, chạy trong **một Render Web Service**. Không sử dụng WebSocket hoặc worker riêng. Dữ liệu JSON được lưu trên Render Persistent Disk.
+Hendy-Bot-Tele là Telegram Bot Telegraf + REST API Express + Admin Mini App React/Vite, triển khai trên một Render Web Service. Menu thành viên chạy trực tiếp trong Telegram Bot; Mini App chỉ dành cho Admin. Không dùng WebSocket hoặc worker riêng.
 
-## Menu thành viên — xử lý trực tiếp trong Telegram Bot
+## Cấu trúc repository
 
-Toàn bộ menu thành viên dùng **Telegram Inline Keyboard và callback của Bot**. Các nút thành viên không mở Mini App và không gọi API Mini App. Các thao tác được xử lý trực tiếp trong `src/controllers/botController.js` bằng service lưu trữ hiện có.
+```text
+Hendy-Bot-Tele/
+├── .github/
+│   └── workflows/
+│       └── ci.yml
+├── mini-app/
+│   ├── src/
+│   │   ├── App.jsx
+│   │   ├── main.jsx
+│   │   └── style.css
+│   ├── index.html
+│   └── vite.config.mjs
+├── public/                       # Vite tự sinh khi npm run build; không commit
+├── src/
+│   ├── controllers/
+│   │   ├── botController.js
+│   │   └── botController.test.js
+│   ├── middlewares/
+│   │   └── errorHandler.js
+│   ├── routes/
+│   │   └── api.js
+│   ├── security/
+│   │   ├── cryptoService.js
+│   │   ├── cryptoService.test.js
+│   │   ├── telegramAuth.js
+│   │   └── telegramAuth.test.js
+│   ├── services/
+│   │   ├── appDataService.js
+│   │   ├── appDataService.test.js
+│   │   ├── telegramStartup.js
+│   │   ├── telegramStartup.test.js
+│   │   ├── userService.js
+│   │   └── userService.test.js
+│   ├── utils/
+│   │   └── keyboards.js
+│   └── server.js
+├── .env                          # Tạo local từ .env.example; không commit
+├── .env.example
+├── .gitignore
+├── .node-version
+├── package.json
+├── render.yaml
+└── README.md
+```
 
-- **Trang chủ:** tên thành viên, Telegram ID, số dư, cấp VIP và số tài khoản liên kết.
-- **Mini Game Live:** chọn nhà cung cấp, thêm và xóa tài khoản liên kết. Mật khẩu được mã hóa AES-256-GCM; tin nhắn chứa mật khẩu được Bot xóa sau khi nhận nếu Telegram cho phép.
-- **Thuê Tool:** xem danh mục, giá, thời hạn và tạo yêu cầu đơn.
-- **Mua Code:** xem danh mục Code và tạo yêu cầu mua.
-- **Ví điện tử:** tạo yêu cầu nạp, hiển thị QR VietQR/thông tin chuyển khoản, tra cứu lịch sử giao dịch.
-- **OTP & Proxy:** xem danh mục và tạo yêu cầu đơn.
-- **VIP:** xem cấp hiện tại, các gói VIP và yêu cầu nâng cấp.
-- **Trung tâm khách hàng:** hồ sơ thành viên, lịch sử đơn và hoạt động gần đây.
-- **REF:** mã/link giới thiệu, thống kê thành viên đã mời và hoa hồng.
-- **Giftcode:** nhập mã ngay trong cuộc trò chuyện Bot và nhận phần thưởng theo cấu hình.
-- **Ghép đối đầu, nhóm chat, kênh thông báo, CSKH:** menu mở trực tiếp trong Bot; các liên kết cộng đồng được lấy từ cấu hình Admin, yêu cầu hỗ trợ được lưu thành ticket và gửi thông báo tới Admin.
+## Menu thành viên: Telegram Bot native
 
-Người dùng có thể dùng lệnh `/menu` để mở lại menu và `/cancel` để hủy bước nhập liệu đang thực hiện. Phiên nhập liệu có thời hạn 10 phút.
+14 nút thành viên là Telegram Inline Keyboard callback, được xử lý trực tiếp trong `src/controllers/botController.js` và `src/utils/keyboards.js`. Menu thành viên không mở Mini App và không gọi REST API Mini App.
 
-## Mini App — chỉ dành cho Admin
+- **Mini Game Live:** thêm/xóa tài khoản liên kết theo nhà cung cấp; mật khẩu mã hóa AES-256-GCM.
+- **Thuê Tool, Mua Code, OTP & Proxy, VIP, Ghép đối đầu:** đọc catalog từ service dữ liệu và tạo đơn trực tiếp từ Bot.
+- **Ví điện tử:** tạo yêu cầu nạp, QR VietQR và mã tham chiếu; xem lịch sử giao dịch.
+- **Trung tâm khách hàng:** hồ sơ, số dư, VIP và lịch sử hoạt động.
+- **REF:** mã/link giới thiệu, thống kê và hoa hồng.
+- **Giftcode:** nhập ngay trong cuộc trò chuyện.
+- **Nhóm chat, kênh thông báo, CSKH:** liên kết cấu hình được lấy từ dữ liệu Admin; gửi yêu cầu CSKH sẽ tạo ticket.
 
-Mini App không còn là cổng thành viên. Người không có quyền Admin sẽ thấy thông báo hướng dẫn quay lại Telegram Bot và không tải trang nghiệp vụ thành viên. Admin được xác thực bằng chữ ký `Telegram.WebApp.initData` và Telegram ID khớp `ADMIN_ID` ở máy chủ.
+Lệnh thành viên:
+- `/start` hoặc `/menu`: mở menu.
+- `/cancel`: hủy bước nhập liệu đang chờ.
 
-Admin dashboard đã được thiết kế lại với sidebar điều hướng, trang tổng quan, thẻ chỉ số, khu vực thao tác nhanh và bố cục responsive cho máy tính/điện thoại.
+Lệnh Admin:
+- `/admin`: mở hướng dẫn Admin.
+- `/status`: trạng thái Bot, số thành viên và yêu cầu đang chờ.
+- `/user ID`: xem thành viên.
+- `/addmoney ID SỐ_TIỀN`: điều chỉnh số dư.
+- `/broadcast NỘI_DUNG`: gửi thông báo.
 
-## Bảng điều khiển Admin
+## Admin Mini App
 
-- **QR & Thanh toán:** đổi BIN, ngân hàng, số tài khoản, chủ tài khoản, ảnh QR HTTPS, hướng dẫn chuyển khoản, mức nạp tối thiểu và cấu hình REF/nhóm/kênh/CSKH.
-- **Duyệt nạp:** duyệt hoặc từ chối yêu cầu; chỉ khi Admin xác nhận mới cộng tiền vào ví.
-- **Danh mục:** thêm, sửa, ẩn, xóa dịch vụ; cấu hình giá, thời hạn, tồn kho và cấp VIP.
-- **Đơn hàng:** duyệt/từ chối; kiểm tra số dư và tồn kho trước khi xử lý, cập nhật VIP và thời hạn thuê khi được duyệt.
-- **Giftcode:** tạo mã thưởng tiền hoặc VIP, giới hạn lượt và ngày hết hạn, bật/tắt.
-- **Thành viên:** xem số dư, cấp VIP, liên kết; điều chỉnh số dư và cấp VIP.
-- **Hỗ trợ:** xem ticket, gửi phản hồi về Telegram và đóng yêu cầu.
-- **Thông báo:** gửi broadcast tới thành viên đã từng mở Bot.
+Mini App React/Vite chỉ phục vụ quản trị. Máy chủ kiểm tra Telegram `initData` và `ADMIN_ID` trước khi trả dữ liệu Admin. Nếu tài khoản thường mở URL Mini App, ứng dụng chỉ hiện hướng dẫn quay lại Bot và không tải giao diện/dữ liệu thành viên.
 
-Các lệnh Telegram dành cho Admin: `/admin`, `/status`, `/user ID`, `/addmoney ID SỐ_TIỀN`, `/broadcast NỘI_DUNG`.
+Admin dashboard gồm:
+- Tổng quan và thống kê vận hành.
+- Cấu hình ngân hàng, QR, số tiền nạp tối thiểu, nhóm/kênh, username Bot và CSKH.
+- Duyệt hoặc từ chối yêu cầu nạp.
+- Quản lý sản phẩm/dịch vụ, giá, thời hạn, tồn kho và cấp VIP.
+- Xử lý đơn hàng.
+- Tạo/bật/tắt Giftcode.
+- Quản lý thành viên, điều chỉnh số dư và VIP.
+- Phản hồi ticket CSKH và gửi broadcast.
 
-## Cấu hình thanh toán và tích hợp
+## PostgreSQL và di chuyển dữ liệu
 
-- Bot tạo yêu cầu nạp và mã VietQR theo cấu hình ngân hàng, số tiền và mã tham chiếu.
-- **Chưa có webhook ngân hàng tự động.** Admin phải đối soát giao dịch thực tế rồi xác nhận thủ công. Không tự cộng tiền khi thành viên chỉ tạo yêu cầu hoặc mở QR.
-- Tool, Code, OTP, Proxy, VIP và Ghép đối đầu hiển thị danh mục do Admin cấu hình. Đơn được ghi nhận và chờ duyệt. Muốn tự động giao dịch/cấp tài khoản cần API thật từ nhà cung cấp.
-- REF được ghi nhận khi thành viên mới vào Bot qua link giới thiệu. Hoa hồng chỉ được cộng sau khi yêu cầu nạp của người được giới thiệu được Admin duyệt và tỷ lệ hoa hồng lớn hơn 0.
+`src/services/userService.js` dùng PostgreSQL khi có `DATABASE_URL`. Service tạo bảng `hendy_users` và index khi khởi động, đọc dữ liệu người dùng từ PostgreSQL và lưu các thay đổi trong transaction.
+
+Nếu tìm thấy `users.json` cũ trong `DATA_DIR`, lần khởi động đầu tiên sẽ:
+1. Đọc và kiểm tra từng hồ sơ.
+2. Import bằng `INSERT ... ON CONFLICT DO NOTHING`, không ghi đè người dùng đã có trong Postgres.
+3. Chỉ sau khi transaction thành công mới đổi tên tệp JSON cũ thành `users.json.migrated-<timestamp>` để giữ bản sao lưu.
+4. Tải người dùng từ PostgreSQL vào cache tiến trình.
+
+Khi chạy local không có `DATABASE_URL`, userService dùng JSON adapter để thuận tiện phát triển. **Render production yêu cầu DATABASE_URL và dừng khởi động nếu thiếu PostgreSQL.**
+
+Dữ liệu phụ trợ như liên kết tài khoản, đơn, ticket, catalog và cấu hình thanh toán trong `appDataService` hiện vẫn lưu trong `DATA_DIR`; vì vậy Persistent Disk của Web Service vẫn được giữ. Chuyển toàn bộ dữ liệu phụ trợ sang PostgreSQL là bước migration riêng, không bị xóa trong thay đổi này.
 
 ## Chạy local
 
-Yêu cầu Node.js 22 hoặc 24. Sao chép `.env.example` thành `.env` và tự điền cấu hình local. Không commit secret thật.
+Yêu cầu Node.js 24.22.1 (được khóa trong `.node-version`).
 
 ```bash
+cp .env.example .env
+# Điền BOT_TOKEN, ADMIN_ID, APP_ENCRYPTION_KEY.
+# Có thể để DATABASE_URL trống để dùng JSON adapter local,
+# hoặc dùng PostgreSQL local/external URL.
 npm install
 npm run check
 npm test
@@ -58,39 +116,49 @@ npm run build
 npm start
 ```
 
-Bot hoạt động qua Telegram long polling. Mini App chỉ mở cho Admin đã xác thực.
+Sau `npm run build`, Vite xuất `public/index.html` và `public/assets/*`. Thư mục `public/` được Git ignore; CI và Render đều build lại từ source trước khi chạy. Express phục vụ Mini App từ `public/`.
 
-## Triển khai Render Web Service
+Nếu kết nối PostgreSQL bên ngoài Render, đặt `PGSSLMODE=require`. Kết nối nội bộ Render dùng URL nội bộ do `fromDatabase` cung cấp, không cần cấu hình TLS bổ sung.
 
-1. Kết nối repository `hendyngo-servers/Hendy-Bot-Tele`, nhánh `main` trong Render.
-2. Dùng Blueprint `render.yaml` hoặc cấu hình Web Service Node:
-   - Build: `npm install && npm run check && npm test && npm run build`
-   - Start: `npm start`
-   - Health check: `/healthz`
-   - Region: Singapore; một instance; Persistent Disk tại `/var/data`.
-3. Cấu hình Environment trong Render:
-   - `BOT_TOKEN`: token mới từ BotFather.
-   - `ADMIN_ID`: Telegram numeric user ID của Admin.
-   - `MINI_APP_URL`: URL HTTPS của Web Service.
-   - `APP_ENCRYPTION_KEY`: khóa riêng tối thiểu 32 ký tự.
-   - `BOT_USERNAME`: tùy chọn; có thể cấu hình trong Admin để tạo link REF.
-   - `BANK_BIN`, `BANK_NAME`, `BANK_ACCOUNT`, `BANK_ACCOUNT_NAME`: giá trị khởi tạo tùy chọn, có thể chỉnh trong Admin.
-4. Cấu hình URL Mini App cho bot trong BotFather nếu muốn dùng Admin Mini App.
-5. Sau deploy, kiểm tra `https://<service>.onrender.com/healthz`; endpoint trả HTTP 200 khi Bot đã sẵn sàng, nếu không sẽ trả HTTP 503.
+## Render Web Service
 
-## Lưu trữ và giới hạn mở rộng
+`render.yaml` khai báo:
+- Một Node Web Service tại Singapore, Node.js 24.22.1, một instance.
+- Một Persistent Disk tại `/var/data` để giữ dữ liệu phụ trợ hiện còn là JSON.
+- Một Render Postgres tên `hendy-bot-db`, cùng region Singapore, plan `0.1c-256mb`, kết nối nội bộ qua `DATABASE_URL` bằng `fromDatabase.connectionString`.
+- Build: `npm install --no-audit --no-fund && npm run check && npm test && npm run build`.
+- Start: `npm start`; health check: `/healthz`.
 
-Render Persistent Disk chỉ gắn với một instance. Không tăng số instance khi dữ liệu vẫn ở JSON cục bộ; nếu cần scale nhiều instance, chuyển dữ liệu sang Render Postgres. Disk cũng ảnh hưởng đến chiến lược zero-downtime deploy.
+Cấu hình các secret sau trong Render Dashboard:
+- `BOT_TOKEN`: token mới tạo từ BotFather.
+- `ADMIN_ID`: Telegram numeric user ID của Admin.
+- `APP_ENCRYPTION_KEY`: chuỗi ngẫu nhiên riêng tối thiểu 32 ký tự.
+- `WEBAPP_URL` hoặc `MINI_APP_URL`: URL HTTPS của Web Service. Nếu bỏ trống, ứng dụng sẽ thử dùng `RENDER_EXTERNAL_URL` do Render cung cấp.
 
-## Bảo mật
+`DATABASE_URL` được Render nối tự động từ Postgres trong Blueprint. Không tự chép database password vào GitHub.
 
-- `.env` và `.env.example` trong repository chỉ giữ placeholder trống.
-- Không đưa Bot Token, khóa mã hóa, thông tin ngân hàng hoặc secret vào GitHub.
-- Một Bot Token từng xuất hiện trong lịch sử repository phải được thu hồi tại BotFather và thay bằng token mới; xóa khỏi commit hiện tại không xóa lịch sử Git.
-- Mật khẩu tài khoản liên kết được mã hóa AES-256-GCM. Bot xóa tin nhắn nhập mật khẩu sau khi nhận nếu Telegram cho phép; không nên dùng Bot trong nhóm chat để nhập mật khẩu.
-- Các API quản trị kiểm tra `ADMIN_ID` tại máy chủ và dữ liệu nhạy cảm được đặt `Cache-Control: no-store`.
+**Chi phí Postgres:** Blueprint chọn plan `0.1c-256mb` (không phải Free). Kiểm tra giá hiện tại trong Render Dashboard trước khi Apply/Sync.
 
-## Kiểm thử
+## CI
+
+GitHub Actions `.github/workflows/ci.yml` dùng Node version từ `.node-version`, rồi chạy:
+1. `npm install`
+2. `npm run check`
+3. `npm test`
+4. `npm run build`
+5. Kiểm tra `public/index.html` đã được sinh.
+
+## Bảo mật quan trọng
+
+- `.env` được Git ignore; chỉ commit `.env.example` với giá trị secret để trống.
+- Một Bot Token từng xuất hiện trong các tệp mẫu/commit trước đây phải được thu hồi tại BotFather và thay token mới. Xóa tệp trong commit mới không xóa giá trị khỏi Git history.
+- Không gửi Bot Token, database password hoặc encryption key trong chat/GitHub.
+- Admin API kiểm tra `ADMIN_ID` tại máy chủ; người dùng thường không có quyền Admin.
+- Tiền nạp chỉ cộng sau khi Admin đối soát giao dịch thực tế và duyệt. Chưa có webhook ngân hàng tự động.
+- Tự động cấp Tool/OTP/Proxy/Code cần tích hợp API nhà cung cấp thật; catalog và trạng thái đơn hiện được quản lý trong hệ thống.
+- Render chạy một instance vì dữ liệu phụ trợ vẫn dùng Persistent Disk; không scale nhiều instance cho đến khi chuyển phần dữ liệu phụ trợ này sang Postgres.
+
+## Kiểm tra local
 
 ```bash
 npm run check
