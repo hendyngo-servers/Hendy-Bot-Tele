@@ -16,11 +16,12 @@ test('R2 configuration uses Cloudflare Account ID and distinct S3 credentials', 
 });
 
 test('R2 QR uploads accept only bounded PNG JPEG and WebP files', () => {
-  assert.equal(r2.validateQrImage(Buffer.from('image-bytes'), 'image/png'), true);
-  assert.equal(r2.validateQrImage(Buffer.from('image-bytes'), 'image/jpeg'), true);
-  assert.equal(r2.validateQrImage(Buffer.from('image-bytes'), 'image/webp'), true);
+  assert.equal(r2.validateQrImage(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), 'image/png'), true);
+  assert.equal(r2.validateQrImage(Buffer.from([0xff, 0xd8, 0xff, 0xd9]), 'image/jpeg'), true);
+  assert.equal(r2.validateQrImage(Buffer.from('RIFF0000WEBP'), 'image/webp'), true);
   assert.throws(() => r2.validateQrImage(Buffer.alloc(0), 'image/png'), /không có dữ liệu/);
   assert.throws(() => r2.validateQrImage(Buffer.from('x'), 'image/svg+xml'), /PNG, JPEG hoặc WebP/);
+  assert.throws(() => r2.validateQrImage(Buffer.from('not-an-image'), 'image/png'), /không khớp/);
   assert.throws(() => r2.validateQrImage(Buffer.alloc(2 * 1024 * 1024 + 1), 'image/png'), /2 MB/);
 });
 
