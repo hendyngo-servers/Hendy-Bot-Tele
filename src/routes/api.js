@@ -259,6 +259,15 @@ router.put('/admin/settings', ...admin, async (req, res, next) => {
     if (supportUsername && !/^[a-zA-Z0-9_]{5,32}$/.test(supportUsername)) {
       return fail(res, 400, 'Username hỗ trợ không hợp lệ.');
     }
+    if (bankBin && !/^\\d{6}$/.test(bankBin)) {
+      return fail(res, 400, 'Mã BIN ngân hàng phải gồm 6 chữ số.');
+    }
+    if (bankAccount && !/^\\d{4,24}$/.test(bankAccount)) {
+      return fail(res, 400, 'Số tài khoản ngân hàng phải gồm 4 đến 24 chữ số.');
+    }
+    if (Boolean(bankBin) !== Boolean(bankAccount)) {
+      return fail(res, 400, 'Cần nhập đồng thời cả BIN và số tài khoản ngân hàng.');
+    }
     if (qrImageUrl && (!validHttpUrl(qrImageUrl) || qrImageUrl.length > 500)) {
       return fail(res, 400, 'Đường dẫn QR phải là HTTPS hợp lệ và tối đa 500 ký tự.');
     }
@@ -308,6 +317,10 @@ router.patch('/admin/deposits/:id', ...admin, async (req, res, next) => {
       }
     );
     if (result.error) return fail(res, 409, 'Yêu cầu đã được xử lý ở một thao tác khác.');
+    const userMessage = status === 'paid'
+      ? '✅ Yêu cầu nạp ' + result.deposit.reference + ' đã được xác nhận. Số dư ví đã được cập nhật.'
+      : '❌ Yêu cầu nạp ' + result.deposit.reference + ' đã bị từ chối. Vui lòng liên hệ CSKH nếu cần hỗ trợ.';
+    await botController.sendUserMessage(result.userId, userMessage).catch(() => {});
     return ok(res, { ...result, commission });
   } catch (error) { return next(error); }
 });
@@ -347,6 +360,10 @@ router.patch('/admin/orders/:id', ...admin, async (req, res, next) => {
       return fail(res, 409, 'Sản phẩm không còn khả dụng hoặc đã hết tồn kho.');
     }
     if (result.error) return fail(res, 409, 'Đơn hàng đã được xử lý ở một thao tác khác.');
+    const userMessage = status === 'approved'
+      ? '✅ Đơn hàng "' + result.order.itemName + '" đã được Admin duyệt. Vui lòng xem lại số dư và hướng dẫn nhận dịch vụ trong Mini App.'
+      : '❌ Đơn hàng "' + result.order.itemName + '" đã bị Admin từ chối. Số dư chưa bị trừ.';
+    await botController.sendUserMessage(result.order.userId, userMessage).catch(() => {});
     return ok(res, result);
   } catch (error) { return next(error); }
 });
