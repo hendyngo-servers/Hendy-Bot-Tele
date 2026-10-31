@@ -134,7 +134,12 @@ function setupBot(instance) {
       '/addmoney ID SỐ_TIỀN — Điều chỉnh số dư',
       '/broadcast NỘI_DUNG — Gửi thông báo'
     ].join('\n'),
-    { parse_mode: 'HTML' }
+    {
+      parse_mode: 'HTML',
+      ...(getMiniAppUrl('admin') ? Markup.inlineKeyboard([
+        [Markup.button.webApp('🛡️ MỞ BẢNG ĐIỀU KHIỂN ADMIN', getMiniAppUrl('admin'))]
+      ]) : {})
+    }
   ));
 
   instance.command('status', requireAdmin, ctx => {
@@ -308,8 +313,32 @@ function stopBot() {
   }
 }
 
+async function sendUserMessage(userId, message) {
+  if (!bot || !botReady) return false;
+  await bot.telegram.sendMessage(String(userId), String(message).slice(0, 3500));
+  return true;
+}
+
+async function broadcastToUsers(message) {
+  if (!bot || !botReady) throw new Error('Telegram Bot chưa sẵn sàng.');
+  const users = Object.keys(userService.getUsers());
+  let sent = 0;
+  let failed = 0;
+  for (const userId of users) {
+    try {
+      await bot.telegram.sendMessage(userId, String(message).slice(0, 3500));
+      sent += 1;
+    } catch {
+      failed += 1;
+    }
+  }
+  return { total: users.length, sent, failed };
+}
+
 module.exports = {
   startBot,
   stopBot,
+  sendUserMessage,
+  broadcastToUsers,
   isRunning: () => Boolean(bot && botReady)
 };
