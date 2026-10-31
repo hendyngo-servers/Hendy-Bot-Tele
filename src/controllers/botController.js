@@ -20,7 +20,7 @@ const getWelcomeText = (u, chatId) => {
          `🪙 **Ví NYC:** \`${(u.nycBalance || 0).toLocaleString('vi-VN')} NYC\`\n\n` +
          `🛡️ Trạng thái thành viên: \`[Bình thường]\`\n` +
          `--------------------------------------------------\n` +
-         `🌐 Website: https://hendy-bot-tele.onrender.com/` +
+         `🌐 Website: https://hendy-bot-tele.onrender.com/\n` +
          `👥 Nhóm HenDY: @Hendy_Support_Group`;
 };
 
@@ -97,9 +97,10 @@ const setupBotLogic = (botInstance) => {
     await ctx.editMessageText(text, { parse_mode: 'Markdown', ...kb.getMainMenu() });
   });
 
-  // Mở Menu Minigame Live
+  // Mở Menu Minigame Live (Đã fix lỗi cú pháp chatId)
   botInstance.action('menu_minigame', async (ctx) => {
-    const u = userService.getUser(chatId = ctx.chat.id.toString());
+    const chatId = ctx.chat.id.toString();
+    const u = userService.getUser(chatId);
     const text = `LIVESTREAM 🚀\n*PREMIUM* 👑\n\n╭─────────────╮\n  💭 Chào, *${u.name}*.\n╰─────────────╯\n\n● Tổng đơn đang chờ duyệt chạy: \`[ 0 ]\`\n● Tổng đơn đang chạy: \`[ 0 ]\`\n● Tổng đơn hoàn thành: \`[ 0 ]\`\n--------------------------------------------------\n🎉 🎊 Cập nhật tính năng yêu cầu hoàn đơn nếu trúng mà không thấy phát.`;
     await ctx.editMessageText(text, { parse_mode: 'Markdown', ...kb.getMinigameMenu() });
   });
