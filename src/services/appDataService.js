@@ -2,6 +2,7 @@ const fs = require('node:fs/promises');
 const path = require('node:path');
 const crypto = require('node:crypto');
 const { CloudflareD1Client } = require('./cloudflareD1Service');
+const mongoService = require('./mongoService');
 const r2StorageService = require('./r2StorageService');
 
 const dir = process.env.DATA_DIR || path.join(process.cwd(), 'data');
@@ -36,6 +37,8 @@ let state = {
 let queue = Promise.resolve();
 let d1Client = null;
 let d1Active = false;
+let mongoActive = false;
+let mongoCollections = null;
 let persistedD1State = null;
 const D1_COLLECTIONS = [
   'linkedAccounts',
@@ -152,9 +155,164 @@ async function persistD1() {
   persistedD1State = cloneState(state);
 }
 
+const MONGO_COLLECTIONS = [
+  'linkedAccounts',
+  'deposits',
+  'tickets',
+  'catalog',
+  'orders',
+  'giftcodes',
+  'referrals'
+];
+
+async function persistMongoState(snapshot) {
+  if (!mongoCollections) throw new Error('MongoDB collections chưa được khởi tạo.');
+  for (const name of MONGO_COLLECTIONS) {
+    const collection = mongoCollections[name];
+    const items = snapshot[name] || [];
+    const operations = items.map(item => ({
+      replaceOne: {
+        filter: { _id: recordId(item) },
+        replacement: { ...item, _id: recordId(item) },
+        upsert: true
+      }
+    }));
+    for (let offset = 0; offset < operations.length; offset += 500) {
+      await collection.bulkWrite(operations.slice(offset, offset + 500), { ordered: true });
+    }
+    const ids = items.map(recordId);
+    if (ids.length) await collection.deleteMany({ _id: { $nin: ids } });
+    else await collection.deleteMany({});
+  }
+  await mongoCollections.settings.replaceOne(
+    { _id: 'payment' },
+    { _id: 'payment', ...snapshot.paymentSettings, updatedAt: new Date() },
+    { upsert: true }
+  );
+}
+
+async function readD1LegacyState() {
+  if (!CloudflareD1Client.hasAnyEnvironmentConfig()) return null;
+  const client = CloudflareD1Client.fromEnv();
+  client.validateConfig();
+  const [recordsResult, settingsResult] = await Promise.all([
+    client.query('SELECT collection, record_id, data_json FROM hendy_app_records'),
+    client.query('SELECT setting_key, value_json FROM hendy_app_settings WHERE setting_key = ?', ['payment'])
+  ]);
+  const imported = normalizeState();
+  for (const row of recordsResult.results || []) {
+    if (!MONGO_COLLECTIONS.includes(row.collection)) continue;
+    let item;
+    try { item = JSON.parse(row.data_json); }
+    catch { throw new Error('Dữ liệu D1 lỗi JSON tại ' + row.collection + '/' + row.record_id + '.'); }
+    imported[row.collection].push(item);
+  }
+  if (settingsResult.results?.length) {
+    try {
+      imported.paymentSettings = {
+        ...defaultPaymentSettings(),
+        ...JSON.parse(settingsResult.results[0].value_json)
+      };
+    } catch {
+      throw new Error('Cấu hình thanh toán trong D1 bị lỗi JSON.');
+    }
+  }
+  return imported;
+}
+
+async function loadMongoState() {
+  const database = await mongoService.connectMongo();
+  mongoCollections = Object.fromEntries(
+    [...MONGO_COLLECTIONS, 'settings'].map(name => [name, database.collection(name)])
+  );
+  await Promise.all([
+    mongoCollections.linkedAccounts.createIndex({ userId: 1, createdAt: -1 }),
+    mongoCollections.deposits.createIndex({ userId: 1, createdAt: -1 }),
+    mongoCollections.tickets.createIndex({ userId: 1, createdAt: -1 }),
+    mongoCollections.catalog.createIndex({ category: 1, active: 1 }),
+    mongoCollections.orders.createIndex({ userId: 1, createdAt: -1 }),
+    mongoCollections.giftcodes.createIndex({ code: 1 }, { unique: true, sparse: true }),
+    mongoCollections.referrals.createIndex({ referredId: 1 }, { unique: true }),
+    mongoCollections.settings.createIndex({ _id: 1 }, { unique: true })
+  ]);
+
+  const raw = normalizeState();
+  for (const name of MONGO_COLLECTIONS) {
+    const documents = await mongoCollections[name].find({}).toArray();
+    raw[name] = documents.map(({ _id, ...item }) => item);
+  }
+  const remoteSettings = await mongoCollections.settings.findOne({ _id: 'payment' });
+  if (remoteSettings) {
+    const { _id, updatedAt, ...settings } = remoteSettings;
+    raw.paymentSettings = { ...defaultPaymentSettings(), ...settings };
+  }
+
+  // D1 là nguồn cũ: chỉ nhập các ID chưa tồn tại trong MongoDB.
+  const d1Legacy = await readD1LegacyState();
+  if (d1Legacy) {
+    for (const name of MONGO_COLLECTIONS) {
+      const known = new Set(raw[name].map(recordId));
+      for (const item of d1Legacy[name]) {
+        if (!known.has(recordId(item))) {
+          raw[name].push(item);
+          known.add(recordId(item));
+        }
+      }
+    }
+    const hasMongoSettings = Boolean(remoteSettings);
+    if (!hasMongoSettings) raw.paymentSettings = d1Legacy.paymentSettings;
+  }
+
+  // app-data.json là nguồn legacy thứ hai; không ghi đè ID đã tồn tại.
+  let legacyData = null;
+  try {
+    legacyData = JSON.parse(await fs.readFile(file, 'utf8'));
+    if (!legacyData || typeof legacyData !== 'object' || Array.isArray(legacyData)) {
+      throw new Error('Tệp app-data.json không có định dạng object.');
+    }
+  } catch (error) {
+    if (error.code !== 'ENOENT') {
+      await fs.rename(file, file + '.corrupt-' + Date.now()).catch(() => {});
+      console.error('[MongoDB] app-data.json lỗi; đã cách ly tệp:', error.message);
+    }
+  }
+  if (legacyData) {
+    const legacy = normalizeState(legacyData);
+    for (const name of MONGO_COLLECTIONS) {
+      const known = new Set(raw[name].map(recordId));
+      for (const item of legacy[name]) {
+        if (!known.has(recordId(item))) {
+          raw[name].push(item);
+          known.add(recordId(item));
+        }
+      }
+    }
+    if (!remoteSettings && !d1Legacy) raw.paymentSettings = legacy.paymentSettings;
+  }
+
+  state = normalizeState(raw);
+  mongoActive = true;
+  d1Active = false;
+  await persistMongoState(state);
+
+  if (legacyData) {
+    const backup = file + '.migrated-mongodb-' + Date.now();
+    await fs.rename(file, backup);
+    console.info('[MongoDB] Đã nhập app-data.json. Bản sao lưu: ' + path.basename(backup));
+  }
+  console.info('[MongoDB] Đã tải ' +
+    MONGO_COLLECTIONS.reduce((total, name) => total + state[name].length, 0) +
+    ' bản ghi nghiệp vụ từ MongoDB Atlas.');
+}
+
 function persist() {
   const snapshot = cloneState(state);
   queue = queue.catch(() => {}).then(async () => {
+    if (mongoActive) {
+      state = snapshot;
+      await persistMongoState(snapshot);
+      return;
+    }
     if (d1Active) {
       state = snapshot;
       await persistD1();
@@ -279,6 +437,12 @@ async function loadD1State() {
 }
 
 async function init() {
+  if (mongoService.hasConfig()) {
+    await loadMongoState();
+    return;
+  }
+  mongoActive = false;
+  mongoCollections = null;
   if (CloudflareD1Client.hasAnyEnvironmentConfig()) {
     await loadD1State();
     return;
