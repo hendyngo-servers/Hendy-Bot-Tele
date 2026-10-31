@@ -12,7 +12,12 @@ const defaultPaymentSettings = () => ({
   bankAccountName: process.env.BANK_ACCOUNT_NAME || '',
   qrImageUrl: '',
   instructions: 'Chuyển khoản đúng số tiền và nội dung để quản trị viên đối soát.',
-  minDeposit: Math.max(10000, Number(process.env.MIN_DEPOSIT_VND) || 10000)
+  minDeposit: Math.max(10000, Number(process.env.MIN_DEPOSIT_VND) || 10000),
+  referralCommissionPercent: 0,
+  botUsername: String(process.env.BOT_USERNAME || '').replace(/^@/, ''),
+  groupChatUrl: 'https://t.me/Hendy_Support_Group',
+  newsChannelUrl: '',
+  supportUsername: String(process.env.SUPPORT_USERNAME || '').replace(/^@/, '')
 });
 
 let state = {
@@ -127,7 +132,12 @@ function getPaymentSettings() {
     bankAccountName: settings.bankAccountName || '',
     qrImageUrl: settings.qrImageUrl || '',
     instructions: settings.instructions || '',
-    minDeposit: Math.max(10000, Number(settings.minDeposit) || 10000)
+    minDeposit: Math.max(10000, Number(settings.minDeposit) || 10000),
+    referralCommissionPercent: Number(settings.referralCommissionPercent || 0),
+    botUsername: String(settings.botUsername || '').replace(/^@/, ''),
+    groupChatUrl: settings.groupChatUrl || '',
+    newsChannelUrl: settings.newsChannelUrl || '',
+    supportUsername: String(settings.supportUsername || '').replace(/^@/, '')
   };
 }
 
