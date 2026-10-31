@@ -34,36 +34,57 @@ function getWelcomeText(user, chatId) {
   ].join('\n');
 }
 
-function getMiniAppUrl(mode = 'accounts') {
+function getMiniAppUrl(section = 'home') {
   const configured = String(process.env.MINI_APP_URL || '').trim();
   if (!/^https:\/\//i.test(configured)) return null;
   try {
     const url = new URL(configured);
-    url.searchParams.set('mode', mode);
+    url.searchParams.set('section', section);
     return url.toString();
   } catch {
     return null;
   }
 }
 
-function mainMenu(userId) {
-  const accountUrl = getMiniAppUrl('accounts');
-  const rows = [];
+function appButton(label, section) {
+  const url = getMiniAppUrl(section);
+  return url
+    ? Markup.button.webApp(label, url)
+    : Markup.button.callback(label, 'mini_missing');
+}
 
-  if (accountUrl) {
-    rows.push([Markup.button.webApp('🔐 TRUNG TÂM QUẢN LÝ TÀI KHOẢN', accountUrl)]);
-  } else {
-    rows.push([Markup.button.callback('🔐 TRUNG TÂM QUẢN LÝ TÀI KHOẢN', 'mini_missing')]);
-  }
+function mainMenu(userId) {
+  const rows = [
+    [
+      appButton('🚀 MINIGAME LIVE', 'live'),
+      appButton('🧰 THUÊ TOOL (NEW)', 'tools')
+    ],
+    [appButton('🎁 MUA LÌ XÌ · CODE MÀN · CODE TELE', 'codes')],
+    [
+      appButton('💳 NẠP TIỀN', 'wallet'),
+      appButton('⚙️ OTP & PROXY', 'otp')
+    ],
+    [appButton('🏆 VIP KHO CÔNG CỤ ĐẶC QUYỀN', 'viptools')],
+    [appButton('💎 TRUNG TÂM KHÁCH HÀNG', 'customer')],
+    [appButton('⚔️ HỆ THỐNG GHÉP ĐỐI ĐẦU', 'duel')],
+    [
+      appButton('🎊 GIỚI THIỆU REF', 'ref'),
+      appButton('👑 VIP TRUNG TÂM VIP', 'vip')
+    ],
+    [
+      Markup.button.url('🗣️ NHÓM CHAT', 'https://t.me/Hendy_Support_Group'),
+      appButton('📢 KÊNH THÔNG BÁO', 'news')
+    ],
+    [
+      appButton('🎟️ NHẬP GIFTCODE', 'gift'),
+      appButton('🧑‍💻 LIÊN HỆ CSKH', 'support')
+    ]
+  ];
 
   if (currentAdminId && String(userId) === currentAdminId) {
     const adminUrl = getMiniAppUrl('admin');
-    if (adminUrl) {
-      rows.push([Markup.button.webApp('🛡️ ĐĂNG NHẬP ADMIN', adminUrl)]);
-    }
+    if (adminUrl) rows.push([Markup.button.webApp('🛡️ BẢNG ĐIỀU KHIỂN ADMIN', adminUrl)]);
   }
-
-  rows.push([Markup.button.callback('📖 HƯỚNG DẪN SỬ DỤNG', 'guide_detail')]);
   return Markup.inlineKeyboard(rows);
 }
 
@@ -91,6 +112,12 @@ function setupBot(instance) {
   instance.start(async ctx => {
     const chatId = String(ctx.from.id);
     const user = userService.initUser(chatId, ctx.from);
+    const payload = String(ctx.startPayload || '');
+    const referralMatch = payload.match(/^ref_(\d{1,20})$/);
+    if (referralMatch) {
+      const registered = await appDataService.registerReferral(referralMatch[1], chatId);
+      if (registered) console.info('[REF] Đã ghi nhận lượt giới thiệu cho ID ' + referralMatch[1] + '.');
+    }
     console.info('[BOT] Người dùng ' + chatId + ' đã mở bot.');
     await ctx.reply(getWelcomeText(user, chatId), {
       parse_mode: 'HTML',
