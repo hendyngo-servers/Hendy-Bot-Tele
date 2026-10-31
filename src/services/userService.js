@@ -1,12 +1,16 @@
 const fs = require('node:fs/promises');
 const path = require('node:path');
 const { Pool } = require('pg');
+const { CloudflareD1Client } = require('./cloudflareD1Service');
 
 const dir = process.env.DATA_DIR || path.join(process.cwd(), 'data');
 const legacyFile = path.join(dir, 'users.json');
 
 let users = {};
 let pool = null;
+let d1Client = null;
+let activeStore = 'json';
+let persistedSnapshot = {};
 let queue = Promise.resolve();
 
 function normalizeUser(id, value = {}) {
@@ -88,7 +92,8 @@ function persist() {
     snapshot[id] = normalizeUser(id, user);
   }
   queue = queue.catch(() => {}).then(async () => {
-    if (pool) await persistPostgres(snapshot);
+    if (activeStore === 'd1') await persistD1Snapshot(snapshot);
+    else if (pool) await persistPostgres(snapshot);
     else await persistJson(snapshot);
   });
   return queue;
@@ -124,6 +129,161 @@ async function migrateLegacyUsers() {
   await fs.rename(legacyFile, backupFile);
   console.info('[DB] Đã nhập ' + imported + ' thành viên từ JSON vào PostgreSQL. Bản sao lưu: ' + path.basename(backupFile));
   return imported;
+}
+
+function cloneUsers(value) {
+  return JSON.parse(JSON.stringify(value || {}));
+}
+
+function d1UserQuery(user, updateExisting) {
+  const sql = updateExisting
+    ? 'INSERT INTO hendy_users ' +
+      '(telegram_id, name, username, balance, vip_level, created_at, updated_at) ' +
+      'VALUES (?, ?, NULLIF(?, \'\'), ?, ?, ?, ?) ' +
+      'ON CONFLICT (telegram_id) DO UPDATE SET ' +
+      'name = excluded.name, username = excluded.username, balance = excluded.balance, ' +
+      'vip_level = excluded.vip_level, updated_at = excluded.updated_at'
+    : 'INSERT INTO hendy_users ' +
+      '(telegram_id, name, username, balance, vip_level, created_at, updated_at) ' +
+      'VALUES (?, ?, NULLIF(?, \'\'), ?, ?, ?, ?) ' +
+      'ON CONFLICT (telegram_id) DO NOTHING';
+  const updatedAt = new Date().toISOString();
+  return {
+    sql,
+    params: [
+      user.id,
+      user.name,
+      user.username || '',
+      String(user.balance),
+      String(user.vipLevel),
+      user.createdAt,
+      updatedAt
+    ]
+  };
+}
+
+async function writeD1Users(records, updateExisting) {
+  if (!d1Client) throw new Error('Cloudflare D1 chưa được khởi tạo.');
+  const rows = Array.isArray(records) ? records : [];
+  for (let offset = 0; offset < rows.length; offset += 50) {
+    const queries = rows.slice(offset, offset + 50).map(user => d1UserQuery(user, updateExisting));
+    if (queries.length) await d1Client.batch(queries);
+  }
+}
+
+async function persistD1Snapshot(snapshot) {
+  const changed = [];
+  for (const [id, user] of Object.entries(snapshot)) {
+    if (JSON.stringify(user) !== JSON.stringify(persistedSnapshot[id])) {
+      changed.push(user);
+    }
+  }
+  if (!changed.length) return;
+  await writeD1Users(changed, true);
+  persistedSnapshot = cloneUsers(snapshot);
+}
+
+async function migrateLegacyUsersToD1() {
+  const legacyUsers = await readLegacyUsers();
+  if (!legacyUsers) return 0;
+  const normalized = Object.entries(legacyUsers).map(([id, value]) => normalizeUser(id, value));
+  await writeD1Users(normalized, false);
+
+  const backupFile = legacyFile + '.migrated-d1-' + Date.now();
+  await fs.rename(legacyFile, backupFile);
+  console.info('[DB] Đã nhập ' + normalized.length + ' hồ sơ JSON vào Cloudflare D1. Bản sao lưu: ' + path.basename(backupFile));
+  return normalized.length;
+}
+
+async function migratePostgresUsersToD1() {
+  const connectionString = String(process.env.DATABASE_URL || '').trim();
+  if (!connectionString) return 0;
+
+  const legacyPool = new Pool({
+    connectionString,
+    ...(String(process.env.PGSSLMODE || '').toLowerCase() === 'require'
+      ? { ssl: { rejectUnauthorized: true } }
+      : {}),
+    max: 2,
+    connectionTimeoutMillis: 10000,
+    idleTimeoutMillis: 10000,
+    allowExitOnIdle: true
+  });
+
+  try {
+    const result = await legacyPool.query(
+      'SELECT telegram_id, name, username, balance, vip_level, created_at ' +
+      'FROM hendy_users ORDER BY created_at ASC'
+    );
+    const records = result.rows.map(row => {
+      const balance = Number(row.balance);
+      if (!Number.isSafeInteger(balance) || balance < 0) {
+        throw new Error('Số dư PostgreSQL của Telegram ID ' + row.telegram_id + ' không hợp lệ.');
+      }
+      return normalizeUser(row.telegram_id, {
+        name: row.name,
+        username: row.username,
+        balance,
+        vipLevel: row.vip_level,
+        createdAt: row.created_at
+      });
+    });
+    await writeD1Users(records, false);
+    console.info('[DB] Đã đồng bộ ' + records.length + ' hồ sơ PostgreSQL sang Cloudflare D1 (không ghi đè ID đã có).');
+    return records.length;
+  } catch (error) {
+    if (error.code === '42P01') {
+      console.warn('[DB] Bỏ qua migration PostgreSQL: chưa có bảng hendy_users.');
+      return 0;
+    }
+    throw error;
+  } finally {
+    await legacyPool.end();
+  }
+}
+
+async function loadD1() {
+  d1Client = CloudflareD1Client.fromEnv();
+  d1Client.validateConfig();
+  await d1Client.query(
+    'CREATE TABLE IF NOT EXISTS hendy_users (' +
+    'telegram_id TEXT PRIMARY KEY, ' +
+    'name TEXT NOT NULL, ' +
+    'username TEXT, ' +
+    'balance INTEGER NOT NULL DEFAULT 0 CHECK (balance >= 0), ' +
+    'vip_level INTEGER NOT NULL DEFAULT 0 CHECK (vip_level BETWEEN 0 AND 10), ' +
+    'created_at TEXT NOT NULL, ' +
+    'updated_at TEXT NOT NULL)'
+  );
+  await d1Client.query(
+    'CREATE INDEX IF NOT EXISTS hendy_users_created_at_idx ON hendy_users (created_at DESC)'
+  );
+
+  await migrateLegacyUsersToD1();
+  await migratePostgresUsersToD1();
+
+  const result = await d1Client.query(
+    'SELECT telegram_id, name, username, balance, vip_level, created_at ' +
+    'FROM hendy_users ORDER BY created_at ASC'
+  );
+  const loaded = {};
+  for (const row of result.results || []) {
+    const balance = Number(row.balance);
+    if (!Number.isSafeInteger(balance) || balance < 0) {
+      throw new Error('Số dư của Telegram ID ' + row.telegram_id + ' vượt giới hạn số nguyên an toàn của ứng dụng.');
+    }
+    loaded[row.telegram_id] = normalizeUser(row.telegram_id, {
+      name: row.name,
+      username: row.username,
+      balance,
+      vipLevel: row.vip_level,
+      createdAt: row.created_at
+    });
+  }
+  users = loaded;
+  persistedSnapshot = cloneUsers(loaded);
+  activeStore = 'd1';
+  console.info('[DB] Cloudflare D1 sẵn sàng. Đã tải ' + result.results?.length + ' thành viên.');
 }
 
 async function loadPostgres() {
@@ -182,6 +342,8 @@ async function loadPostgres() {
       });
     }
     users = loaded;
+    persistedSnapshot = cloneUsers(loaded);
+    activeStore = 'postgres';
     console.info('[DB] PostgreSQL sẵn sàng. Đã tải ' + result.rowCount + ' thành viên.');
   } catch (error) {
     await pool.end().catch(() => {});
@@ -191,6 +353,10 @@ async function loadPostgres() {
 }
 
 async function loadDatabase() {
+  if (CloudflareD1Client.hasAnyEnvironmentConfig()) {
+    await loadD1();
+    return;
+  }
   if (process.env.DATABASE_URL) {
     await loadPostgres();
     return;
@@ -206,12 +372,16 @@ async function loadDatabase() {
     const loaded = {};
     for (const [id, item] of Object.entries(value)) loaded[id] = normalizeUser(id, item);
     users = loaded;
+    persistedSnapshot = cloneUsers(loaded);
+    activeStore = 'json';
   } catch (error) {
     if (error.code !== 'ENOENT') {
       await fs.rename(legacyFile, legacyFile + '.corrupt-' + Date.now()).catch(() => {});
       console.error('Dữ liệu người dùng lỗi; đã cách ly tệp lỗi:', error.message);
     }
     users = {};
+    persistedSnapshot = {};
+    activeStore = 'json';
     await persist();
   }
 }
@@ -265,5 +435,6 @@ module.exports = {
   getUser: id => users[String(id)] || null,
   getUsers: () => users,
   closeDatabase,
-  isPostgres: () => Boolean(pool)
+  isPostgres: () => activeStore === 'postgres' && Boolean(pool),
+  isCloudflareD1: () => activeStore === 'd1' && Boolean(d1Client?.isConfigured())
 };
