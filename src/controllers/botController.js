@@ -15,7 +15,7 @@ function menu(){return Markup.inlineKeyboard([
  [Markup.button.callback('🟦 💎 TRUNG TÂM KHÁCH HÀNG','customer')],
  [Markup.button.callback('🟥 ⚔️ HỆ THỐNG GHÉP ĐỐI ĐẦU','unconfigured')],
  [Markup.button.callback('🟦 👥 GIỚI THIỆU REF','unconfigured'),Markup.button.callback('🟧 👑 VIP TRUNG TÂM VIP','unconfigured')],
- [Markup.button.url('🟩 👥 NHÓM CHAT','https://t.me/Hendy_Support_Group'),Markup.button.callback('🟩 📢 KÊNH THÔNG BÁO','unconfigured')],
+ [Markup.button.url('🟩 👥 NHÓM CHAT','https://t.me/lethituanem_nhomchat'),Markup.button.callback('🟩 📢 KÊNH THÔNG BÁO','unconfigured')],
  [Markup.button.callback('🟥 🎟️ NHẬP GIFTCODE','unconfigured'),Markup.button.callback('🟫 🧑‍💻 LIÊN HỆ CSKH','customer')]
 ]);}
 function welcome(user,id){return '🤖 <b>HENDY BOT TELEGRAM</b>\nChào mừng <b>'+esc(user.name)+'</b>!\n🆔 ID: <code>'+esc(id)+'</code>\n\n💰 Số dư: <b>'+Number(user.balance||0).toLocaleString('vi-VN')+' VNĐ</b>\n👑 Cấp VIP: <b>'+Number(user.vipLevel||0)+'</b>\n\nChọn chức năng hoặc mở Mini App.';}
