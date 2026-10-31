@@ -77,7 +77,7 @@ test('dừng sau khi hết số lần thử và che token khỏi log', async () 
   const error = new Error(
     'request to https://api.telegram.org/bot123456:ABCDEFGHIJKLMNOPQRSTUVWXYZ_1234567890/getMe failed'
   );
-  error.cause = Object.assign(new Error('connect ETIMEDOUT'), { code: 'ETIMEDOUT' });
+  error.cause = { code: 'ETIMEDOUT' };
 
   await assert.rejects(
     runWithTelegramRetry(async () => {
