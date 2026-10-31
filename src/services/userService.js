@@ -1,24 +1,61 @@
-let users = {}; 
-const userStates = {};
+const fs = require('fs').promises;
+const path = require('path');
+
+// Cấu hình đường dẫn cho Railway Volume hoặc Local
+const DATA_DIR = process.env.RAILWAY_ENVIRONMENT ? '/app/data' : path.join(__dirname, '../../data');
+const DB_FILE = path.join(DATA_DIR, 'database.json');
+const BACKUP_FILE = path.join(DATA_DIR, 'database_backup.json');
+
+let users = {};
+let userStates = {};
+let userCooldowns = {};
+let isSaving = false;
+
+const loadDatabase = async () => {
+  try {
+    // Tự động tạo thư mục data nếu chưa có
+    await fs.mkdir(DATA_DIR, { recursive: true });
+    
+    const data = await fs.readFile(DB_FILE, 'utf8');
+    users = JSON.parse(data);
+    console.log(`✅ Đã tải dữ liệu ${Object.keys(users).length} khách hàng từ database.json`);
+  } catch (err) {
+    console.log("⚠️ Không tìm thấy hoặc database trống, sẽ tạo mới khi có khách.");
+    users = {};
+  }
+};
+
+const saveDatabase = async () => {
+  if (isSaving) return;
+  isSaving = true;
+  try {
+    try { await fs.copyFile(DB_FILE, BACKUP_FILE); } catch (e) {} // Backup file cũ
+    await fs.writeFile(DB_FILE, JSON.stringify(users, null, 2), 'utf8');
+  } catch (err) {
+    console.error("❌ Lỗi lưu file database.json:", err);
+  } finally {
+    isSaving = false;
+  }
+};
 
 const initUser = (chatId, user) => {
+  const name = user?.first_name || 'Khách';
   if (!users[chatId]) {
     users[chatId] = {
-      name: user ? (user.first_name || 'Khách') : 'Khách',
-      balance: 50000,
-      history: ["Khởi tạo tài khoản (+50,000 VNĐ)"],
-      linkedAccounts: { SC88: [], C168: [], CM88: [], F8BET: [], ABCVIP: [], KJC_CU: [] },
-      accountKho: { RR88: [], MM88: [], GG88: [], U888: [], J88: [], "88CLB": [], ABC8: [], XX8: [] }
+      name, balance: 1501, voucher: 0, wonCodes: [],
+      linkedAccounts: { SC88: [], C168: [], CM88: [], F8BET: [] }
     };
+    saveDatabase();
+  } else {
+    users[chatId].name = name;
   }
   return users[chatId];
 };
 
-const getUser = (chatId) => users[chatId];
-const getAllUsers = () => users;
-
-const setState = (chatId, stateData) => { userStates[chatId] = stateData; };
-const getState = (chatId) => userStates[chatId];
-const clearState = (chatId) => { delete userStates[chatId]; };
-
-module.exports = { initUser, getUser, getAllUsers, setState, getState, clearState };
+module.exports = { 
+  loadDatabase, saveDatabase, initUser, 
+  getUsers: () => users, 
+  getUser: (id) => users[id],
+  getStates: () => userStates,
+  getCooldowns: () => userCooldowns
+};
