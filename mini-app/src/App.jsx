@@ -75,7 +75,6 @@ export default function App() {
 
   const [session, setSession] = useState(null);
   const [overview, setOverview] = useState(null);
-  const [publicSettings, setPublicSettings] = useState({});
   const [page, setPage] = useState('home');
   const [adminTab, setAdminTab] = useState('overview');
   const [busy, setBusy] = useState(false);
@@ -134,13 +133,7 @@ export default function App() {
     try {
       const data = await api('/session', initData);
       setSession(data);
-      const [home, publicConfig] = await Promise.all([
-        api('/overview', initData),
-        api('/public-settings', initData)
-      ]);
-      setOverview(home);
-      setLinkedAccounts(home.linkedAccounts || []);
-      setPublicSettings(publicConfig || {});
+      setPage(data.isAdmin ? 'admin' : 'member-blocked');
     } catch (error) {
       setNotice(error.message);
       setSession(null);
@@ -222,7 +215,8 @@ export default function App() {
   async function refreshPage() {
     setBusy(true);
     try {
-      if (page === 'home' || page === 'live') await loadOverview();
+      if (page === 'admin') await loadAdminTab(adminTab);
+      else if (page === 'home' || page === 'live') await loadOverview();
       else if (page === 'tools') { await loadCatalog('tool'); await loadOrders(); }
       else if (page === 'codes') { await loadCatalog('code'); await loadOrders(); }
       else if (page === 'otp') { await loadCatalog('otp_proxy'); await loadOrders(); }
@@ -245,21 +239,13 @@ export default function App() {
   }
 
   useEffect(() => {
-    if (loading || !session || !requestedSection || requestedSection === 'home') return;
-    const allowed = [...MENU.map(item => item.id), 'admin'];
-    if (!allowed.includes(requestedSection)) return;
-    if (requestedSection === 'admin' && !session.isAdmin) {
-      setNotice('Bạn không có quyền quản trị.');
+    if (loading || !session) return;
+    if (!session.isAdmin) {
+      setPage('member-blocked');
       return;
     }
-    if (requestedSection === 'admin') {
-      setPage('admin');
-      loadAdminTab('overview').catch(error => setNotice(error.message));
-    } else {
-      openPage(requestedSection);
-    }
-    // deep-link only once after the Telegram session is validated
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    setPage('admin');
+    loadAdminTab('overview').catch(error => setNotice(error.message));
   }, [loading, session]);
 
   async function submitAccount(event) {
@@ -445,11 +431,23 @@ export default function App() {
     return <main className="gate-page"><div className="brand-symbol">H</div><h1>Không xác thực được</h1><p className="muted">Hãy mở lại Mini App từ Telegram.</p><button className="primary-button" onClick={loadSession}>Thử lại</button><Notice message={notice} onClose={() => setNotice('')} /></main>;
   }
 
+  if (!session.isAdmin) {
+    return (
+      <main className="gate-page">
+        <div className="brand-symbol">H</div>
+        <p className="eyebrow">HENDY CYBERTECH</p>
+        <h1>Mini App dành riêng cho Admin</h1>
+        <p className="muted">Menu thành viên được xử lý trực tiếp trong Telegram Bot. Gửi /menu để sử dụng các chức năng thành viên, không cần mở Mini App.</p>
+        <button className="primary-button" onClick={() => telegram?.close?.()}>Đóng Mini App</button>
+      </main>
+    );
+  }
+
   const user = overview?.profile || session.profile;
   const ordersForPage = orders;
 
   return (
-    <div className="app-shell">
+    <div className={page === 'admin' ? 'app-shell admin-app-shell' : 'app-shell'}>
       <header className="topbar">
         <div className="brand-symbol small">H</div>
         <div className="brand-copy"><strong>HENDY <span>CYBERTECH</span></strong><small>TRUNG TÂM DỊCH VỤ & TÀI KHOẢN</small></div>
