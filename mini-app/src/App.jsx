@@ -70,8 +70,6 @@ function PageTitle({ eyebrow, title, onBack }) {
 export default function App() {
   const telegram = window.Telegram?.WebApp;
   const initData = telegram?.initData || '';
-  const params = new URLSearchParams(window.location.search);
-  const requestedSection = params.get('section');
 
   const [session, setSession] = useState(null);
   const [overview, setOverview] = useState(null);
@@ -195,17 +193,7 @@ export default function App() {
       if (id === 'ref') setReferral(await api('/referral', initData));
       if (id === 'gift') setOverview(await api('/overview', initData));
       if (id === 'duel' || id === 'group' || id === 'news') {
-        if (id === 'group') {
-          if (publicSettings.groupChatUrl) window.open(publicSettings.groupChatUrl, '_blank', 'noopener,noreferrer');
-          else setNotice('Admin chưa cấu hình liên kết nhóm chat.');
-          setPage('home');
-        }
-        if (id === 'news') {
-          if (publicSettings.newsChannelUrl) window.open(publicSettings.newsChannelUrl, '_blank', 'noopener,noreferrer');
-          else setNotice('Admin chưa cấu hình liên kết kênh thông báo.');
-          setPage('home');
-        }
-
+        setNotice('Các chức năng thành viên được thao tác trực tiếp trong Telegram Bot. Mini App chỉ dành cho Admin.');
       }
     } catch (error) {
       setNotice(error.message);
@@ -555,7 +543,6 @@ export default function App() {
       {page === 'customer' && (
         <main><PageTitle eyebrow="TRUNG TÂM KHÁCH HÀNG" title="HỒ SƠ & HỖ TRỢ" onBack={() => setPage('home')} />
           <section className="panel"><h2>Thông tin thành viên</h2><article className="profile-row"><span>Họ tên</span><strong>{user?.name || session.profile.name}</strong></article><article className="profile-row"><span>Telegram ID</span><strong>{user?.id || session.profile.id}</strong></article><article className="profile-row"><span>Số dư</span><strong>{money(user?.balance)}</strong></article><article className="profile-row"><span>Cấp VIP</span><strong>VIP {user?.vipLevel || 0}</strong></article></section>
-          {publicSettings.supportUsername && <section className="panel"><h2>Liên hệ trực tiếp CSKH</h2><a className="link-button" href={'https://t.me/' + publicSettings.supportUsername.replace(/^@/, '')} target="_blank" rel="noreferrer">Mở chat với @{publicSettings.supportUsername.replace(/^@/, '')}</a></section>}
           <section className="panel"><div className="panel-heading"><h2>Lịch sử hoạt động</h2><span className="pill">{activity.length}</span></div>
             {activity.length ? activity.map(item => <article className="history-row" key={item.id}><div><strong>{item.title}</strong><small>{item.detail || '—'} · {dateText(item.createdAt)}</small>{item.expiresAt && <small>Hết hạn: {dateText(item.expiresAt)}</small>}{item.reply && <small className="ticket-reply">Phản hồi: {item.reply}</small>}</div><small className={'status ' + item.status}>{item.status === 'pending' ? 'Đang chờ' : item.status === 'paid' || item.status === 'approved' || item.status === 'completed' || item.status === 'answered' ? 'Hoàn tất/Đã duyệt' : item.status === 'rejected' ? 'Từ chối' : item.status === 'open' ? 'Đang mở' : item.status}</small></article>) : <Empty>Chưa có hoạt động nào được ghi nhận.</Empty>}
           </section>
