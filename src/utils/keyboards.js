@@ -50,7 +50,7 @@ const getMainMenu = () => {
     ],
     // Hàng 8: Nhóm chat & Kênh thông báo (Xanh lá)
     [
-      Markup.button.url('👥 NHÓM CHAT', 'https://t.me/lethituanem_nhomchat'), 
+      Markup.button.url('👥 NHÓM CHAT', 'https://t.me/Hendy_Support_Group'), 
       Markup.button.callback('📢 KÊNH THÔNG BÁO', 'unimplemented')
     ],
     // Hàng 9: Nhập Giftcode & Liên hệ CSKH (Đỏ & Nâu)
