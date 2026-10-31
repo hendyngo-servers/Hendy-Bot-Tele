@@ -7,68 +7,62 @@ const { encryptSecret } = require('../security/cryptoService');
 
 const router = express.Router();
 const ALLOWED_BRANDS = new Set(['QQ88', '78WIN', 'SC88', 'C168', 'CM88', 'F8BET']);
+const CATEGORIES = new Set(['tool', 'code', 'otp_proxy', 'vip']);
 
 router.use((req, res, next) => {
   res.set('Cache-Control', 'no-store');
   res.set('Pragma', 'no-cache');
   next();
 });
-
 router.use(rateLimit({
   windowMs: 60 * 1000,
-  limit: 60,
+  limit: 90,
   standardHeaders: 'draft-7',
   legacyHeaders: false
 }), requireTelegramAuth);
 
+const ok = (res, data, status = 200) => res.status(status).json({ success: true, data });
+const fail = (res, status, message) => res.status(status).json({ success: false, message });
+
 function requireAdmin(req, res, next) {
   const adminId = String(process.env.ADMIN_ID || '');
   if (!adminId || String(req.telegramUser?.id) !== adminId) {
-    return res.status(403).json({
-      success: false,
-      message: 'Tài khoản Telegram này không có quyền quản trị.'
-    });
+    return fail(res, 403, 'Tài khoản Telegram này không có quyền quản trị.');
   }
   return next();
 }
+const admin = [requireAdmin];
 
-// Phiên đăng nhập được xác thực bằng chữ ký initData của Telegram.
-// Quyền admin luôn được xác minh lại ở máy chủ, không tin cậy trạng thái từ trình duyệt.
+function validHttpUrl(value) {
+  if (!value) return true;
+  try {
+    const url = new URL(value);
+    return url.protocol === 'https:' && !url.username && !url.password;
+  } catch {
+    return false;
+  }
+}
+
 router.get('/session', (req, res) => {
   const userId = String(req.telegramUser.id);
   const user = userService.initUser(userId, req.telegramUser);
-  res.json({
-    success: true,
-    data: {
-      profile: {
-        id: userId,
-        name: user.name,
-        username: user.username || null
-      },
-      isAdmin: Boolean(process.env.ADMIN_ID) &&
-        userId === String(process.env.ADMIN_ID)
-    }
+  return ok(res, {
+    profile: {
+      id: userId,
+      name: user.name,
+      username: user.username || null
+    },
+    isAdmin: Boolean(process.env.ADMIN_ID) && userId === String(process.env.ADMIN_ID)
   });
 });
 
-// TRUNG TÂM QUẢN LÝ TÀI KHOẢN
 router.get('/overview', (req, res) => {
   const userId = String(req.telegramUser.id);
   const user = userService.initUser(userId, req.telegramUser);
-  const overview = appDataService.getOverview(userId, user);
-
-  res.json({
-    success: true,
-    data: {
-      profile: overview.profile,
-      linkedAccounts: overview.linkedAccounts,
-      counts: {
-        linkedAccounts: overview.counts.linkedAccounts
-      }
-    }
-  });
+  return ok(res, appDataService.getOverview(userId, user));
 });
 
+// ACCOUNT CENTER
 router.post('/links', async (req, res, next) => {
   try {
     const { brand, username, password, miniCode } = req.body || {};
@@ -76,40 +70,19 @@ router.post('/links', async (req, res, next) => {
     const userId = String(req.telegramUser.id);
     const normalizedUsername = typeof username === 'string' ? username.trim() : '';
 
-    if (!ALLOWED_BRANDS.has(normalizedBrand)) {
-      return res.status(400).json({
-        success: false,
-        message: 'Nhà cung cấp không hợp lệ.'
-      });
-    }
+    if (!ALLOWED_BRANDS.has(normalizedBrand)) return fail(res, 400, 'Nhà cung cấp không hợp lệ.');
     if (normalizedUsername.length < 2 || normalizedUsername.length > 80) {
-      return res.status(400).json({
-        success: false,
-        message: 'Tên tài khoản phải từ 2 đến 80 ký tự.'
-      });
+      return fail(res, 400, 'Tên tài khoản phải từ 2 đến 80 ký tự.');
     }
     if (typeof password !== 'string' || password.length < 1 || password.length > 256) {
-      return res.status(400).json({
-        success: false,
-        message: 'Mật khẩu không hợp lệ.'
-      });
+      return fail(res, 400, 'Mật khẩu không hợp lệ.');
     }
 
-    const ownedAccounts = appDataService.listLinkedAccounts(userId);
-    if (ownedAccounts.length >= 10) {
-      return res.status(409).json({
-        success: false,
-        message: 'Mỗi tài khoản Telegram chỉ được liên kết tối đa 10 tài khoản.'
-      });
-    }
-    if (ownedAccounts.some(item =>
-      item.brand === normalizedBrand &&
-      item.username.toLowerCase() === normalizedUsername.toLowerCase()
-    )) {
-      return res.status(409).json({
-        success: false,
-        message: 'Tài khoản này đã được liên kết.'
-      });
+    const owned = appDataService.listLinkedAccounts(userId);
+    if (owned.length >= 10) return fail(res, 409, 'Mỗi thành viên được liên kết tối đa 10 tài khoản.');
+    if (owned.some(item => item.brand === normalizedBrand &&
+      item.username.toLowerCase() === normalizedUsername.toLowerCase())) {
+      return fail(res, 409, 'Tài khoản này đã được liên kết.');
     }
 
     const account = await appDataService.addLinkedAccount(userId, {
@@ -120,37 +93,342 @@ router.post('/links', async (req, res, next) => {
         : normalizedUsername,
       encryptedPassword: encryptSecret(password)
     });
-
-    res.status(201).json({ success: true, data: account });
-  } catch (error) {
-    next(error);
-  }
+    return ok(res, account, 201);
+  } catch (error) { return next(error); }
 });
 
 router.delete('/links/:id', async (req, res, next) => {
   try {
-    const removed = await appDataService.deleteLinkedAccount(
-      req.telegramUser.id,
-      req.params.id
-    );
-    if (!removed) {
-      return res.status(404).json({
-        success: false,
-        message: 'Không tìm thấy tài khoản liên kết.'
-      });
-    }
-    res.json({ success: true });
-  } catch (error) {
-    next(error);
-  }
+    const removed = await appDataService.deleteLinkedAccount(req.telegramUser.id, req.params.id);
+    if (!removed) return fail(res, 404, 'Không tìm thấy tài khoản liên kết.');
+    return ok(res, { removed: true });
+  } catch (error) { return next(error); }
 });
 
-// ĐĂNG NHẬP ADMIN — mọi dữ liệu quản trị đều kiểm tra ADMIN_ID ở máy chủ.
-router.get('/admin/overview', requireAdmin, (req, res) => {
-  res.json({
-    success: true,
-    data: appDataService.getAdminOverview(userService.getUsers())
+// CATALOG, SERVICE ORDERS AND HISTORY
+router.get('/catalog', (req, res) => {
+  const category = String(req.query.category || '');
+  if (category && !CATEGORIES.has(category)) return fail(res, 400, 'Danh mục không hợp lệ.');
+  return ok(res, appDataService.listActiveCatalog(category));
+});
+
+router.post('/orders', async (req, res, next) => {
+  try {
+    const result = await appDataService.createOrder(req.telegramUser.id, String(req.body?.itemId || ''));
+    if (result.error === 'not_found') return fail(res, 404, 'Dịch vụ không còn khả dụng.');
+    if (result.error === 'out_of_stock') return fail(res, 409, 'Sản phẩm đã hết hàng.');
+    return ok(res, result, 201);
+  } catch (error) { return next(error); }
+});
+router.get('/orders', (req, res) => ok(res, appDataService.listOrders(req.telegramUser.id)));
+
+router.post('/deposits', async (req, res, next) => {
+  try {
+    const amount = Number(req.body?.amount);
+    const settings = appDataService.getPaymentSettings();
+    if (!Number.isSafeInteger(amount) || amount < settings.minDeposit || amount > 100000000) {
+      return fail(res, 400,
+        'Số tiền nạp phải từ ' + settings.minDeposit.toLocaleString('vi-VN') +
+        ' đến 100.000.000 VNĐ.');
+    }
+    return ok(res, await appDataService.createDeposit(req.telegramUser.id, amount), 201);
+  } catch (error) { return next(error); }
+});
+router.get('/deposits', (req, res) => ok(res, appDataService.listDeposits(req.telegramUser.id)));
+router.get('/payment-info', (_req, res) => ok(res, appDataService.getPaymentSettings()));
+
+router.get('/vip', (req, res) => {
+  const user = userService.getUser(req.telegramUser.id) || {};
+  return ok(res, {
+    currentLevel: Number(user.vipLevel || 0),
+    levels: [
+      { level: 0, name: 'Thành viên', benefits: ['Quản lý tài khoản liên kết'] },
+      { level: 1, name: 'VIP 1', benefits: ['Ưu tiên hỗ trợ', 'Ưu đãi theo cấu hình Admin'] },
+      { level: 2, name: 'VIP 2', benefits: ['Ưu tiên xử lý', 'Ưu đãi theo cấu hình Admin'] },
+      { level: 3, name: 'VIP 3', benefits: ['Hỗ trợ ưu tiên', 'Đặc quyền theo cấu hình Admin'] }
+    ],
+    upgradeProducts: appDataService.listActiveCatalog('vip')
   });
+});
+
+router.post('/giftcodes/redeem', async (req, res, next) => {
+  try {
+    const code = String(req.body?.code || '').trim();
+    if (code.length < 3 || code.length > 64) return fail(res, 400, 'Mã quà tặng không hợp lệ.');
+    const userId = String(req.telegramUser.id);
+    const user = userService.getUser(userId) || userService.initUser(userId, req.telegramUser);
+    const result = await appDataService.redeemGiftcode(userId, code);
+    const messages = {
+      invalid: 'Giftcode không tồn tại hoặc đã bị tắt.',
+      expired: 'Giftcode đã hết hạn.',
+      exhausted: 'Giftcode đã hết lượt sử dụng.',
+      used: 'Bạn đã sử dụng giftcode này.'
+    };
+    if (result.error) return fail(res, 409, messages[result.error] || 'Không thể đổi giftcode.');
+
+    if (result.rewardType === 'balance') {
+      user.balance = Number(user.balance || 0) + result.rewardValue;
+    } else {
+      user.vipLevel = Math.max(Number(user.vipLevel || 0), result.rewardValue);
+    }
+    await userService.saveDatabase();
+    return ok(res, {
+      rewardType: result.rewardType,
+      rewardValue: result.rewardValue,
+      balance: Number(user.balance || 0),
+      vipLevel: Number(user.vipLevel || 0)
+    });
+  } catch (error) { return next(error); }
+});
+
+router.get('/referral', (req, res) => {
+  const userId = String(req.telegramUser.id);
+  const username = String(process.env.BOT_USERNAME || '').replace(/^@/, '');
+  const referralCode = 'ref_' + userId;
+  const referralLink = /^[a-zA-Z0-9_]{5,32}$/.test(username)
+    ? 'https://t.me/' + username + '?start=' + referralCode
+    : null;
+  const settings = appDataService.getPaymentSettings();
+  return ok(res, {
+    code: referralCode,
+    link: referralLink,
+    stats: appDataService.getReferralStats(userId),
+    commissionPercent: Number(settings.referralCommissionPercent || 0)
+  });
+});
+
+// CUSTOMER CARE
+router.post('/support', async (req, res, next) => {
+  try {
+    const message = String(req.body?.message || '').trim();
+    if (message.length < 5 || message.length > 2000) {
+      return fail(res, 400, 'Nội dung hỗ trợ phải từ 5 đến 2.000 ký tự.');
+    }
+    return ok(res, await appDataService.createTicket(req.telegramUser.id, message), 201);
+  } catch (error) { return next(error); }
+});
+router.get('/support', (req, res) => ok(res, appDataService.listTickets(req.telegramUser.id)));
+
+// ADMIN OVERVIEW AND SETTINGS
+router.get('/admin/overview', ...admin, (_req, res) =>
+  ok(res, appDataService.getAdminOverview(userService.getUsers()))
+);
+
+router.get('/admin/settings', ...admin, (_req, res) => {
+  const payment = appDataService.getPaymentSettings();
+  return ok(res, {
+    payment,
+    botUsername: process.env.BOT_USERNAME || '',
+    referralCommissionPercent: Number(payment.referralCommissionPercent || 0)
+  });
+});
+
+router.put('/admin/settings', ...admin, async (req, res, next) => {
+  try {
+    const body = req.body || {};
+    const payment = body.payment || {};
+    const bankBin = String(payment.bankBin || '').trim().slice(0, 24);
+    const bankName = String(payment.bankName || '').trim().slice(0, 80);
+    const bankAccount = String(payment.bankAccount || '').trim().slice(0, 40);
+    const bankAccountName = String(payment.bankAccountName || '').trim().slice(0, 100);
+    const qrImageUrl = String(payment.qrImageUrl || '').trim();
+    const instructions = String(payment.instructions || '').trim().slice(0, 500);
+    const minDeposit = Number(payment.minDeposit);
+    const commission = Number(body.referralCommissionPercent);
+
+    if (qrImageUrl && (!validHttpUrl(qrImageUrl) || qrImageUrl.length > 500)) {
+      return fail(res, 400, 'Đường dẫn QR phải là HTTPS hợp lệ và tối đa 500 ký tự.');
+    }
+    if (!Number.isSafeInteger(minDeposit) || minDeposit < 10000 || minDeposit > 100000000) {
+      return fail(res, 400, 'Mức nạp tối thiểu phải từ 10.000 đến 100.000.000 VNĐ.');
+    }
+    if (!Number.isFinite(commission) || commission < 0 || commission > 20) {
+      return fail(res, 400, 'Hoa hồng giới thiệu phải từ 0% đến 20%.');
+    }
+    return ok(res, await appDataService.updatePaymentSettings({
+      bankBin, bankName, bankAccount, bankAccountName,
+      qrImageUrl, instructions, minDeposit,
+      referralCommissionPercent: commission
+    }));
+  } catch (error) { return next(error); }
+});
+
+// ADMIN: DEPOSITS, ORDERS, CATALOG, GIFT CODES, MEMBERS, SUPPORT
+router.get('/admin/deposits', ...admin, (_req, res) => ok(res, appDataService.listAllDeposits()));
+router.patch('/admin/deposits/:id', ...admin, async (req, res, next) => {
+  try {
+    const status = String(req.body?.status || '');
+    if (!['paid', 'rejected'].includes(status)) return fail(res, 400, 'Trạng thái xử lý không hợp lệ.');
+    const current = appDataService.getDeposit(req.params.id);
+    if (!current) return fail(res, 404, 'Không tìm thấy yêu cầu nạp.');
+    if (current.status !== 'pending') return fail(res, 409, 'Yêu cầu này đã được xử lý.');
+
+    const user = userService.getUser(current.userId);
+    if (!user) return fail(res, 404, 'Không tìm thấy người dùng của yêu cầu nạp.');
+    if (status === 'paid') {
+      const nextBalance = Number(user.balance || 0) + Number(current.amount);
+      if (!Number.isSafeInteger(nextBalance)) return fail(res, 409, 'Không thể cập nhật số dư.');
+      user.balance = nextBalance;
+      await userService.saveDatabase();
+    }
+    const result = await appDataService.processDeposit(req.params.id, status, req.telegramUser.id);
+    if (result.error) return fail(res, 409, 'Yêu cầu đã được xử lý ở một thao tác khác.');
+    let commission = 0;
+    if (status === 'paid') {
+      commission = await appDataService.addReferralCommission(result.userId, result.amount, userService.getUsers());
+      if (commission > 0) await userService.saveDatabase();
+    }
+    return ok(res, { ...result, commission });
+  } catch (error) { return next(error); }
+});
+
+router.get('/admin/orders', ...admin, (_req, res) => ok(res, appDataService.listOrders(null)));
+router.patch('/admin/orders/:id', ...admin, async (req, res, next) => {
+  try {
+    const status = String(req.body?.status || '');
+    if (!['approved', 'rejected'].includes(status)) return fail(res, 400, 'Trạng thái đơn không hợp lệ.');
+    const order = appDataService.getOrder(req.params.id);
+    if (!order) return fail(res, 404, 'Không tìm thấy đơn hàng.');
+    if (order.status !== 'pending') return fail(res, 409, 'Đơn hàng đã được xử lý.');
+
+    const user = userService.getUser(order.userId);
+    if (!user) return fail(res, 404, 'Không tìm thấy người dùng của đơn hàng.');
+    if (status === 'approved') {
+      if (Number(user.balance || 0) < Number(order.amount)) {
+        return fail(res, 409, 'Số dư thành viên không đủ để thanh toán đơn hàng.');
+      }
+      user.balance = Number(user.balance || 0) - Number(order.amount);
+      await userService.saveDatabase();
+    }
+    const result = await appDataService.processOrder(req.params.id, status, req.telegramUser.id);
+    if (result.error) return fail(res, 409, 'Đơn hàng hoặc tồn kho vừa thay đổi; hãy tải lại.');
+    return ok(res, result);
+  } catch (error) { return next(error); }
+});
+
+router.get('/admin/catalog', ...admin, (_req, res) => ok(res, appDataService.listAdminCatalog()));
+router.post('/admin/catalog', ...admin, async (req, res, next) => {
+  try {
+    const body = req.body || {};
+    const name = String(body.name || '').trim();
+    const description = String(body.description || '').trim().slice(0, 500);
+    const category = String(body.category || '');
+    const price = Number(body.price);
+    const durationDays = Number(body.durationDays || 0);
+    const stock = body.stock === '' || body.stock === null || body.stock === undefined ? null : Number(body.stock);
+    if (!CATEGORIES.has(category)) return fail(res, 400, 'Danh mục không hợp lệ.');
+    if (name.length < 2 || name.length > 100) return fail(res, 400, 'Tên sản phẩm phải từ 2 đến 100 ký tự.');
+    if (!Number.isSafeInteger(price) || price < 0 || price > 1000000000) return fail(res, 400, 'Giá không hợp lệ.');
+    if (!Number.isSafeInteger(durationDays) || durationDays < 0 || durationDays > 3650) return fail(res, 400, 'Thời hạn không hợp lệ.');
+    if (stock !== null && (!Number.isSafeInteger(stock) || stock < 0 || stock > 1000000)) return fail(res, 400, 'Tồn kho không hợp lệ.');
+    const item = await appDataService.saveCatalogItem({
+      category, name, description, price, durationDays, stock, active: body.active !== false
+    });
+    return ok(res, item, 201);
+  } catch (error) { return next(error); }
+});
+
+router.put('/admin/catalog/:id', ...admin, async (req, res, next) => {
+  try {
+    const existing = appDataService.listAdminCatalog().find(item => item.id === req.params.id);
+    if (!existing) return fail(res, 404, 'Không tìm thấy sản phẩm.');
+    const body = { ...existing, ...(req.body || {}) };
+    const category = String(body.category || '');
+    const name = String(body.name || '').trim();
+    const price = Number(body.price);
+    const durationDays = Number(body.durationDays || 0);
+    const stock = body.stock === '' || body.stock === null || body.stock === undefined ? null : Number(body.stock);
+    if (!CATEGORIES.has(category) || name.length < 2 || name.length > 100 ||
+      !Number.isSafeInteger(price) || price < 0 || price > 1000000000 ||
+      !Number.isSafeInteger(durationDays) || durationDays < 0 || durationDays > 3650 ||
+      (stock !== null && (!Number.isSafeInteger(stock) || stock < 0 || stock > 1000000))) {
+      return fail(res, 400, 'Thông tin sản phẩm không hợp lệ.');
+    }
+    return ok(res, await appDataService.saveCatalogItem({
+      category, name, description: String(body.description || '').slice(0, 500),
+      price, durationDays, stock, active: body.active !== false
+    }, req.params.id));
+  } catch (error) { return next(error); }
+});
+router.delete('/admin/catalog/:id', ...admin, async (req, res, next) => {
+  try {
+    const removed = await appDataService.deleteCatalogItem(req.params.id);
+    if (!removed) return fail(res, 404, 'Không tìm thấy sản phẩm.');
+    return ok(res, { removed: true });
+  } catch (error) { return next(error); }
+});
+
+router.get('/admin/giftcodes', ...admin, (_req, res) => ok(res, appDataService.listGiftcodes()));
+router.post('/admin/giftcodes', ...admin, async (req, res, next) => {
+  try {
+    const body = req.body || {};
+    const code = String(body.code || '').trim().toUpperCase();
+    const rewardType = String(body.rewardType || '');
+    const rewardValue = Number(body.rewardValue);
+    const maxUses = Number(body.maxUses || 1);
+    let expiresAt = null;
+    if (body.expiresAt) {
+      const date = new Date(body.expiresAt);
+      if (Number.isNaN(date.getTime())) return fail(res, 400, 'Ngày hết hạn không hợp lệ.');
+      expiresAt = date.toISOString();
+    }
+    if (!/^[A-Z0-9_-]{3,64}$/.test(code)) return fail(res, 400, 'Mã chỉ gồm chữ in hoa, số, gạch ngang hoặc gạch dưới.');
+    if (!['balance', 'vip'].includes(rewardType)) return fail(res, 400, 'Loại phần thưởng không hợp lệ.');
+    if (!Number.isSafeInteger(rewardValue) || rewardValue < 1 || rewardValue > 100000000) return fail(res, 400, 'Giá trị phần thưởng không hợp lệ.');
+    if (!Number.isSafeInteger(maxUses) || maxUses < 1 || maxUses > 1000000) return fail(res, 400, 'Số lượt sử dụng không hợp lệ.');
+    if (rewardType === 'vip' && rewardValue > 10) return fail(res, 400, 'Cấp VIP tối đa là 10.');
+    const result = await appDataService.createGiftcode({ code, rewardType, rewardValue, maxUses, expiresAt });
+    if (result.error) return fail(res, 409, 'Mã giftcode đã tồn tại.');
+    return ok(res, result, 201);
+  } catch (error) { return next(error); }
+});
+router.patch('/admin/giftcodes/:id', ...admin, async (req, res, next) => {
+  try {
+    const result = await appDataService.setGiftcodeActive(req.params.id, req.body?.active);
+    if (!result) return fail(res, 404, 'Không tìm thấy giftcode.');
+    return ok(res, result);
+  } catch (error) { return next(error); }
+});
+
+router.get('/admin/users', ...admin, (_req, res) =>
+  ok(res, appDataService.getAdminOverview(userService.getUsers()).users)
+);
+router.patch('/admin/users/:id', ...admin, async (req, res, next) => {
+  try {
+    const user = userService.getUser(req.params.id);
+    if (!user) return fail(res, 404, 'Không tìm thấy thành viên.');
+    const body = req.body || {};
+    if (body.balanceDelta !== undefined) {
+      const delta = Number(body.balanceDelta);
+      const nextBalance = Number(user.balance || 0) + delta;
+      if (!Number.isSafeInteger(delta) || !Number.isSafeInteger(nextBalance) || nextBalance < 0) {
+        return fail(res, 400, 'Số dư điều chỉnh không hợp lệ.');
+      }
+      user.balance = nextBalance;
+    }
+    if (body.vipLevel !== undefined) {
+      const level = Number(body.vipLevel);
+      if (!Number.isSafeInteger(level) || level < 0 || level > 10) return fail(res, 400, 'Cấp VIP phải từ 0 đến 10.');
+      user.vipLevel = level;
+    }
+    await userService.saveDatabase();
+    return ok(res, {
+      id: String(req.params.id),
+      balance: Number(user.balance || 0),
+      vipLevel: Number(user.vipLevel || 0)
+    });
+  } catch (error) { return next(error); }
+});
+
+router.get('/admin/tickets', ...admin, (_req, res) => ok(res, appDataService.listTickets(null)));
+router.patch('/admin/tickets/:id', ...admin, async (req, res, next) => {
+  try {
+    const status = String(req.body?.status || '');
+    const reply = String(req.body?.reply || '').trim();
+    const result = await appDataService.updateTicket(req.params.id, status, reply);
+    if (!result) return fail(res, 404, 'Không tìm thấy yêu cầu hỗ trợ hoặc trạng thái không hợp lệ.');
+    return ok(res, result);
+  } catch (error) { return next(error); }
 });
 
 module.exports = router;
