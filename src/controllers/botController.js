@@ -225,7 +225,11 @@ module.exports = {
     try {
       bot = new Telegraf(token);
       setupBotLogic(bot);
-      bot.launch();
+
+      // FIX LỖI 409 CONFLICT: Xóa webhook cũ & bỏ qua các update tồn đọng trước đó
+      await bot.telegram.deleteWebhook({ drop_pending_updates: true });
+      bot.launch({ dropPendingUpdates: true });
+
       console.log('🤖 Bot Telegram đã khởi động thành công!');
       return true;
     } catch (e) {
