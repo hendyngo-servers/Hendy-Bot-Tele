@@ -1,6 +1,0 @@
-{
-  "name": "Hendy Vietsub",
-  "description": "AI Subtitle generator for videos, images, and text with Vietnamese transcription, translation, TTS voiceover, and music creation.",
-  "requestFramePermissions": [],
-  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
-}
