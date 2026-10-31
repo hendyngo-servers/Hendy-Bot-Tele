@@ -666,7 +666,8 @@ function setupBot(instance) {
       return ctx.reply('Phiên nhập liệu đã hết hạn. Hãy mở lại chức năng từ /menu.');
     }
 
-    const value = String(ctx.message.text || '').trim();
+    const rawValue = String(ctx.message.text || '');
+    const value = rawValue.trim();
     if (!value) return ctx.reply('Nội dung không được để trống.');
 
     if (pending.type === 'link-username') {
@@ -683,13 +684,13 @@ function setupBot(instance) {
     if (pending.type === 'link-password') {
       pendingInputs.delete(userId);
       await ctx.deleteMessage().catch(() => {});
-      if (value.length > 256) return ctx.reply('Mật khẩu quá dài. Hãy liên kết lại và nhập mật khẩu dưới 256 ký tự.');
+      if (rawValue.length > 256) return ctx.reply('Mật khẩu quá dài. Hãy liên kết lại và nhập mật khẩu dưới 256 ký tự.');
       try {
         await appDataService.addLinkedAccount(userId, {
           brand: pending.brand,
           username: pending.username,
           miniCode: pending.username,
-          encryptedPassword: encryptSecret(value)
+          encryptedPassword: encryptSecret(rawValue)
         });
         return ctx.reply(
           '✅ Đã liên kết tài khoản <b>' + escapeHtml(pending.brand) +
