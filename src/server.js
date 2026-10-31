@@ -28,10 +28,10 @@ function validateProductionConfig() {
   if (!isProductionRuntime()) return;
 
   const required = ['BOT_TOKEN', 'ADMIN_ID', 'APP_ENCRYPTION_KEY', 'DATABASE_URL'];
+  const missing = required.filter(key => !String(process.env[key] || '').trim());
   if (!String(process.env.WEBAPP_URL || process.env.MINI_APP_URL || process.env.RENDER_EXTERNAL_URL || '').trim()) {
     missing.push('WEBAPP_URL');
   }
-  const missing = required.filter(key => !String(process.env[key] || '').trim());
   if (missing.length) {
     throw new Error('Thiếu biến môi trường bắt buộc: ' + missing.join(', '));
   }
