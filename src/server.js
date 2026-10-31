@@ -22,18 +22,22 @@ function isProductionRuntime() {
 const app = express();
 const server = http.createServer(app);
 const PORT = Number(process.env.PORT) || 3000;
-const DIST_PATH = path.join(__dirname, '../mini-app/dist');
+const PUBLIC_PATH = path.join(__dirname, '../public');
 
 function validateProductionConfig() {
   if (!isProductionRuntime()) return;
 
-  const required = ['BOT_TOKEN', 'ADMIN_ID', 'MINI_APP_URL', 'APP_ENCRYPTION_KEY'];
+  const required = ['BOT_TOKEN', 'ADMIN_ID', 'APP_ENCRYPTION_KEY', 'DATABASE_URL'];
+  if (!String(process.env.WEBAPP_URL || process.env.MINI_APP_URL || process.env.RENDER_EXTERNAL_URL || '').trim()) {
+    missing.push('WEBAPP_URL');
+  }
   const missing = required.filter(key => !String(process.env[key] || '').trim());
   if (missing.length) {
     throw new Error('Thiếu biến môi trường bắt buộc: ' + missing.join(', '));
   }
-  if (!/^https:\/\//i.test(process.env.MINI_APP_URL)) {
-    throw new Error('MINI_APP_URL phải là địa chỉ HTTPS hợp lệ.');
+  const webAppUrl = String(process.env.WEBAPP_URL || process.env.MINI_APP_URL || process.env.RENDER_EXTERNAL_URL || '');
+  if (!/^https:\/\//i.test(webAppUrl)) {
+    throw new Error('WEBAPP_URL hoặc MINI_APP_URL phải là địa chỉ HTTPS hợp lệ.');
   }
   if (process.env.APP_ENCRYPTION_KEY.length < 32) {
     throw new Error('APP_ENCRYPTION_KEY phải có tối thiểu 32 ký tự.');
@@ -81,15 +85,15 @@ app.get('/healthz', (_req, res) => {
 
 app.use('/api/mini', apiRouter);
 
-if (fs.existsSync(DIST_PATH)) {
-  app.use(express.static(DIST_PATH, { index: false, maxAge: '1h' }));
+if (fs.existsSync(PUBLIC_PATH)) {
+  app.use(express.static(PUBLIC_PATH, { index: false, maxAge: '1h' }));
   app.get('*', (req, res, next) => {
     if (req.path.startsWith('/api/')) return next();
-    res.sendFile(path.join(DIST_PATH, 'index.html'));
+    res.sendFile(path.join(PUBLIC_PATH, 'index.html'));
   });
 } else {
   app.get('/', (_req, res) => res.status(503).send(
-    'Mini App chưa được build. Hãy chạy npm run build trước khi chạy production.'
+    'Mini App chưa được build vào thư mục public. Hãy chạy npm run build trước khi chạy production.'
   ));
 }
 
@@ -108,7 +112,10 @@ function shutdown(signal) {
   botController.stopBot();
 
   if (!server.listening) {
-    process.exit(0);
+    userService.closeDatabase().then(() => process.exit(0)).catch(error => {
+      console.error('Lỗi khi đóng PostgreSQL:', error.message);
+      process.exit(1);
+    });
     return;
   }
 
@@ -118,7 +125,10 @@ function shutdown(signal) {
       process.exit(1);
       return;
     }
-    process.exit(0);
+    userService.closeDatabase().then(() => process.exit(0)).catch(dbError => {
+      console.error('Lỗi khi đóng PostgreSQL:', dbError.message);
+      process.exit(1);
+    });
   });
 
   setTimeout(() => process.exit(1), 10000).unref();
