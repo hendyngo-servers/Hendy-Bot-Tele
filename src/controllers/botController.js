@@ -2,6 +2,7 @@ const { Telegraf, Markup } = require('telegraf');
 const userService = require('../services/userService');
 const appDataService = require('../services/appDataService');
 const { encryptSecret } = require('../security/cryptoService');
+const keyboardUtils = require('../utils/keyboards');
 const {
   runWithTelegramRetry,
   formatTelegramError
@@ -13,6 +14,10 @@ let currentAdminId = String(process.env.ADMIN_ID || '');
 
 const cooldowns = new Map();
 const pendingInputs = new Map();
+const getMiniAppUrl = keyboardUtils.getMiniAppUrl;
+const mainMenu = userId => keyboardUtils.mainMenu(userId, currentAdminId);
+const homeKeyboard = userId => keyboardUtils.homeKeyboard(userId, currentAdminId);
+const categoryKeyboard = keyboardUtils.categoryKeyboard;
 const ALLOWED_BRANDS = ['QQ88', '78WIN', 'SC88', 'C168', 'CM88', 'F8BET'];
 const INPUT_TTL_MS = 10 * 60 * 1000;
 
@@ -26,77 +31,6 @@ const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, char => ({
 
 const money = value => Number(value || 0).toLocaleString('vi-VN') + ' VNĐ';
 const dateText = value => value ? new Date(value).toLocaleString('vi-VN') : '—';
-
-function getMiniAppUrl(section = 'admin') {
-  const configured = String(process.env.MINI_APP_URL || '').trim();
-  if (!/^https:\/\//i.test(configured)) return null;
-  try {
-    const url = new URL(configured);
-    url.searchParams.set('section', section);
-    return url.toString();
-  } catch {
-    return null;
-  }
-}
-
-function mainMenu(userId) {
-  const rows = [
-    [
-      Markup.button.callback('🚀 MINIGAME LIVE', 'member:live'),
-      Markup.button.callback('🧰 THUÊ TOOL (NEW)', 'member:tools')
-    ],
-    [Markup.button.callback('🎁 MUA LÌ XÌ · CODE MÀN · CODE TELE', 'member:codes')],
-    [
-      Markup.button.callback('💳 NẠP TIỀN', 'member:wallet'),
-      Markup.button.callback('⚙️ OTP & PROXY', 'member:otp')
-    ],
-    [Markup.button.callback('🏆 VIP KHO CÔNG CỤ ĐẶC QUYỀN', 'member:viptools')],
-    [Markup.button.callback('💎 TRUNG TÂM KHÁCH HÀNG', 'member:customer')],
-    [Markup.button.callback('⚔️ HỆ THỐNG GHÉP ĐỐI ĐẦU', 'member:duel')],
-    [
-      Markup.button.callback('🎊 GIỚI THIỆU REF', 'member:ref'),
-      Markup.button.callback('👑 TRUNG TÂM VIP', 'member:vip')
-    ],
-    [
-      Markup.button.callback('🗣️ NHÓM CHAT', 'member:group'),
-      Markup.button.callback('📢 KÊNH THÔNG BÁO', 'member:news')
-    ],
-    [
-      Markup.button.callback('🎟️ NHẬP GIFTCODE', 'member:gift'),
-      Markup.button.callback('🧑‍💻 LIÊN HỆ CSKH', 'member:support')
-    ]
-  ];
-
-  if (currentAdminId && String(userId) === currentAdminId) {
-    const adminUrl = getMiniAppUrl('admin');
-    if (adminUrl) {
-      rows.push([Markup.button.webApp('🛡️ BẢNG ĐIỀU KHIỂN ADMIN', adminUrl)]);
-    } else {
-      rows.push([Markup.button.callback('🛡️ ADMIN · Cấu hình MINI_APP_URL', 'member:admin-unavailable')]);
-    }
-  }
-  return Markup.inlineKeyboard(rows);
-}
-
-function homeKeyboard(userId) {
-  return Markup.inlineKeyboard([
-    [Markup.button.callback('🏠 MENU CHÍNH', 'member:home')],
-    ...(currentAdminId && String(userId) === currentAdminId && getMiniAppUrl('admin')
-      ? [[Markup.button.webApp('🛡️ BẢNG ĐIỀU KHIỂN ADMIN', getMiniAppUrl('admin'))]]
-      : [])
-  ]);
-}
-
-function categoryKeyboard(items, userId, includeHome = true) {
-  const rows = items.map(item => [
-    Markup.button.callback(
-      String(item.name + ' · ' + money(item.price)).slice(0, 60),
-      'member:order:' + item.id
-    )
-  ]);
-  if (includeHome) rows.push([Markup.button.callback('🏠 MENU CHÍNH', 'member:home')]);
-  return Markup.inlineKeyboard(rows);
-}
 
 function setPending(userId, data) {
   pendingInputs.set(String(userId), {
