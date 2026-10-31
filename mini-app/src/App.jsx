@@ -90,6 +90,7 @@ export default function App() {
 
   const [catalog, setCatalog] = useState([]);
   const [orders, setOrders] = useState([]);
+  const [activity, setActivity] = useState([]);
   const [deposits, setDeposits] = useState([]);
   const [payment, setPayment] = useState(null);
   const [depositAmount, setDepositAmount] = useState('50000');
@@ -188,8 +189,16 @@ export default function App() {
         setPayment(p); setDeposits(d || []);
       }
       if (id === 'vip') setVipData(await api('/vip', initData));
-      if (id === 'viptools') { await loadCatalog('tool'); await loadOrders(); }
-      if (id === 'customer' || id === 'support') setTickets(await api('/support', initData));
+      if (id === 'viptools') { await loadCatalog('vip'); await loadOrders(); }
+      if (id === 'customer') {
+        const [history, timeline] = await Promise.all([
+          api('/support', initData),
+          api('/activity', initData)
+        ]);
+        setTickets(history || []);
+        setActivity(timeline || []);
+      }
+      if (id === 'support') setTickets(await api('/support', initData));
       if (id === 'ref') setReferral(await api('/referral', initData));
       if (id === 'gift') setOverview(await api('/overview', initData));
       if (id === 'duel' || id === 'group' || id === 'news') {
@@ -222,7 +231,14 @@ export default function App() {
         setPayment(p); setDeposits(d || []);
       } else if (page === 'vip') setVipData(await api('/vip', initData));
       else if (page === 'ref') setReferral(await api('/referral', initData));
-      else if (page === 'customer' || page === 'support') setTickets(await api('/support', initData));
+      else if (page === 'customer') {
+        const [history, timeline] = await Promise.all([
+          api('/support', initData),
+          api('/activity', initData)
+        ]);
+        setTickets(history || []);
+        setActivity(timeline || []);
+      } else if (page === 'support') setTickets(await api('/support', initData));
       setNotice('Đã cập nhật dữ liệu.');
     } catch (error) { setNotice(error.message); }
     finally { setBusy(false); }
@@ -499,7 +515,7 @@ export default function App() {
             </article>) : <Empty>Chưa có dịch vụ được Admin đăng bán. Vui lòng quay lại sau.</Empty>}
           </section>
           <section className="panel"><h2>Lịch sử đơn hàng</h2>
-            {ordersForPage.length ? ordersForPage.map(item => <article className="history-row" key={item.id}><div><strong>{item.itemName}</strong><small>{dateText(item.createdAt)}</small></div><div className="history-right"><b>{money(item.amount)}</b><small className={'status ' + item.status}>{item.status === 'pending' ? 'Chờ duyệt' : item.status === 'approved' ? 'Đã duyệt' : 'Từ chối'}</small></div></article>) : <Empty>Bạn chưa có đơn hàng.</Empty>}
+            {ordersForPage.length ? ordersForPage.map(item => <article className="history-row" key={item.id}><div><strong>{item.itemName}</strong><small>{dateText(item.createdAt)}{item.durationDays ? ' · ' + item.durationDays + ' ngày' : ''}</small>{item.expiresAt && <small>Hết hạn: {dateText(item.expiresAt)}</small>}</div><div className="history-right"><b>{money(item.amount)}</b><small className={'status ' + item.status}>{item.status === 'pending' ? 'Chờ duyệt' : item.status === 'approved' ? 'Đã duyệt' : 'Từ chối'}</small></div></article>) : <Empty>Bạn chưa có đơn hàng.</Empty>}
           </section>
         </main>
       )}
@@ -542,6 +558,9 @@ export default function App() {
         <main><PageTitle eyebrow="TRUNG TÂM KHÁCH HÀNG" title="HỒ SƠ & HỖ TRỢ" onBack={() => setPage('home')} />
           <section className="panel"><h2>Thông tin thành viên</h2><article className="profile-row"><span>Họ tên</span><strong>{user?.name || session.profile.name}</strong></article><article className="profile-row"><span>Telegram ID</span><strong>{user?.id || session.profile.id}</strong></article><article className="profile-row"><span>Số dư</span><strong>{money(user?.balance)}</strong></article><article className="profile-row"><span>Cấp VIP</span><strong>VIP {user?.vipLevel || 0}</strong></article></section>
           {publicSettings.supportUsername && <section className="panel"><h2>Liên hệ trực tiếp CSKH</h2><a className="link-button" href={'https://t.me/' + publicSettings.supportUsername.replace(/^@/, '')} target="_blank" rel="noreferrer">Mở chat với @{publicSettings.supportUsername.replace(/^@/, '')}</a></section>}
+          <section className="panel"><div className="panel-heading"><h2>Lịch sử hoạt động</h2><span className="pill">{activity.length}</span></div>
+            {activity.length ? activity.map(item => <article className="history-row" key={item.id}><div><strong>{item.title}</strong><small>{item.detail || '—'} · {dateText(item.createdAt)}</small>{item.expiresAt && <small>Hết hạn: {dateText(item.expiresAt)}</small>}{item.reply && <small className="ticket-reply">Phản hồi: {item.reply}</small>}</div><small className={'status ' + item.status}>{item.status === 'pending' ? 'Đang chờ' : item.status === 'paid' || item.status === 'approved' || item.status === 'completed' || item.status === 'answered' ? 'Hoàn tất/Đã duyệt' : item.status === 'rejected' ? 'Từ chối' : item.status === 'open' ? 'Đang mở' : item.status}</small></article>) : <Empty>Chưa có hoạt động nào được ghi nhận.</Empty>}
+          </section>
           <section className="panel"><h2>Gửi yêu cầu hỗ trợ</h2><form className="form-stack" onSubmit={submitSupport}><label>Nội dung<textarea rows="4" minLength="5" maxLength="2000" value={supportText} onChange={e => setSupportText(e.target.value)} required placeholder="Mô tả vấn đề bạn gặp phải..." /></label><button className="primary-button" disabled={busy}>Gửi CSKH</button></form></section>
           <section className="panel"><h2>Lịch sử hỗ trợ</h2>{tickets.length ? tickets.map(ticket => <article className="history-row" key={ticket.id}><div><strong>{ticket.message}</strong><small>{dateText(ticket.createdAt)}</small>{ticket.reply && <small className="ticket-reply">Phản hồi: {ticket.reply}</small>}</div><small className={'status ' + ticket.status}>{ticket.status === 'open' ? 'Đang mở' : ticket.status === 'answered' ? 'Đã trả lời' : 'Đã đóng'}</small></article>) : <Empty>Chưa có yêu cầu hỗ trợ.</Empty>}</section>
         </main>
