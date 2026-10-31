@@ -340,7 +340,9 @@ function listOrders(userId, limit = 50) {
           durationDays: item.durationDays || 0,
           status: item.status,
           createdAt: item.createdAt,
-          processedAt: item.processedAt || null
+          processedAt: item.processedAt || null,
+          activatedAt: item.activatedAt || null,
+          expiresAt: item.expiresAt || null
         }
       : { ...item });
 }
