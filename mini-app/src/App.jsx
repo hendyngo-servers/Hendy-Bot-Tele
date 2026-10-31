@@ -1,48 +1,414 @@
-import{useCallback,useEffect,useMemo,useState}from'react';
-const MENU=[
-{id:'live',title:'MINIGAME LIVE',icon:'🚀',tone:'coral',desc:'Quản lý tài khoản liên kết và dịch vụ live'},
-{id:'tools',title:'THUÊ TOOL',icon:'🧰',tone:'blue',desc:'Danh mục công cụ và thời hạn thuê'},
-{id:'codes',title:'MUA LÌ XÌ · CODE',icon:'🎁',tone:'green',desc:'Sản phẩm và mã dịch vụ'},
-{id:'wallet',title:'NẠP TIỀN',icon:'💳',tone:'coral',desc:'Tạo yêu cầu nạp và theo dõi giao dịch'},
-{id:'proxy',title:'OTP & PROXY',icon:'⚙️',tone:'blue',desc:'Dịch vụ OTP và Proxy'},
-{id:'viptools',title:'VIP KHO CÔNG CỤ ĐẶC QUYỀN',icon:'🏆',tone:'gold',desc:'Quyền lợi thành viên VIP'},
-{id:'customer',title:'TRUNG TÂM KHÁCH HÀNG',icon:'💎',tone:'blue',desc:'Hồ sơ và yêu cầu hỗ trợ'},
-{id:'duel',title:'HỆ THỐNG GHÉP ĐỐI ĐẦU',icon:'⚔️',tone:'coral',desc:'Trạng thái hệ thống đối đầu'},
-{id:'ref',title:'GIỚI THIỆU REF',icon:'👥',tone:'blue',desc:'Thông tin chương trình giới thiệu'},
-{id:'vip',title:'VIP TRUNG TÂM VIP',icon:'👑',tone:'gold',desc:'Hạng thành viên và quyền lợi'},
-{id:'group',title:'NHÓM CHAT',icon:'🗣️',tone:'green',desc:'Cộng đồng Hendy'},
-{id:'news',title:'KÊNH THÔNG BÁO',icon:'📢',tone:'green',desc:'Thông báo hệ thống'},
-{id:'gift',title:'NHẬP GIFTCODE',icon:'🎟️',tone:'green',desc:'Nhập mã quà tặng'},
-{id:'support',title:'LIÊN HỆ CSKH',icon:'🧑🏻‍💻',tone:'green',desc:'Gửi yêu cầu hỗ trợ'}];
-const BRANDS=['QQ88','78WIN','SC88','C168','CM88','F8BET'];
-const money=x=>new Intl.NumberFormat('vi-VN').format(Number(x||0))+' đ';
-async function api(path,initData,options={}){const r=await fetch('/api/mini'+path,{...options,headers:{'Content-Type':'application/json','X-Telegram-Init-Data':initData,...(options.headers||{})}});const b=await r.json().catch(()=>({}));if(!r.ok||b.success===false)throw new Error(b.message||'Không thể thực hiện yêu cầu.');return b.data;}
-export default function App(){
- const tg=window.Telegram?.WebApp,initData=tg?.initData||'';
- const[overview,setOverview]=useState(null),[deposits,setDeposits]=useState([]),[page,setPage]=useState('home'),[selected,setSelected]=useState(null),[busy,setBusy]=useState(false),[notice,setNotice]=useState(''),[amount,setAmount]=useState('50000'),[deposit,setDeposit]=useState(null),[brand,setBrand]=useState('QQ88'),[username,setUsername]=useState(''),[password,setPassword]=useState(''),[miniCode,setMiniCode]=useState(''),[supportMessage,setSupportMessage]=useState('');
- const user=overview?.profile,links=overview?.linkedAccounts||[];
- const load=useCallback(async()=>{if(!initData)return;try{setOverview(await api('/overview',initData));setDeposits(await api('/deposits',initData)||[]);}catch(e){setNotice(e.message);}},[initData]);
- useEffect(()=>{tg?.ready();tg?.expand();load();},[tg,load]);
- useEffect(()=>{if(!notice)return;const t=setTimeout(()=>setNotice(''),4200);return()=>clearTimeout(t);},[notice]);
- const go=item=>{setSelected(item);setPage(item.id);setDeposit(null);},back=()=>{setPage('home');setSelected(null);setDeposit(null);};
- const title=useMemo(()=>selected?.title?.toLocaleUpperCase('vi-VN')||'TỔNG QUAN',[selected]);
- async function submitDeposit(e){e.preventDefault();setBusy(true);try{setDeposit(await api('/deposits',initData,{method:'POST',body:JSON.stringify({amount:Number(amount)})}));await load();setNotice('Đã tạo yêu cầu nạp. Giao dịch đang chờ xác nhận.');}catch(e){setNotice(e.message);}finally{setBusy(false);}}
- async function submitLink(e){e.preventDefault();setBusy(true);try{await api('/links',initData,{method:'POST',body:JSON.stringify({brand,username,password,miniCode})});setUsername('');setPassword('');setMiniCode('');await load();setNotice('Đã lưu tài khoản. Mật khẩu được mã hóa trước khi lưu.');}catch(e){setNotice(e.message);}finally{setBusy(false);}}
- async function removeLink(id){if(!window.confirm('Bạn chắc chắn muốn xóa liên kết này?'))return;setBusy(true);try{await api('/links/'+encodeURIComponent(id),initData,{method:'DELETE'});await load();setNotice('Đã xóa liên kết.');}catch(e){setNotice(e.message);}finally{setBusy(false);}}
- async function submitSupport(e){e.preventDefault();setBusy(true);try{await api('/support',initData,{method:'POST',body:JSON.stringify({message:supportMessage})});setSupportMessage('');setNotice('Đã tạo yêu cầu hỗ trợ.');}catch(e){setNotice(e.message);}finally{setBusy(false);}}
- if(!initData)return <main className="gate"><div className="gate-logo">H</div><h1>Hendy Cybertech</h1><p>Vui lòng mở Mini App từ Telegram Bot để xác thực tài khoản.</p></main>;
- return <div className="app-shell">
- <header className="topbar"><div className="brand-mark">H</div><div className="brand-copy"><strong>HENDY <span>CYBERTECH</span></strong><small>TRUNG TÂM DỊCH VỤ</small></div><button className="icon-button" onClick={load} aria-label="Làm mới">⟳</button></header>
- <section className="welcome"><div><span className="eyebrow">XIN CHÀO, THÀNH VIÊN</span><h1>{user?.name||'Đang tải...'}</h1><p>ID Telegram: {user?.id||'—'}</p></div><div className="avatar">{(user?.name||'H').slice(0,1).toUpperCase()}</div></section>
- <section className="wallet-card"><div><span>SỐ DƯ TÀI KHOẢN</span><strong>{money(user?.balance)}</strong><small>Hạng thành viên: VIP {user?.vipLevel||0}</small></div><button onClick={()=>go(MENU.find(x=>x.id==='wallet'))}>＋ Nạp tiền</button></section>
- <div className="section-heading"><div><span className="eyebrow">HENDY SERVICES</span><h2>{page==='home'?'Danh mục chức năng':title}</h2></div>{page!=='home'&&<button className="back-button" onClick={back}>← Trở về</button>}</div>
- {page==='home'&&<><div className="menu-grid">{MENU.map(x=><button key={x.id} className={'menu-tile tone-'+x.tone+(['codes','viptools','customer','duel'].includes(x.id)?' wide':'')} onClick={()=>go(x)}><span className="tile-icon">{x.icon}</span><span>{x.title}</span><span className="tile-arrow">↗</span></button>)}</div>
- <section className="quick-stats"><div><strong>{overview?.counts?.linkedAccounts||0}</strong><span>Tài khoản liên kết</span></div><div><strong>{overview?.counts?.pendingDeposits||0}</strong><span>Yêu cầu nạp chờ</span></div><div><strong>{overview?.counts?.openTickets||0}</strong><span>Hỗ trợ đang mở</span></div></section>
- <section className="panel"><div className="panel-title"><h3>Giao dịch gần đây</h3><button onClick={()=>go(MENU.find(x=>x.id==='wallet'))}>Xem ví →</button></div>{deposits.length?deposits.slice(0,3).map(x=><div className="history-row" key={x.id}><div><b>{x.reference}</b><small>{new Date(x.createdAt).toLocaleString('vi-VN')}</small></div><div className="history-right"><b>{money(x.amount)}</b><small className="pending">{x.status==='pending'?'Chờ xác nhận':x.status}</small></div></div>):<p className="muted">Chưa có giao dịch.</p>}</section></>}
- {page==='live'&&<section className="panel"><p className="muted">Thông tin đăng nhập được mã hóa trước khi lưu. Mỗi người chỉ quản lý liên kết của chính mình.</p><form onSubmit={submitLink} className="form-stack"><label>Nhà cung cấp<select value={brand} onChange={e=>setBrand(e.target.value)}>{BRANDS.map(x=><option key={x}>{x}</option>)}</select></label><label>Tên tài khoản<input value={username} onChange={e=>setUsername(e.target.value)} required maxLength="80"/></label><label>Mật khẩu<input type="password" value={password} onChange={e=>setPassword(e.target.value)} required maxLength="256" autoComplete="new-password"/></label><label>Mã Mini (không bắt buộc)<input value={miniCode} onChange={e=>setMiniCode(e.target.value)} maxLength="80"/></label><button className="primary-button" disabled={busy}>＋ Thêm liên kết</button></form><h3 className="subheading">Tài khoản đã liên kết ({links.length})</h3>{links.length?links.map(x=><div className="history-row" key={x.id}><div><b>{x.brand} · {x.username}</b><small>Mã Mini: {x.miniCode}</small></div><button className="remove-button" disabled={busy} onClick={()=>removeLink(x.id)}>Xóa</button></div>):<p className="muted">Bạn chưa liên kết tài khoản nào.</p>}</section>}
- {page==='wallet'&&<section className="panel"><p className="muted">Tạo yêu cầu nạp tiền. Số dư chỉ thay đổi sau khi quản trị viên xác nhận thanh toán thực tế.</p><form onSubmit={submitDeposit} className="form-stack"><label>Số tiền (VNĐ)<input type="number" min="10000" max="100000000" step="1000" value={amount} onChange={e=>setAmount(e.target.value)} required/></label><button className="primary-button" disabled={busy}>Tạo yêu cầu nạp</button></form>{deposit&&<div className="deposit-result"><h3>Yêu cầu đã tạo</h3><b>{deposit.reference}</b><strong>{money(deposit.amount)}</strong>{deposit.qrUrl?<img src={deposit.qrUrl} alt="Mã QR chuyển khoản"/>:<p className="muted">Chưa cấu hình ngân hàng. Vui lòng liên hệ quản trị viên.</p>}<span className="pending">Trạng thái: Chờ xác nhận</span>{deposit.bankName&&<small>{deposit.bankName} · {deposit.accountName||''}</small>}</div>}<h3 className="subheading">Lịch sử nạp tiền</h3>{deposits.length?deposits.map(x=><div className="history-row" key={x.id}><div><b>{x.reference}</b><small>{new Date(x.createdAt).toLocaleString('vi-VN')}</small></div><div className="history-right"><b>{money(x.amount)}</b><small className="pending">{x.status==='pending'?'Chờ xác nhận':x.status}</small></div></div>):<p className="muted">Chưa có yêu cầu nạp tiền.</p>}</section>}
- {(page==='support'||page==='customer')&&<section className="panel"><p className="muted">Gửi nội dung cần hỗ trợ. Không gửi mật khẩu, mã OTP hoặc thông tin thanh toán nhạy cảm.</p><form onSubmit={submitSupport} className="form-stack"><label>Nội dung hỗ trợ<textarea value={supportMessage} onChange={e=>setSupportMessage(e.target.value)} minLength="5" maxLength="2000" rows="5" required placeholder="Mô tả vấn đề bạn gặp phải..."/></label><button className="primary-button" disabled={busy}>Gửi yêu cầu hỗ trợ</button></form></section>}
- {['tools','codes','proxy','viptools','duel','ref','vip','group','news','gift'].includes(page)&&<section className="panel empty-feature"><div className="empty-icon">{selected?.icon}</div><h3>{selected?.title}</h3><p>{selected?.desc}</p><p className="muted">Chức năng chưa được kết nối với nhà cung cấp hoặc dữ liệu vận hành thật. Hệ thống không tạo sản phẩm hay đơn hàng giả.</p><button className="back-button" onClick={back}>Quay lại trang chủ</button></section>}
- <footer><span>HENDY CYBERTECH</span><small>Phiên làm việc được Telegram xác thực</small></footer>{notice&&<div className="toast" role="status">{notice}</div>}
- </div>;
+import { useCallback, useEffect, useState } from 'react';
+
+const BRANDS = ['QQ88', '78WIN', 'SC88', 'C168', 'CM88', 'F8BET'];
+
+async function api(path, initData, options = {}) {
+  const response = await fetch('/api/mini' + path, {
+    ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Telegram-Init-Data': initData,
+      ...(options.headers || {})
+    }
+  });
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok || body.success === false) {
+    throw new Error(body.message || 'Không thể thực hiện yêu cầu.');
+  }
+  return body.data;
+}
+
+const formatDate = value => value
+  ? new Date(value).toLocaleString('vi-VN')
+  : '—';
+
+function Notice({ message, onClose }) {
+  if (!message) return null;
+  return (
+    <div className="notice" role="status">
+      <span>{message}</span>
+      <button type="button" onClick={onClose} aria-label="Đóng thông báo">×</button>
+    </div>
+  );
+}
+
+export default function App() {
+  const telegram = window.Telegram?.WebApp;
+  const initData = telegram?.initData || '';
+  const requestedMode = new URLSearchParams(window.location.search).get('mode');
+
+  const [session, setSession] = useState(null);
+  const [mode, setMode] = useState('gate');
+  const [overview, setOverview] = useState(null);
+  const [adminOverview, setAdminOverview] = useState(null);
+  const [brand, setBrand] = useState('QQ88');
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
+  const [miniCode, setMiniCode] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [notice, setNotice] = useState('');
+
+  useEffect(() => {
+    telegram?.ready();
+    telegram?.expand();
+    telegram?.setHeaderColor?.('#101a2b');
+    telegram?.setBackgroundColor?.('#0b1220');
+  }, [telegram]);
+
+  const loadSession = useCallback(async () => {
+    if (!initData) {
+      setLoading(false);
+      return;
+    }
+    setLoading(true);
+    try {
+      const result = await api('/session', initData);
+      setSession(result);
+    } catch (error) {
+      setNotice(error.message);
+      setSession(null);
+    } finally {
+      setLoading(false);
+    }
+  }, [initData]);
+
+  useEffect(() => {
+    loadSession();
+  }, [loadSession]);
+
+  const loadAccounts = useCallback(async () => {
+    const result = await api('/overview', initData);
+    setOverview(result);
+    return result;
+  }, [initData]);
+
+  const loadAdmin = useCallback(async () => {
+    const result = await api('/admin/overview', initData);
+    setAdminOverview(result);
+    return result;
+  }, [initData]);
+
+  async function enterAccountCenter() {
+    setBusy(true);
+    try {
+      await loadAccounts();
+      setMode('accounts');
+      setNotice('');
+    } catch (error) {
+      setNotice(error.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function enterAdmin() {
+    if (!session?.isAdmin) {
+      setNotice('Tài khoản Telegram này không được cấp quyền quản trị.');
+      return;
+    }
+    setBusy(true);
+    try {
+      await loadAdmin();
+      setMode('admin');
+      setNotice('');
+    } catch (error) {
+      setNotice(error.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  useEffect(() => {
+    if (loading || !session || mode !== 'gate') return;
+    if (requestedMode !== 'accounts' && requestedMode !== 'admin') return;
+
+    let active = true;
+    const isAdminMode = requestedMode === 'admin';
+    if (isAdminMode && !session.isAdmin) {
+      setNotice('Tài khoản Telegram này không được cấp quyền quản trị.');
+      return undefined;
+    }
+
+    setBusy(true);
+    api(isAdminMode ? '/admin/overview' : '/overview', initData)
+      .then(result => {
+        if (!active) return;
+        if (isAdminMode) setAdminOverview(result);
+        else setOverview(result);
+        setMode(isAdminMode ? 'admin' : 'accounts');
+      })
+      .catch(error => {
+        if (active) setNotice(error.message);
+      })
+      .finally(() => {
+        if (active) setBusy(false);
+      });
+
+    return () => { active = false; };
+  }, [loading, session, mode, requestedMode, initData]);
+
+  async function refreshCurrent() {
+    setBusy(true);
+    try {
+      if (mode === 'admin') await loadAdmin();
+      else if (mode === 'accounts') await loadAccounts();
+      else await loadSession();
+      setNotice('Đã cập nhật dữ liệu.');
+    } catch (error) {
+      setNotice(error.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function submitAccount(event) {
+    event.preventDefault();
+    setBusy(true);
+    try {
+      await api('/links', initData, {
+        method: 'POST',
+        body: JSON.stringify({ brand, username, password, miniCode })
+      });
+      setUsername('');
+      setPassword('');
+      setMiniCode('');
+      await loadAccounts();
+      setNotice('Đã thêm tài khoản liên kết. Mật khẩu được mã hóa trước khi lưu.');
+    } catch (error) {
+      setNotice(error.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function removeAccount(id) {
+    if (!window.confirm('Bạn có chắc chắn muốn xóa liên kết tài khoản này?')) return;
+    setBusy(true);
+    try {
+      await api('/links/' + encodeURIComponent(id), initData, { method: 'DELETE' });
+      await loadAccounts();
+      setNotice('Đã xóa tài khoản liên kết.');
+    } catch (error) {
+      setNotice(error.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function logout() {
+    window.history.replaceState(null, '', window.location.pathname);
+    setMode('gate');
+    setOverview(null);
+    setAdminOverview(null);
+    setNotice('');
+  }
+
+  if (!initData) {
+    return (
+      <main className="gate-page">
+        <div className="brand-symbol">H</div>
+        <p className="eyebrow">HENDY CYBERTECH</p>
+        <h1>Đăng nhập bằng Telegram</h1>
+        <p className="muted">
+          Vui lòng mở Mini App từ bot Telegram để xác thực và truy cập trung tâm quản lý tài khoản.
+        </p>
+      </main>
+    );
+  }
+
+  if (loading) {
+    return (
+      <main className="gate-page">
+        <div className="brand-symbol">H</div>
+        <p className="eyebrow">HENDY CYBERTECH</p>
+        <h1>Đang xác thực phiên Telegram…</h1>
+        <div className="loader" />
+      </main>
+    );
+  }
+
+  if (!session) {
+    return (
+      <main className="gate-page">
+        <div className="brand-symbol">H</div>
+        <p className="eyebrow">HENDY CYBERTECH</p>
+        <h1>Phiên đăng nhập không hợp lệ</h1>
+        <p className="muted">Hãy đóng Mini App và mở lại từ bot Telegram.</p>
+        <button className="primary-button" onClick={loadSession}>Thử xác thực lại</button>
+        <Notice message={notice} onClose={() => setNotice('')} />
+      </main>
+    );
+  }
+
+  const profile = overview?.profile || session.profile;
+  const accounts = overview?.linkedAccounts || [];
+
+  return (
+    <div className="app-shell">
+      <header className="topbar">
+        <div className="brand-symbol small">H</div>
+        <div className="brand-copy">
+          <strong>HENDY <span>CYBERTECH</span></strong>
+          <small>CỔNG ĐĂNG NHẬP HỆ THỐNG</small>
+        </div>
+        {mode !== 'gate' && (
+          <button className="icon-button" onClick={refreshCurrent} disabled={busy} aria-label="Làm mới">⟳</button>
+        )}
+      </header>
+
+      {mode === 'gate' && (
+        <main className="login-layout">
+          <section className="login-intro">
+            <span className="eyebrow">XÁC THỰC TELEGRAM THÀNH CÔNG</span>
+            <h1>Xin chào, {session.profile.name}</h1>
+            <p>ID Telegram: <strong>{session.profile.id}</strong></p>
+            <p className="muted">Chọn khu vực đăng nhập mà bạn được cấp quyền truy cập.</p>
+          </section>
+
+          <button className="login-card account-login" onClick={enterAccountCenter} disabled={busy}>
+            <span className="login-icon">🔐</span>
+            <span className="login-card-copy">
+              <strong>TRUNG TÂM QUẢN LÝ TÀI KHOẢN</strong>
+              <small>Thêm, xem và xóa các tài khoản đã liên kết</small>
+            </span>
+            <span className="login-arrow">→</span>
+          </button>
+
+          {session.isAdmin && (
+            <button className="login-card admin-login" onClick={enterAdmin} disabled={busy}>
+              <span className="login-icon">🛡️</span>
+              <span className="login-card-copy">
+                <strong>ĐĂNG NHẬP ADMIN</strong>
+                <small>Khu vực quản trị hệ thống dành riêng cho quản trị viên</small>
+              </span>
+              <span className="login-arrow">→</span>
+            </button>
+          )}
+
+          <section className="security-note">
+            <strong>Đăng nhập bảo mật</strong>
+            <p>Danh tính được xác minh bằng chữ ký Telegram. Quyền Admin được đối chiếu với ADMIN_ID tại máy chủ.</p>
+          </section>
+        </main>
+      )}
+
+      {mode === 'accounts' && (
+        <main>
+          <div className="page-heading">
+            <div>
+              <span className="eyebrow">KHU VỰC THÀNH VIÊN</span>
+              <h1>TRUNG TÂM QUẢN LÝ TÀI KHOẢN</h1>
+              <p>{profile?.name || session.profile.name} · ID {profile?.id || session.profile.id}</p>
+            </div>
+            <button className="secondary-button" onClick={logout}>Đăng xuất</button>
+          </div>
+
+          <section className="summary-strip">
+            <div><strong>{accounts.length}</strong><span>Tài khoản đã liên kết</span></div>
+            <div><strong>10</strong><span>Giới hạn mỗi thành viên</span></div>
+          </section>
+
+          <section className="panel">
+            <div className="panel-heading">
+              <div><span className="eyebrow">THÊM TÀI KHOẢN</span><h2>Liên kết tài khoản mới</h2></div>
+            </div>
+            <form className="form-stack" onSubmit={submitAccount}>
+              <label>Nhà cung cấp
+                <select value={brand} onChange={event => setBrand(event.target.value)}>
+                  {BRANDS.map(item => <option key={item} value={item}>{item}</option>)}
+                </select>
+              </label>
+              <label>Tên đăng nhập
+                <input value={username} onChange={event => setUsername(event.target.value)} minLength="2" maxLength="80" autoComplete="username" required placeholder="Nhập tên tài khoản" />
+              </label>
+              <label>Mật khẩu
+                <input type="password" value={password} onChange={event => setPassword(event.target.value)} maxLength="256" autoComplete="new-password" required placeholder="Nhập mật khẩu tài khoản" />
+              </label>
+              <label>Mã Mini (không bắt buộc)
+                <input value={miniCode} onChange={event => setMiniCode(event.target.value)} maxLength="80" placeholder="Mặc định dùng tên đăng nhập" />
+              </label>
+              <button className="primary-button" disabled={busy || accounts.length >= 10}>
+                {busy ? 'ĐANG XỬ LÝ…' : '＋ THÊM TÀI KHOẢN'}
+              </button>
+            </form>
+            <p className="form-hint">Mật khẩu được mã hóa AES-256-GCM ở máy chủ. Mật khẩu không hiển thị lại trong danh sách.</p>
+          </section>
+
+          <section className="panel">
+            <div className="panel-heading">
+              <div><span className="eyebrow">DANH SÁCH LIÊN KẾT</span><h2>Tài khoản của bạn ({accounts.length})</h2></div>
+            </div>
+            {accounts.length === 0 ? (
+              <div className="empty-state"><span>🔗</span><strong>Chưa có tài khoản liên kết</strong><p>Thêm tài khoản đầu tiên bằng biểu mẫu phía trên.</p></div>
+            ) : (
+              <div className="account-list">
+                {accounts.map(account => (
+                  <article className="account-row" key={account.id}>
+                    <div className="account-avatar">{account.brand.slice(0, 1)}</div>
+                    <div className="account-info">
+                      <strong>{account.brand} · {account.username}</strong>
+                      <small>Mã Mini: {account.miniCode || '—'}</small>
+                      <small>Ngày thêm: {formatDate(account.createdAt)}</small>
+                    </div>
+                    <button className="remove-button" disabled={busy} onClick={() => removeAccount(account.id)}>Xóa</button>
+                  </article>
+                ))}
+              </div>
+            )}
+          </section>
+        </main>
+      )}
+
+      {mode === 'admin' && (
+        <main>
+          <div className="page-heading">
+            <div>
+              <span className="eyebrow">QUYỀN TRUY CẬP ĐÃ XÁC MINH</span>
+              <h1>TRANG QUẢN TRỊ ADMIN</h1>
+              <p>{session.profile.name} · ID {session.profile.id}</p>
+            </div>
+            <button className="secondary-button" onClick={logout}>Đăng xuất</button>
+          </div>
+
+          <section className="admin-stats">
+            <div><strong>{adminOverview?.totals?.users ?? 0}</strong><span>Thành viên</span></div>
+            <div><strong>{adminOverview?.totals?.linkedAccounts ?? 0}</strong><span>Tài khoản liên kết</span></div>
+          </section>
+
+          <section className="panel">
+            <div className="panel-heading"><div><span className="eyebrow">THÀNH VIÊN</span><h2>Danh sách người dùng gần đây</h2></div></div>
+            {adminOverview?.users?.length ? (
+              <div className="admin-list">
+                {adminOverview.users.map(user => (
+                  <article className="admin-row" key={user.id}>
+                    <div><strong>{user.name}</strong><small>ID: {user.id}{user.username ? ' · @' + user.username : ''}</small></div>
+                    <div className="admin-row-meta"><strong>{user.linkedAccounts}</strong><small>liên kết</small></div>
+                  </article>
+                ))}
+              </div>
+            ) : <p className="muted">Chưa có dữ liệu thành viên.</p>}
+          </section>
+
+          <section className="panel">
+            <div className="panel-heading"><div><span className="eyebrow">QUẢN LÝ LIÊN KẾT</span><h2>Tài khoản vừa được thêm</h2></div></div>
+            {adminOverview?.recentAccounts?.length ? (
+              <div className="admin-list">
+                {adminOverview.recentAccounts.map(account => (
+                  <article className="admin-row" key={account.id}>
+                    <div><strong>{account.brand} · {account.username}</strong><small>Chủ sở hữu ID: {account.ownerId}</small></div>
+                    <small>{formatDate(account.createdAt)}</small>
+                  </article>
+                ))}
+              </div>
+            ) : <p className="muted">Chưa có tài khoản liên kết.</p>}
+            <p className="form-hint">Trang Admin chỉ hiển thị thông tin tài khoản cần quản lý; không trả về hoặc hiển thị mật khẩu đã mã hóa.</p>
+          </section>
+        </main>
+      )}
+
+      <footer><span>HENDY CYBERTECH</span><small>Phiên đăng nhập được xác minh bởi Telegram</small></footer>
+      <Notice message={notice} onClose={() => setNotice('')} />
+    </div>
+  );
 }
