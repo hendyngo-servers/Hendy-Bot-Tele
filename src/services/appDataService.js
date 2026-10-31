@@ -54,6 +54,9 @@ function normalizeState(value = {}) {
       ? value.paymentSettings
       : {})
   };
+  // Đơn đang xử lý khi tiến trình bị dừng được mở lại để Admin xử lý lại.
+  next.deposits = next.deposits.map(item => item.status === 'processing' ? { ...item, status: 'pending' } : item);
+  next.orders = next.orders.map(item => item.status === 'processing' ? { ...item, status: 'pending' } : item);
   return next;
 }
 
@@ -241,16 +244,27 @@ function getDeposit(id) {
   return state.deposits.find(item => item.id === String(id)) || null;
 }
 
-async function processDeposit(id, status, adminId) {
+async function processDeposit(id, status, adminId, beforeCommit = async () => {}) {
   const item = getDeposit(id);
   if (!item) return { error: 'not_found' };
   if (item.status !== 'pending') return { error: 'already_processed', deposit: publicDeposit(item) };
   if (!['paid', 'rejected'].includes(status)) return { error: 'invalid_status' };
-  item.status = status;
-  item.processedAt = new Date().toISOString();
-  item.processedBy = String(adminId);
+
+  // Đánh dấu xử lý đồng bộ trước lần await đầu tiên để chặn thao tác duyệt trùng.
+  item.status = 'processing';
   await persist();
-  return { deposit: publicDeposit(item), userId: item.userId, amount: item.amount };
+  try {
+    await beforeCommit({ userId: item.userId, amount: item.amount });
+    item.status = status;
+    item.processedAt = new Date().toISOString();
+    item.processedBy = String(adminId);
+    await persist();
+    return { deposit: publicDeposit(item), userId: item.userId, amount: item.amount };
+  } catch (error) {
+    item.status = 'pending';
+    await persist().catch(() => {});
+    throw error;
+  }
 }
 
 function listActiveCatalog(category) {
@@ -343,7 +357,7 @@ function getOrder(id) {
   return state.orders.find(item => item.id === String(id)) || null;
 }
 
-async function processOrder(id, status, adminId) {
+async function processOrder(id, status, adminId, beforeCommit = async () => {}) {
   const order = getOrder(id);
   if (!order) return { error: 'not_found' };
   if (order.status !== 'pending') return { error: 'already_processed', order: { ...order } };
@@ -355,15 +369,25 @@ async function processOrder(id, status, adminId) {
     if (product.stock !== null && product.stock !== undefined && Number(product.stock) <= 0) {
       return { error: 'out_of_stock' };
     }
-    product.stock = product.stock === null || product.stock === undefined
-      ? null
-      : Number(product.stock) - 1;
   }
-  order.status = status;
-  order.processedAt = new Date().toISOString();
-  order.processedBy = String(adminId);
+
+  order.status = 'processing';
   await persist();
-  return { order: { ...order } };
+  try {
+    await beforeCommit({ order: { ...order }, product });
+    if (status === 'approved' && product.stock !== null && product.stock !== undefined) {
+      product.stock = Number(product.stock) - 1;
+    }
+    order.status = status;
+    order.processedAt = new Date().toISOString();
+    order.processedBy = String(adminId);
+    await persist();
+    return { order: { ...order } };
+  } catch (error) {
+    order.status = 'pending';
+    await persist().catch(() => {});
+    throw error;
+  }
 }
 
 async function createTicket(userId, message) {
