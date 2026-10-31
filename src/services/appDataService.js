@@ -1,53 +1,519 @@
-const fs=require('node:fs/promises');
-const path=require('node:path');
-const crypto=require('node:crypto');
-const dir=process.env.DATA_DIR||path.join(process.cwd(),'data');
-const file=path.join(dir,'app-data.json');
-let state={linkedAccounts:[],deposits:[],tickets:[]};
-let queue=Promise.resolve();
-function persist(){
-  const snapshot=JSON.stringify(state,null,2);
-  queue=queue.then(async()=>{await fs.mkdir(dir,{recursive:true});const tmp=file+'.tmp';await fs.writeFile(tmp,snapshot,{encoding:'utf8',mode:0o600});await fs.rename(tmp,file);});
+const fs = require('node:fs/promises');
+const path = require('node:path');
+const crypto = require('node:crypto');
+
+const dir = process.env.DATA_DIR || path.join(process.cwd(), 'data');
+const file = path.join(dir, 'app-data.json');
+
+const defaultPaymentSettings = () => ({
+  bankBin: process.env.BANK_BIN || '',
+  bankName: process.env.BANK_NAME || '',
+  bankAccount: process.env.BANK_ACCOUNT || '',
+  bankAccountName: process.env.BANK_ACCOUNT_NAME || '',
+  qrImageUrl: '',
+  instructions: 'Chuyển khoản đúng số tiền và nội dung để quản trị viên đối soát.',
+  minDeposit: Math.max(10000, Number(process.env.MIN_DEPOSIT_VND) || 10000)
+});
+
+let state = {
+  linkedAccounts: [],
+  deposits: [],
+  tickets: [],
+  catalog: [],
+  orders: [],
+  giftcodes: [],
+  referrals: [],
+  paymentSettings: defaultPaymentSettings()
+};
+let queue = Promise.resolve();
+
+function normalizeState(value = {}) {
+  const defaults = {
+    linkedAccounts: [],
+    deposits: [],
+    tickets: [],
+    catalog: [],
+    orders: [],
+    giftcodes: [],
+    referrals: [],
+    paymentSettings: defaultPaymentSettings()
+  };
+  const next = { ...defaults };
+  for (const key of Object.keys(defaults)) {
+    if (key === 'paymentSettings') continue;
+    if (Array.isArray(value[key])) next[key] = value[key];
+  }
+  next.paymentSettings = {
+    ...defaults.paymentSettings,
+    ...(value.paymentSettings && typeof value.paymentSettings === 'object'
+      ? value.paymentSettings
+      : {})
+  };
+  return next;
+}
+
+function persist() {
+  const snapshot = JSON.stringify(state, null, 2);
+  queue = queue.then(async () => {
+    await fs.mkdir(dir, { recursive: true });
+    const tmp = file + '.tmp';
+    await fs.writeFile(tmp, snapshot, { encoding: 'utf8', mode: 0o600 });
+    await fs.rename(tmp, file);
+  });
   return queue;
 }
-async function init(){
-  await fs.mkdir(dir,{recursive:true});
-  try{const d=JSON.parse(await fs.readFile(file,'utf8'));state={linkedAccounts:Array.isArray(d.linkedAccounts)?d.linkedAccounts:[],deposits:Array.isArray(d.deposits)?d.deposits:[],tickets:Array.isArray(d.tickets)?d.tickets:[]};}
-  catch(e){if(e.code!=='ENOENT'){await fs.rename(file,file+'.corrupt-'+Date.now()).catch(()=>{});console.error('Dữ liệu Mini App lỗi JSON; đã cách ly.');}await persist();}
+
+async function init() {
+  await fs.mkdir(dir, { recursive: true });
+  try {
+    const data = JSON.parse(await fs.readFile(file, 'utf8'));
+    state = normalizeState(data);
+    await persist();
+  } catch (error) {
+    if (error.code !== 'ENOENT') {
+      await fs.rename(file, file + '.corrupt-' + Date.now()).catch(() => {});
+      console.error('Dữ liệu Mini App lỗi JSON; đã cách ly tệp lỗi.');
+    }
+    state = normalizeState();
+    await persist();
+  }
 }
-const publicAccount=x=>({id:x.id,brand:x.brand,username:x.username,miniCode:x.miniCode,createdAt:x.createdAt});
-function listLinkedAccounts(uid){return state.linkedAccounts.filter(x=>x.userId===String(uid)).map(publicAccount);}
-async function addLinkedAccount(uid,input){
-  const x={id:crypto.randomUUID(),userId:String(uid),brand:input.brand,username:input.username,miniCode:input.miniCode||input.username,encryptedPassword:input.encryptedPassword,createdAt:new Date().toISOString()};
-  state.linkedAccounts.push(x);await persist();return publicAccount(x);
+
+const publicAccount = item => ({
+  id: item.id,
+  brand: item.brand,
+  username: item.username,
+  miniCode: item.miniCode,
+  createdAt: item.createdAt
+});
+
+function listLinkedAccounts(userId) {
+  return state.linkedAccounts
+    .filter(item => item.userId === String(userId))
+    .map(publicAccount);
 }
-async function deleteLinkedAccount(uid,id){
-  const n=state.linkedAccounts.length;state.linkedAccounts=state.linkedAccounts.filter(x=>!(x.userId===String(uid)&&x.id===id));
-  if(n===state.linkedAccounts.length)return false;await persist();return true;
+
+async function addLinkedAccount(userId, input) {
+  const item = {
+    id: crypto.randomUUID(),
+    userId: String(userId),
+    brand: input.brand,
+    username: input.username,
+    miniCode: input.miniCode || input.username,
+    encryptedPassword: input.encryptedPassword,
+    createdAt: new Date().toISOString()
+  };
+  state.linkedAccounts.push(item);
+  await persist();
+  return publicAccount(item);
 }
-async function createDeposit(uid,amount){
-  const reference='HND'+Date.now().toString(36).toUpperCase()+crypto.randomBytes(2).toString('hex').toUpperCase();
-  const x={id:crypto.randomUUID(),reference,userId:String(uid),amount,status:'pending',createdAt:new Date().toISOString()};
-  state.deposits.push(x);await persist();
-  const bin=process.env.BANK_BIN,account=process.env.BANK_ACCOUNT;
-  const qrUrl=bin&&account?'https://img.vietqr.io/image/'+encodeURIComponent(bin)+'-'+encodeURIComponent(account)+'-compact2.png?amount='+amount+'&addInfo='+encodeURIComponent(reference):null;
-  return {...x,qrUrl,bankName:process.env.BANK_NAME||null,accountName:process.env.BANK_ACCOUNT_NAME||null};
+
+async function deleteLinkedAccount(userId, id) {
+  const before = state.linkedAccounts.length;
+  state.linkedAccounts = state.linkedAccounts.filter(item =>
+    !(item.userId === String(userId) && item.id === String(id))
+  );
+  if (before === state.linkedAccounts.length) return false;
+  await persist();
+  return true;
 }
-function listDeposits(uid){return state.deposits.filter(x=>x.userId===String(uid)).sort((a,b)=>b.createdAt.localeCompare(a.createdAt)).map(({id,reference,amount,status,createdAt})=>({id,reference,amount,status,createdAt}));}
-function listPendingDeposits(limit=20){return state.deposits.filter(x=>x.status==='pending').slice(-limit).map(({id,reference,userId,amount,createdAt})=>({id,reference,userId,amount,createdAt}));}
-async function createTicket(uid,message){
-  const x={id:crypto.randomUUID(),userId:String(uid),message,status:'open',createdAt:new Date().toISOString()};state.tickets.push(x);await persist();return{id:x.id,status:x.status,createdAt:x.createdAt};
+
+function getPaymentSettings() {
+  const settings = state.paymentSettings;
+  return {
+    bankBin: settings.bankBin || '',
+    bankName: settings.bankName || '',
+    bankAccount: settings.bankAccount || '',
+    bankAccountName: settings.bankAccountName || '',
+    qrImageUrl: settings.qrImageUrl || '',
+    instructions: settings.instructions || '',
+    minDeposit: Math.max(10000, Number(settings.minDeposit) || 10000)
+  };
 }
+
+async function updatePaymentSettings(input) {
+  state.paymentSettings = {
+    ...state.paymentSettings,
+    ...input,
+    minDeposit: Math.max(10000, Number(input.minDeposit) || 10000)
+  };
+  await persist();
+  return getPaymentSettings();
+}
+
+function buildQrUrl(settings, amount, reference) {
+  if (settings.qrImageUrl) {
+    try {
+      const url = new URL(settings.qrImageUrl);
+      url.searchParams.set('amount', String(amount));
+      url.searchParams.set('addInfo', reference);
+      return url.toString();
+    } catch {
+      return null;
+    }
+  }
+  if (!settings.bankBin || !settings.bankAccount) return null;
+  return 'https://img.vietqr.io/image/' +
+    encodeURIComponent(settings.bankBin) + '-' +
+    encodeURIComponent(settings.bankAccount) +
+    '-compact2.png?amount=' + amount +
+    '&addInfo=' + encodeURIComponent(reference) +
+    '&accountName=' + encodeURIComponent(settings.bankAccountName || '');
+}
+
+async function createDeposit(userId, amount) {
+  const settings = getPaymentSettings();
+  if (!Number.isSafeInteger(amount) || amount < settings.minDeposit || amount > 100000000) {
+    throw new Error('Số tiền nạp không nằm trong giới hạn cho phép.');
+  }
+  const reference = 'HND' + Date.now().toString(36).toUpperCase() +
+    crypto.randomBytes(3).toString('hex').toUpperCase();
+  const item = {
+    id: crypto.randomUUID(),
+    reference,
+    userId: String(userId),
+    amount,
+    status: 'pending',
+    createdAt: new Date().toISOString(),
+    processedAt: null,
+    processedBy: null
+  };
+  state.deposits.push(item);
+  await persist();
+  return {
+    id: item.id,
+    reference,
+    userId: item.userId,
+    amount,
+    status: item.status,
+    createdAt: item.createdAt,
+    qrUrl: buildQrUrl(settings, amount, reference),
+    payment: {
+      bankName: settings.bankName,
+      bankAccount: settings.bankAccount,
+      bankAccountName: settings.bankAccountName,
+      instructions: settings.instructions
+    }
+  };
+}
+
+function publicDeposit(item) {
+  return {
+    id: item.id,
+    reference: item.reference,
+    amount: item.amount,
+    status: item.status,
+    createdAt: item.createdAt,
+    processedAt: item.processedAt || null
+  };
+}
+
+function listDeposits(userId) {
+  return state.deposits
+    .filter(item => item.userId === String(userId))
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+    .map(publicDeposit);
+}
+
+function listAllDeposits(limit = 100) {
+  return state.deposits
+    .slice()
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+    .slice(0, limit)
+    .map(item => ({
+      ...publicDeposit(item),
+      userId: item.userId,
+      processedBy: item.processedBy || null
+    }));
+}
+
+function getDeposit(id) {
+  return state.deposits.find(item => item.id === String(id)) || null;
+}
+
+async function processDeposit(id, status, adminId) {
+  const item = getDeposit(id);
+  if (!item) return { error: 'not_found' };
+  if (item.status !== 'pending') return { error: 'already_processed', deposit: publicDeposit(item) };
+  if (!['paid', 'rejected'].includes(status)) return { error: 'invalid_status' };
+  item.status = status;
+  item.processedAt = new Date().toISOString();
+  item.processedBy = String(adminId);
+  await persist();
+  return { deposit: publicDeposit(item), userId: item.userId, amount: item.amount };
+}
+
+function listActiveCatalog(category) {
+  return state.catalog
+    .filter(item => item.active !== false && (!category || item.category === category))
+    .sort((a, b) => String(a.name).localeCompare(String(b.name), 'vi'))
+    .map(publicCatalogItem);
+}
+
+function publicCatalogItem(item) {
+  return {
+    id: item.id,
+    category: item.category,
+    name: item.name,
+    description: item.description || '',
+    price: Number(item.price || 0),
+    durationDays: Number(item.durationDays || 0),
+    stock: item.stock === null || item.stock === undefined ? null : Number(item.stock),
+    active: item.active !== false
+  };
+}
+
+function listAdminCatalog() {
+  return state.catalog.map(publicCatalogItem);
+}
+
+async function saveCatalogItem(input, id = null) {
+  const existing = id ? state.catalog.find(item => item.id === id) : null;
+  const item = {
+    id: existing?.id || crypto.randomUUID(),
+    category: input.category,
+    name: input.name,
+    description: input.description || '',
+    price: Number(input.price),
+    durationDays: Number(input.durationDays || 0),
+    stock: input.stock === null || input.stock === undefined || input.stock === ''
+      ? null
+      : Number(input.stock),
+    active: input.active !== false,
+    updatedAt: new Date().toISOString(),
+    createdAt: existing?.createdAt || new Date().toISOString()
+  };
+  if (existing) Object.assign(existing, item);
+  else state.catalog.push(item);
+  await persist();
+  return publicCatalogItem(item);
+}
+
+async function deleteCatalogItem(id) {
+  const before = state.catalog.length;
+  state.catalog = state.catalog.filter(item => item.id !== String(id));
+  if (before === state.catalog.length) return false;
+  await persist();
+  return true;
+}
+
+function listOrders(userId, limit = 50) {
+  return state.orders
+    .filter(item => !userId || item.userId === String(userId))
+    .slice()
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+    .slice(0, limit)
+    .map(item => ({ ...item }));
+}
+
+async function createOrder(userId, itemId) {
+  const product = state.catalog.find(item => item.id === String(itemId) && item.active !== false);
+  if (!product) return { error: 'not_found' };
+  if (product.stock !== null && product.stock !== undefined && Number(product.stock) <= 0) {
+    return { error: 'out_of_stock' };
+  }
+  const order = {
+    id: crypto.randomUUID(),
+    userId: String(userId),
+    itemId: product.id,
+    category: product.category,
+    itemName: product.name,
+    amount: Number(product.price),
+    status: 'pending',
+    createdAt: new Date().toISOString(),
+    processedAt: null,
+    processedBy: null
+  };
+  state.orders.push(order);
+  await persist();
+  return { ...order };
+}
+
+function getOrder(id) {
+  return state.orders.find(item => item.id === String(id)) || null;
+}
+
+async function processOrder(id, status, adminId) {
+  const order = getOrder(id);
+  if (!order) return { error: 'not_found' };
+  if (order.status !== 'pending') return { error: 'already_processed', order: { ...order } };
+  if (!['approved', 'rejected'].includes(status)) return { error: 'invalid_status' };
+
+  const product = state.catalog.find(item => item.id === order.itemId);
+  if (status === 'approved') {
+    if (!product || product.active === false) return { error: 'item_unavailable' };
+    if (product.stock !== null && product.stock !== undefined && Number(product.stock) <= 0) {
+      return { error: 'out_of_stock' };
+    }
+    product.stock = product.stock === null || product.stock === undefined
+      ? null
+      : Number(product.stock) - 1;
+  }
+  order.status = status;
+  order.processedAt = new Date().toISOString();
+  order.processedBy = String(adminId);
+  await persist();
+  return { order: { ...order } };
+}
+
+async function createTicket(userId, message) {
+  const item = {
+    id: crypto.randomUUID(),
+    userId: String(userId),
+    message,
+    status: 'open',
+    createdAt: new Date().toISOString(),
+    processedAt: null,
+    reply: ''
+  };
+  state.tickets.push(item);
+  await persist();
+  return { id: item.id, status: item.status, createdAt: item.createdAt };
+}
+
+function listTickets(userId, limit = 50) {
+  return state.tickets
+    .filter(item => !userId || item.userId === String(userId))
+    .slice()
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+    .slice(0, limit)
+    .map(item => ({ ...item }));
+}
+
+async function updateTicket(id, status, reply = '') {
+  const item = state.tickets.find(ticket => ticket.id === String(id));
+  if (!item) return false;
+  if (!['open', 'answered', 'closed'].includes(status)) return false;
+  item.status = status;
+  item.reply = String(reply).slice(0, 2000);
+  item.processedAt = new Date().toISOString();
+  await persist();
+  return { ...item };
+}
+
+async function createGiftcode(input) {
+  const code = String(input.code || '').trim().toUpperCase();
+  const item = {
+    id: crypto.randomUUID(),
+    code,
+    rewardType: input.rewardType,
+    rewardValue: Number(input.rewardValue),
+    maxUses: Math.max(1, Number(input.maxUses) || 1),
+    uses: 0,
+    expiresAt: input.expiresAt || null,
+    active: input.active !== false,
+    usedBy: [],
+    createdAt: new Date().toISOString()
+  };
+  if (state.giftcodes.some(existing => existing.code === code)) {
+    return { error: 'duplicate' };
+  }
+  state.giftcodes.push(item);
+  await persist();
+  return publicGiftcode(item);
+}
+
+function publicGiftcode(item) {
+  return {
+    id: item.id,
+    code: item.code,
+    rewardType: item.rewardType,
+    rewardValue: item.rewardValue,
+    maxUses: item.maxUses,
+    uses: item.uses,
+    expiresAt: item.expiresAt,
+    active: item.active,
+    createdAt: item.createdAt
+  };
+}
+
+function listGiftcodes() {
+  return state.giftcodes
+    .slice()
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+    .map(publicGiftcode);
+}
+
+async function setGiftcodeActive(id, active) {
+  const item = state.giftcodes.find(code => code.id === String(id));
+  if (!item) return false;
+  item.active = Boolean(active);
+  await persist();
+  return publicGiftcode(item);
+}
+
+async function redeemGiftcode(userId, code) {
+  const item = state.giftcodes.find(gift => gift.code === String(code).trim().toUpperCase());
+  if (!item || !item.active) return { error: 'invalid' };
+  if (item.expiresAt && Date.now() > Date.parse(item.expiresAt)) return { error: 'expired' };
+  if (item.uses >= item.maxUses) return { error: 'exhausted' };
+  if (item.usedBy.includes(String(userId))) return { error: 'used' };
+  if (!['balance', 'vip'].includes(item.rewardType) || !Number.isSafeInteger(Number(item.rewardValue)) || item.rewardValue <= 0) {
+    return { error: 'invalid' };
+  }
+  item.uses += 1;
+  item.usedBy.push(String(userId));
+  await persist();
+  return {
+    rewardType: item.rewardType,
+    rewardValue: item.rewardValue,
+    code: item.code
+  };
+}
+
+async function registerReferral(referrerId, referredId) {
+  const referrer = String(referrerId || '');
+  const referred = String(referredId || '');
+  if (!referrer || !referred || referrer === referred) return false;
+  if (state.referrals.some(item => item.referredId === referred)) return false;
+  const item = {
+    id: crypto.randomUUID(),
+    referrerId: referrer,
+    referredId: referred,
+    createdAt: new Date().toISOString(),
+    commissionEarned: 0
+  };
+  state.referrals.push(item);
+  await persist();
+  return true;
+}
+
+function getReferralStats(userId) {
+  const items = state.referrals.filter(item => item.referrerId === String(userId));
+  return {
+    invited: items.length,
+    commission: items.reduce((sum, item) => sum + Number(item.commissionEarned || 0), 0),
+    referrals: items.slice(-30).reverse().map(item => ({
+      referredId: item.referredId,
+      createdAt: item.createdAt
+    }))
+  };
+}
+
+async function addReferralCommission(referredId, amount, users) {
+  const referral = state.referrals.find(item => item.referredId === String(referredId));
+  const percent = Number(state.paymentSettings.referralCommissionPercent || 0);
+  if (!referral || percent <= 0) return 0;
+  const commission = Math.floor(Number(amount) * Math.min(percent, 20) / 100);
+  if (commission <= 0) return 0;
+  const referrer = users[referral.referrerId];
+  if (!referrer) return 0;
+  referrer.balance = Number(referrer.balance || 0) + commission;
+  referral.commissionEarned += commission;
+  referral.lastCommissionAt = new Date().toISOString();
+  await persist();
+  return commission;
+}
+
 function getAdminOverview(users = {}) {
   const userEntries = Object.entries(users);
   const accountCounts = new Map();
   for (const account of state.linkedAccounts) {
     accountCounts.set(account.userId, (accountCounts.get(account.userId) || 0) + 1);
   }
-
   const recentUsers = userEntries
     .sort((a, b) => String(b[1].createdAt || '').localeCompare(String(a[1].createdAt || '')))
-    .slice(0, 30)
+    .slice(0, 50)
     .map(([id, user]) => ({
       id,
       name: String(user.name || 'Người dùng').slice(0, 100),
@@ -57,28 +523,74 @@ function getAdminOverview(users = {}) {
       linkedAccounts: accountCounts.get(id) || 0,
       createdAt: user.createdAt || null
     }));
-
-  const recentAccounts = state.linkedAccounts
-    .slice()
-    .sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')))
-    .slice(0, 20)
-    .map(account => ({
-      ...publicAccount(account),
-      ownerId: account.userId
-    }));
-
   return {
     totals: {
       users: userEntries.length,
-      linkedAccounts: state.linkedAccounts.length
+      linkedAccounts: state.linkedAccounts.length,
+      pendingDeposits: state.deposits.filter(item => item.status === 'pending').length,
+      pendingOrders: state.orders.filter(item => item.status === 'pending').length,
+      openTickets: state.tickets.filter(item => item.status === 'open').length
     },
     users: recentUsers,
-    recentAccounts
+    recentAccounts: state.linkedAccounts
+      .slice().sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')))
+      .slice(0, 20).map(item => ({ ...publicAccount(item), ownerId: item.userId }))
   };
 }
 
-function getOverview(uid,user){
-  const id=String(uid);
-  return {profile:{id,name:user.name,username:user.username||null,balance:Number(user.balance||0),vipLevel:Number(user.vipLevel||0)},linkedAccounts:listLinkedAccounts(id),deposits:listDeposits(id).slice(0,5),counts:{linkedAccounts:state.linkedAccounts.filter(x=>x.userId===id).length,pendingDeposits:state.deposits.filter(x=>x.userId===id&&x.status==='pending').length,openTickets:state.tickets.filter(x=>x.userId===id&&x.status==='open').length}};
+function getOverview(userId, user) {
+  const id = String(userId);
+  return {
+    profile: {
+      id,
+      name: user.name,
+      username: user.username || null,
+      balance: Number(user.balance || 0),
+      vipLevel: Number(user.vipLevel || 0),
+      createdAt: user.createdAt || null
+    },
+    linkedAccounts: listLinkedAccounts(id),
+    deposits: listDeposits(id).slice(0, 5),
+    counts: {
+      linkedAccounts: state.linkedAccounts.filter(item => item.userId === id).length,
+      pendingDeposits: state.deposits.filter(item => item.userId === id && item.status === 'pending').length,
+      openTickets: state.tickets.filter(item => item.userId === id && item.status === 'open').length,
+      orders: state.orders.filter(item => item.userId === id).length
+    }
+  };
 }
-module.exports={init,persist,listLinkedAccounts,addLinkedAccount,deleteLinkedAccount,createDeposit,listDeposits,listPendingDeposits,createTicket,getOverview,getAdminOverview};
+
+module.exports = {
+  init,
+  persist,
+  listLinkedAccounts,
+  addLinkedAccount,
+  deleteLinkedAccount,
+  getPaymentSettings,
+  updatePaymentSettings,
+  createDeposit,
+  listDeposits,
+  listAllDeposits,
+  getDeposit,
+  processDeposit,
+  listActiveCatalog,
+  listAdminCatalog,
+  saveCatalogItem,
+  deleteCatalogItem,
+  listOrders,
+  createOrder,
+  getOrder,
+  processOrder,
+  createTicket,
+  listTickets,
+  updateTicket,
+  createGiftcode,
+  listGiftcodes,
+  setGiftcodeActive,
+  redeemGiftcode,
+  registerReferral,
+  getReferralStats,
+  addReferralCommission,
+  getOverview,
+  getAdminOverview
+};
