@@ -329,7 +329,20 @@ function listOrders(userId, limit = 50) {
     .slice()
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
     .slice(0, limit)
-    .map(item => ({ ...item }));
+    .map(item => userId
+      ? {
+          id: item.id,
+          itemId: item.itemId,
+          category: item.category,
+          itemName: item.itemName,
+          amount: item.amount,
+          vipLevel: item.vipLevel || 0,
+          durationDays: item.durationDays || 0,
+          status: item.status,
+          createdAt: item.createdAt,
+          processedAt: item.processedAt || null
+        }
+      : { ...item });
 }
 
 async function createOrder(userId, itemId) {
