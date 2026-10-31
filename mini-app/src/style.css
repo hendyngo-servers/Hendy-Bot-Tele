@@ -32,3 +32,11 @@ button,input,select,textarea{font:inherit}button{cursor:pointer}button:disabled{
 .notice{position:fixed;z-index:20;left:50%;bottom:calc(18px + env(safe-area-inset-bottom));transform:translateX(-50%);display:flex;align-items:center;gap:10px;width:min(92vw,500px);padding:12px 14px;border:1px solid #6ed4df66;border-radius:12px;background:#143c4e;color:#effcff;font-size:10px;box-shadow:0 12px 35px #0007}.notice button{border:0;background:none;color:#fff;font-size:18px}
 footer{display:flex;flex-direction:column;align-items:center;gap:4px;padding:22px 0 8px;color:#6f93a4;font-size:9px;letter-spacing:.13em}footer small{color:#718b9b;font-size:9px;letter-spacing:0}
 @media(min-width:560px){.app-shell{padding:24px 22px 36px}.service-grid{gap:8px}.service-tile{min-height:55px;font-size:11px}.service-tile.wide{min-height:50px}.product-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.vip-grid{grid-template-columns:repeat(4,minmax(0,1fr))}.admin-stats{grid-template-columns:repeat(5,minmax(0,1fr))}.user-admin-card{flex-direction:row;align-items:center}.member-edit{width:45%}}
+
+
+.ticket-admin-record{align-items:stretch;flex-direction:column}
+.ticket-actions{display:flex;flex-wrap:wrap;gap:6px;width:100%}
+.ticket-actions textarea{flex:1 1 100%;min-width:0;padding:9px;border:1px solid #ffffff28;border-radius:8px;background:#0c2231;color:#fff;font:inherit;font-size:10px;resize:vertical}
+.ticket-actions button,.link-button{padding:8px 10px;border:1px solid #70d4df66;border-radius:8px;background:#247989;color:#fff;font-size:9px;font-weight:800;text-decoration:none}
+.ticket-actions .danger-button{border-color:#e9847b66;background:#a84e4a22;color:#ffb7a4}
+.ticket-reply{display:block;margin-top:4px;color:#8fe2aa!important}
