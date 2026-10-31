@@ -233,7 +233,6 @@ async function loadMongoState() {
     mongoCollections.orders.createIndex({ userId: 1, createdAt: -1 }),
     mongoCollections.giftcodes.createIndex({ code: 1 }, { unique: true, sparse: true }),
     mongoCollections.referrals.createIndex({ referredId: 1 }, { unique: true }),
-    mongoCollections.settings.createIndex({ _id: 1 }, { unique: true })
   ]);
 
   const raw = normalizeState();
