@@ -203,7 +203,7 @@ async function migratePostgresUsersToMongo() {
 }
 
 async function migrateD1UsersToMongo() {
-  if (!CloudflareD1Client.hasAnyEnvironmentConfig()) return 0;
+  if (!process.env.CLOUDFLARE_ACCOUNT_ID || !process.env.CLOUDFLARE_D1_DATABASE_ID || !process.env.CLOUDFLARE_API_TOKEN) return 0;
   const client = CloudflareD1Client.fromEnv();
   client.validateConfig();
   const result = await client.query(
