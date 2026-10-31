@@ -33,7 +33,7 @@ services:
       - key: CLOUDFLARE_API_TOKEN
         sync: false
       - key: R2_BUCKET_NAME
-        sync: false
+        value: "hendy-bot-assets"
       - key: R2_ACCESS_KEY_ID
         sync: false
       - key: R2_SECRET_ACCESS_KEY
