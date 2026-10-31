@@ -6,7 +6,7 @@ services:
     region: singapore
     numInstances: 1
     autoDeployTrigger: checksPass
-    buildCommand: npm install && npm run check && npm test && npm run build
+    buildCommand: npm install --no-audit --no-fund && npm run check && npm test && npm run build
     startCommand: npm start
     healthCheckPath: /healthz
     disk:
@@ -20,9 +20,17 @@ services:
         value: production
       - key: DATA_DIR
         value: /var/data
+      - key: DATABASE_URL
+        fromDatabase:
+          name: hendy-bot-db
+          property: connectionString
+      - key: PGPOOL_MAX
+        value: "5"
       - key: BOT_TOKEN
         sync: false
       - key: ADMIN_ID
+        sync: false
+      - key: WEBAPP_URL
         sync: false
       - key: MINI_APP_URL
         sync: false
@@ -40,3 +48,13 @@ services:
         value: "10000"
       - key: SUPPORT_USERNAME
         sync: false
+
+databases:
+  - name: hendy-bot-db
+    databaseName: hendy_bot
+    user: hendy_bot
+    plan: 0.1c-256mb
+    region: singapore
+    postgresMajorVersion: "18"
+    diskSizeGB: 1
+    ipAllowList: []
