@@ -200,18 +200,19 @@ function setupBot(instance) {
 
   instance.action('guide_detail', async ctx => {
     await ctx.answerCbQuery().catch(() => {});
+    const accountUrl = getMiniAppUrl('accounts');
     await ctx.reply(
-      '📖 <b>HƯỚNG DẪN</b>\n' +
-      '1. Mở TRUNG TÂM QUẢN LÝ TÀI KHOẢN trong Mini App.\n' +
-      '2. Chọn nhà cung cấp và nhập thông tin tài khoản cần liên kết.\n' +
-      '3. Mật khẩu được mã hóa ở máy chủ trước khi lưu.\n' +
+      '📖 <b>HƯỚNG DẪN</b>\\n' +
+      '1. Mở TRUNG TÂM QUẢN LÝ TÀI KHOẢN trong Mini App.\\n' +
+      '2. Chọn nhà cung cấp và nhập thông tin tài khoản cần liên kết.\\n' +
+      '3. Mật khẩu được mã hóa ở máy chủ trước khi lưu.\\n' +
       '4. Chỉ quản trị viên có Telegram ID được cấu hình trong ADMIN_ID mới thấy và vào được khu vực Admin.',
-      { parse_mode: 'HTML', ...Markup.inlineKeyboard([
-        [Markup.button.webApp(
-          '🔐 MỞ TRUNG TÂM QUẢN LÝ TÀI KHOẢN',
-          getMiniAppUrl('accounts') || 'https://example.invalid'
-        )]
-      ]) }
+      {
+        parse_mode: 'HTML',
+        ...(accountUrl ? Markup.inlineKeyboard([
+          [Markup.button.webApp('🔐 MỞ TRUNG TÂM QUẢN LÝ TÀI KHOẢN', accountUrl)]
+        ]) : {})
+      }
     );
   });
 }
