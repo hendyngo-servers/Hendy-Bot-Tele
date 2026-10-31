@@ -8,7 +8,7 @@ const MENU = [
   { id: 'otp', label: 'OTP & PROXY', icon: '⚙️', tone: 'blue', wide: false, category: 'otp_proxy' },
   { id: 'viptools', label: 'VIP KHO CÔNG CỤ ĐẶC QUYỀN', icon: '🏆', tone: 'blue', wide: true },
   { id: 'customer', label: 'TRUNG TÂM KHÁCH HÀNG', icon: '💎', tone: 'blue', wide: true },
-  { id: 'duel', label: 'HỆ THỐNG GHÉP ĐỐI ĐẦU', icon: '⚔️', tone: 'coral', wide: true },
+  { id: 'duel', label: 'HỆ THỐNG GHÉP ĐỐI ĐẦU', icon: '⚔️', tone: 'coral', wide: true, category: 'duel' },
   { id: 'ref', label: 'Giới thiệu REF', icon: '🎊', tone: 'green', wide: false },
   { id: 'vip', label: 'VIP TRUNG TÂM VIP', icon: '👑', tone: 'green', wide: false },
   { id: 'group', label: 'NHÓM CHAT', icon: '🗣️', tone: 'green', wide: false },
@@ -179,6 +179,7 @@ export default function App() {
       if (id === 'tools') { await loadCatalog('tool'); await loadOrders(); }
       if (id === 'codes') { await loadCatalog('code'); await loadOrders(); }
       if (id === 'otp') { await loadCatalog('otp_proxy'); await loadOrders(); }
+      if (id === 'duel') { await loadCatalog('duel'); await loadOrders(); }
       if (id === 'wallet') {
         const [p, d] = await Promise.all([api('/payment-info', initData), api('/deposits', initData)]);
         setPayment(p); setDeposits(d || []);
@@ -199,7 +200,7 @@ export default function App() {
           else setNotice('Admin chưa cấu hình liên kết kênh thông báo.');
           setPage('home');
         }
-        if (id === 'duel') setNotice('Hệ thống ghép đối đầu cần cấu hình nhà cung cấp và luật chơi trước khi mở đơn.');
+
       }
     } catch (error) {
       setNotice(error.message);
@@ -482,12 +483,12 @@ export default function App() {
         </main>
       )}
 
-      {['tools', 'codes', 'otp', 'viptools'].includes(page) && (
+      {['tools', 'codes', 'otp', 'viptools', 'duel'].includes(page) && (
         <main>
           <PageTitle eyebrow="DANH MỤC DỊCH VỤ" title={title} onBack={() => setPage('home')} />
           <section className="product-grid">
             {catalog.length ? catalog.map(item => <article className="product-card" key={item.id}>
-              <span className="product-category">{item.category === 'tool' ? 'CÔNG CỤ' : item.category === 'code' ? 'MÃ DỊCH VỤ' : item.category === 'otp_proxy' ? 'OTP & PROXY' : 'VIP'}</span>
+              <span className="product-category">{item.category === 'tool' ? 'CÔNG CỤ' : item.category === 'code' ? 'MÃ DỊCH VỤ' : item.category === 'otp_proxy' ? 'OTP & PROXY' : item.category === 'duel' ? 'ĐỐI ĐẦU' : 'VIP'}</span>
               <h3>{item.name}</h3><p>{item.description || 'Thông tin dịch vụ do quản trị viên cấu hình.'}</p>
               <div className="product-meta"><strong>{money(item.price)}</strong><small>{item.durationDays ? item.durationDays + ' ngày' : 'Theo yêu cầu'}{item.stock !== null ? ' · Còn ' + item.stock : ''}</small></div>
               <button className="primary-button" disabled={busy || item.stock === 0} onClick={() => createOrder(item)}>Tạo đơn dịch vụ</button>
@@ -555,7 +556,7 @@ export default function App() {
         </main>
       )}
 
-      {['duel', 'group', 'news'].includes(page) && (
+      {['group', 'news'].includes(page) && (
         <main><PageTitle eyebrow="HENDY SERVICES" title={title} onBack={() => setPage('home')} /><section className="panel"><Empty>{page === 'duel' ? 'Hệ thống ghép đối đầu cần cấu hình nhà cung cấp và luật chơi trước khi mở.' : 'Liên kết cộng đồng chưa được cấu hình.'}</Empty></section></main>
       )}
 
@@ -604,7 +605,7 @@ export default function App() {
 
           {adminTab === 'catalog' && <section className="panel"><h2>{editingItem ? 'Chỉnh sửa danh mục' : 'Thêm sản phẩm / dịch vụ'}</h2>
             <form className="form-stack" onSubmit={saveCatalogItem}>
-              <label>Nhóm<select value={catalogForm.category} onChange={e => setCatalogForm(v => ({ ...v, category: e.target.value }))}><option value="tool">Thuê Tool</option><option value="code">Mua Code</option><option value="otp_proxy">OTP & Proxy</option><option value="vip">Nâng cấp VIP</option></select></label>
+              <label>Nhóm<select value={catalogForm.category} onChange={e => setCatalogForm(v => ({ ...v, category: e.target.value }))}><option value="tool">Thuê Tool</option><option value="code">Mua Code</option><option value="otp_proxy">OTP & Proxy</option><option value="vip">Nâng cấp VIP</option><option value="duel">Ghép đối đầu</option></select></label>
               <label>Tên sản phẩm<input value={catalogForm.name} onChange={e => setCatalogForm(v => ({ ...v, name: e.target.value }))} minLength="2" maxLength="100" required /></label>
               <label>Mô tả<input value={catalogForm.description} onChange={e => setCatalogForm(v => ({ ...v, description: e.target.value }))} maxLength="500" /></label>
               <label>Giá (VNĐ)<input type="number" min="0" value={catalogForm.price} onChange={e => setCatalogForm(v => ({ ...v, price: e.target.value }))} required /></label>
