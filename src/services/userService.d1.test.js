@@ -12,6 +12,7 @@ process.env.CLOUDFLARE_ACCOUNT_ID = '918ff2f016938fc978ed23b96505b21e';
 process.env.CLOUDFLARE_D1_DATABASE_ID = '11111111-2222-4333-8444-555555555555';
 process.env.CLOUDFLARE_API_TOKEN = 'test-d1-api-token';
 delete process.env.DATABASE_URL;
+delete process.env.MONGODB_URI;
 
 const database = new Map();
 const originalFetch = globalThis.fetch;
