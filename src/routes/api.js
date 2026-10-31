@@ -7,7 +7,7 @@ const { encryptSecret } = require('../security/cryptoService');
 
 const router = express.Router();
 const ALLOWED_BRANDS = new Set(['QQ88', '78WIN', 'SC88', 'C168', 'CM88', 'F8BET']);
-const CATEGORIES = new Set(['tool', 'code', 'otp_proxy', 'vip']);
+const CATEGORIES = new Set(['tool', 'code', 'otp_proxy', 'vip', 'duel']);
 
 router.use((req, res, next) => {
   res.set('Cache-Control', 'no-store');
