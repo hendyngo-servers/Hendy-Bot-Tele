@@ -136,6 +136,14 @@ router.post('/deposits', async (req, res, next) => {
 });
 router.get('/deposits', (req, res) => ok(res, appDataService.listDeposits(req.telegramUser.id)));
 router.get('/payment-info', (_req, res) => ok(res, appDataService.getPaymentSettings()));
+router.get('/public-settings', (_req, res) => {
+  const settings = appDataService.getPaymentSettings();
+  return ok(res, {
+    groupChatUrl: settings.groupChatUrl,
+    newsChannelUrl: settings.newsChannelUrl,
+    supportUsername: settings.supportUsername
+  });
+});
 
 router.get('/vip', (req, res) => {
   const user = userService.getUser(req.telegramUser.id) || {};
@@ -183,12 +191,12 @@ router.post('/giftcodes/redeem', async (req, res, next) => {
 
 router.get('/referral', (req, res) => {
   const userId = String(req.telegramUser.id);
-  const username = String(process.env.BOT_USERNAME || '').replace(/^@/, '');
+  const settings = appDataService.getPaymentSettings();
+  const username = String(settings.botUsername || process.env.BOT_USERNAME || '').replace(/^@/, '');
   const referralCode = 'ref_' + userId;
   const referralLink = /^[a-zA-Z0-9_]{5,32}$/.test(username)
     ? 'https://t.me/' + username + '?start=' + referralCode
     : null;
-  const settings = appDataService.getPaymentSettings();
   return ok(res, {
     code: referralCode,
     link: referralLink,
@@ -218,7 +226,7 @@ router.get('/admin/settings', ...admin, (_req, res) => {
   const payment = appDataService.getPaymentSettings();
   return ok(res, {
     payment,
-    botUsername: process.env.BOT_USERNAME || '',
+    botUsername: payment.botUsername || process.env.BOT_USERNAME || '',
     referralCommissionPercent: Number(payment.referralCommissionPercent || 0)
   });
 });
@@ -235,7 +243,21 @@ router.put('/admin/settings', ...admin, async (req, res, next) => {
     const instructions = String(payment.instructions || '').trim().slice(0, 500);
     const minDeposit = Number(payment.minDeposit);
     const commission = Number(body.referralCommissionPercent);
+    const botUsername = String(body.botUsername || '').replace(/^@/, '').trim();
+    const groupChatUrl = String(body.groupChatUrl || '').trim();
+    const newsChannelUrl = String(body.newsChannelUrl || '').trim();
+    const supportUsername = String(body.supportUsername || '').replace(/^@/, '').trim();
 
+    if (botUsername && !/^[a-zA-Z0-9_]{5,32}$/.test(botUsername)) {
+      return fail(res, 400, 'BOT_USERNAME không hợp lệ.');
+    }
+    if ((groupChatUrl && !validHttpUrl(groupChatUrl)) ||
+      (newsChannelUrl && !validHttpUrl(newsChannelUrl))) {
+      return fail(res, 400, 'Liên kết nhóm/kênh phải là HTTPS hợp lệ.');
+    }
+    if (supportUsername && !/^[a-zA-Z0-9_]{5,32}$/.test(supportUsername)) {
+      return fail(res, 400, 'Username hỗ trợ không hợp lệ.');
+    }
     if (qrImageUrl && (!validHttpUrl(qrImageUrl) || qrImageUrl.length > 500)) {
       return fail(res, 400, 'Đường dẫn QR phải là HTTPS hợp lệ và tối đa 500 ký tự.');
     }
@@ -248,7 +270,11 @@ router.put('/admin/settings', ...admin, async (req, res, next) => {
     return ok(res, await appDataService.updatePaymentSettings({
       bankBin, bankName, bankAccount, bankAccountName,
       qrImageUrl, instructions, minDeposit,
-      referralCommissionPercent: commission
+      referralCommissionPercent: commission,
+      botUsername,
+      groupChatUrl,
+      newsChannelUrl,
+      supportUsername
     }));
   } catch (error) { return next(error); }
 });
