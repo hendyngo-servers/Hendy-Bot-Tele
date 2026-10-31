@@ -42,7 +42,7 @@ const getMainMenu = () => {
       Markup.button.callback('👑 VIP TRUNG TÂM VIP', 'unimplemented')
     ],
     [
-      Markup.button.url('💬 NHÓM CHAT', 'https://t.me/lethituanem_nhomchat'), 
+      Markup.button.url('💬 NHÓM CHAT', 'https://t.me/Hendy_Support_Group'), 
       Markup.button.callback('📢 KÊNH THÔNG BÁO', 'unimplemented')
     ],
     [
