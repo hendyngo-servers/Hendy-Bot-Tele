@@ -35,6 +35,7 @@ function Notice({ message, onClose }) {
 export default function App() {
   const telegram = window.Telegram?.WebApp;
   const initData = telegram?.initData || '';
+  const requestedMode = new URLSearchParams(window.location.search).get('mode');
 
   const [session, setSession] = useState(null);
   const [mode, setMode] = useState('gate');
@@ -118,6 +119,35 @@ export default function App() {
     }
   }
 
+  useEffect(() => {
+    if (loading || !session || mode !== 'gate') return;
+    if (requestedMode !== 'accounts' && requestedMode !== 'admin') return;
+
+    let active = true;
+    const isAdminMode = requestedMode === 'admin';
+    if (isAdminMode && !session.isAdmin) {
+      setNotice('Tài khoản Telegram này không được cấp quyền quản trị.');
+      return undefined;
+    }
+
+    setBusy(true);
+    api(isAdminMode ? '/admin/overview' : '/overview', initData)
+      .then(result => {
+        if (!active) return;
+        if (isAdminMode) setAdminOverview(result);
+        else setOverview(result);
+        setMode(isAdminMode ? 'admin' : 'accounts');
+      })
+      .catch(error => {
+        if (active) setNotice(error.message);
+      })
+      .finally(() => {
+        if (active) setBusy(false);
+      });
+
+    return () => { active = false; };
+  }, [loading, session, mode, requestedMode, initData]);
+
   async function refreshCurrent() {
     setBusy(true);
     try {
@@ -167,6 +197,7 @@ export default function App() {
   }
 
   function logout() {
+    window.history.replaceState(null, '', window.location.pathname);
     setMode('gate');
     setOverview(null);
     setAdminOverview(null);
