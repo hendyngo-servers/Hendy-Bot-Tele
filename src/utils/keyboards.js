@@ -43,7 +43,7 @@ const getMainMenu = () => {
     [
       Markup.button.callback('🟥 ⚔️ HỆ THỐNG GHÉP ĐỐI ĐẦU', 'menu_duel')
     ],
-    // Hàng 7: Giới thiệu REF (Xanh dương) & VIP Trung tâm VIP (Vàng/Cam)
+    // Hàng 7: Giới thiệu REF (Xanh dương) & VIP Trung tâm VIP (Cam)
     [
       Markup.button.callback('🟦 👥 Giới thiệu REF', 'unimplemented'), 
       Markup.button.callback('🟧 👑 VIP TRUNG TÂM VIP', 'unimplemented')
@@ -53,7 +53,7 @@ const getMainMenu = () => {
       Markup.button.url('🟩 👥 NHÓM CHAT', 'https://t.me/lethituanem_nhomchat'), 
       Markup.button.callback('🟩 📢 KÊNH THÔNG BÁO', 'unimplemented')
     ],
-    // Hàng 9: NHẬP GIFTCODE (Đỏ) & LIÊN HỆ CSKH (Nâu/Xám)
+    // Hàng 9: NHẬP GIFTCODE (Đỏ) & LIÊN HỆ CSKH (Nâu)
     [
       Markup.button.callback('🟥 🎟️ NHẬP GIFTCODE', 'unimplemented'), 
       Markup.button.callback('🟫 🧑🏻‍💻 LIÊN HỆ CSKH', 'unimplemented')
