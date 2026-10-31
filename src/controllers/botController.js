@@ -454,6 +454,7 @@ function setupBot(instance) {
 
   instance.command('menu', async ctx => {
     const userId = String(ctx.from.id);
+    pendingInputs.delete(userId);
     const user = userService.getUser(userId) || userService.initUser(userId, ctx.from);
     await ctx.reply(getWelcomeText(user, userId), {
       parse_mode: 'HTML',
@@ -574,6 +575,7 @@ function setupBot(instance) {
     const action = String(ctx.match?.[1] || '');
     try {
       await ctx.answerCbQuery().catch(() => {});
+      if (['home', 'live', 'wallet'].includes(action)) pendingInputs.delete(userId);
 
       if (action.startsWith('link-delete:')) {
         const id = action.slice('link-delete:'.length);
