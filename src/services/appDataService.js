@@ -70,9 +70,7 @@ function getAdminOverview(users = {}) {
   return {
     totals: {
       users: userEntries.length,
-      linkedAccounts: state.linkedAccounts.length,
-      pendingDeposits: state.deposits.filter(item => item.status === 'pending').length,
-      openTickets: state.tickets.filter(item => item.status === 'open').length
+      linkedAccounts: state.linkedAccounts.length
     },
     users: recentUsers,
     recentAccounts
