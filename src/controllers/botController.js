@@ -72,7 +72,7 @@ function mainMenu(userId) {
       appButton('👑 VIP TRUNG TÂM VIP', 'vip')
     ],
     [
-      Markup.button.url('🗣️ NHÓM CHAT', 'https://t.me/Hendy_Support_Group'),
+      appButton('🗣️ NHÓM CHAT', 'group'),
       appButton('📢 KÊNH THÔNG BÁO', 'news')
     ],
     [
