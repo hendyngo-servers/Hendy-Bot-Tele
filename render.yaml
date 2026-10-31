@@ -2,21 +2,29 @@ services:
   - type: web
     name: hendy-bot-tele
     env: node
-    plan: free # Bạn có thể đổi thành 'starter' nếu muốn nâng cấp sau này
+    plan: free
     buildCommand: npm install
     startCommand: npm start
     envVars:
       - key: NODE_ENV
         value: production
-      
-      # TELEGRAM_BOT_TOKEN là thông tin nhạy cảm.
-      # Đặt sync: false nghĩa là Render sẽ hỏi bạn nhập tay giá trị này 
-      # trên giao diện web lần đầu tiên, thay vì lưu lộ liễu trong file code.
-      - key: TELEGRAM_BOT_TOKEN
-        sync: false 
-      
-      # Render tự động tạo ra một biến hệ thống là RENDER_EXTERNAL_URL 
-      # chứa đúng cái domain mà nó cấp cho bạn (VD: https://hendy-bot-tele.onrender.com)
-      # Ta gắn giá trị đó thẳng vào WEBHOOK_DOMAIN luôn để khỏi phải tự gõ.
+
+      # Render sẽ tự sinh URL (vd: https://hendy-bot.onrender.com) và gán vào đây
       - key: WEBHOOK_DOMAIN
         value: ${RENDER_EXTERNAL_URL}
+
+      # Bạn tự tạo một chuỗi ngẫu nhiên (vd: secret_123_abc) để bảo mật webhook
+      - key: WEBHOOK_SECRET_TOKEN
+        sync: false 
+
+      # Các biến này sẽ không lưu trong mã nguồn, Render sẽ hỏi bạn lúc deploy
+      - key: BOT_TOKEN
+        sync: false
+      - key: ADMIN_ID
+        sync: false
+      - key: MINI_APP_URL
+        sync: false
+      - key: WEB_APP_URL
+        sync: false
+      - key: CORE_BACKEND_URL
+        sync: false
