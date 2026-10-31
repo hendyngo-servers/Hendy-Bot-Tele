@@ -610,7 +610,7 @@ export default function App() {
             </nav>
             <div className="admin-sidebar-bottom">
               <span className="admin-secure-label">● KẾT NỐI BẢO MẬT</span>
-              <button onClick={() => setPage('home')}>↩ Về trang thành viên</button>
+              <button onClick={() => telegram?.close?.()}>↩ Đóng bảng quản trị</button>
               <small>HENDY CYBERTECH · ADMIN</small>
             </div>
           </aside>
@@ -625,7 +625,7 @@ export default function App() {
               <div className="admin-top-actions">
                 <span className="admin-live-status"><i /> HỆ THỐNG ADMIN</span>
                 <button onClick={() => loadAdminTab(adminTab).catch(e => setNotice(e.message))} disabled={busy}>⟳ Làm mới</button>
-                <button className="admin-mobile-home" onClick={() => setPage('home')}>Trang thành viên</button>
+                <button className="admin-mobile-home" onClick={() => telegram?.close?.()}>Đóng Admin</button>
               </div>
             </header>
 
