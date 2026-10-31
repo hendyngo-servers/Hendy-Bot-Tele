@@ -363,7 +363,9 @@ async function createOrder(userId, itemId) {
     status: 'pending',
     createdAt: new Date().toISOString(),
     processedAt: null,
-    processedBy: null
+    processedBy: null,
+    activatedAt: null,
+    expiresAt: null
   };
   state.orders.push(order);
   await persist();
@@ -398,6 +400,13 @@ async function processOrder(id, status, adminId, beforeCommit = async () => {}) 
     order.status = status;
     order.processedAt = new Date().toISOString();
     order.processedBy = String(adminId);
+    if (status === 'approved' && Number(order.durationDays || 0) > 0) {
+      const activatedAt = new Date();
+      order.activatedAt = activatedAt.toISOString();
+      order.expiresAt = new Date(
+        activatedAt.getTime() + Number(order.durationDays) * 24 * 60 * 60 * 1000
+      ).toISOString();
+    }
     await persist();
     return { order: { ...order } };
   } catch (error) {
@@ -589,6 +598,60 @@ function getAdminOverview(users = {}) {
   };
 }
 
+function getActivity(userId, limit = 50) {
+  const id = String(userId);
+  const rows = [];
+
+  for (const item of state.linkedAccounts.filter(entry => entry.userId === id)) {
+    rows.push({
+      id: 'link-' + item.id,
+      type: 'linked_account',
+      title: 'Đã liên kết ' + item.brand,
+      detail: item.username,
+      status: 'completed',
+      createdAt: item.createdAt
+    });
+  }
+  for (const item of state.deposits.filter(entry => entry.userId === id)) {
+    rows.push({
+      id: 'deposit-' + item.id,
+      type: 'deposit',
+      title: 'Yêu cầu nạp ' + Number(item.amount).toLocaleString('vi-VN') + ' VNĐ',
+      detail: item.reference,
+      status: item.status,
+      createdAt: item.createdAt,
+      processedAt: item.processedAt || null
+    });
+  }
+  for (const item of state.orders.filter(entry => entry.userId === id)) {
+    rows.push({
+      id: 'order-' + item.id,
+      type: 'order',
+      title: item.itemName,
+      detail: Number(item.amount).toLocaleString('vi-VN') + ' VNĐ',
+      status: item.status,
+      createdAt: item.createdAt,
+      processedAt: item.processedAt || null,
+      expiresAt: item.expiresAt || null
+    });
+  }
+  for (const item of state.tickets.filter(entry => entry.userId === id)) {
+    rows.push({
+      id: 'ticket-' + item.id,
+      type: 'support',
+      title: 'Yêu cầu hỗ trợ',
+      detail: item.message,
+      status: item.status,
+      createdAt: item.createdAt,
+      reply: item.reply || ''
+    });
+  }
+
+  return rows
+    .sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')))
+    .slice(0, Math.min(100, Math.max(1, Number(limit) || 50)));
+}
+
 function getOverview(userId, user) {
   const id = String(userId);
   return {
@@ -643,5 +706,6 @@ module.exports = {
   getReferralStats,
   addReferralCommission,
   getOverview,
-  getAdminOverview
+  getAdminOverview,
+  getActivity
 };
