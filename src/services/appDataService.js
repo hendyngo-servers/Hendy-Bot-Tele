@@ -1,6 +1,7 @@
 const fs = require('node:fs/promises');
 const path = require('node:path');
 const crypto = require('node:crypto');
+const r2StorageService = require('./r2StorageService');
 
 const dir = process.env.DATA_DIR || path.join(process.cwd(), 'data');
 const file = path.join(dir, 'app-data.json');
@@ -11,6 +12,7 @@ const defaultPaymentSettings = () => ({
   bankAccount: process.env.BANK_ACCOUNT || '',
   bankAccountName: process.env.BANK_ACCOUNT_NAME || '',
   qrImageUrl: '',
+  qrImageKey: '',
   instructions: 'Chuyển khoản đúng số tiền và nội dung để quản trị viên đối soát.',
   minDeposit: Math.max(10000, Number(process.env.MIN_DEPOSIT_VND) || 10000),
   referralCommissionPercent: 0,
@@ -134,6 +136,7 @@ function getPaymentSettings() {
     bankAccount: settings.bankAccount || '',
     bankAccountName: settings.bankAccountName || '',
     qrImageUrl: settings.qrImageUrl || '',
+    qrImageKey: settings.qrImageKey || '',
     instructions: settings.instructions || '',
     minDeposit: Math.max(10000, Number(settings.minDeposit) || 10000),
     referralCommissionPercent: Number(settings.referralCommissionPercent || 0),
@@ -200,7 +203,9 @@ async function createDeposit(userId, amount) {
     amount,
     status: item.status,
     createdAt: item.createdAt,
-    qrUrl: buildQrUrl(settings, amount, reference),
+    qrUrl: settings.qrImageKey
+      ? await r2StorageService.getReadUrl(settings.qrImageKey, 3600)
+      : buildQrUrl(settings, amount, reference),
     payment: {
       bankName: settings.bankName,
       bankAccount: settings.bankAccount,
