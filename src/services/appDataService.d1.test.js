@@ -6,6 +6,7 @@ const path = require('node:path');
 
 const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'hendy-app-d1-'));
 process.env.DATA_DIR = dataDir;
+delete process.env.MONGODB_URI;
 process.env.CLOUDFLARE_ACCOUNT_ID = '918ff2f016938fc978ed23b96505b21e';
 process.env.CLOUDFLARE_D1_DATABASE_ID = '11111111-2222-4333-8444-555555555555';
 process.env.CLOUDFLARE_API_TOKEN = 'test-d1-api-token';
