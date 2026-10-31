@@ -18,13 +18,18 @@ function normalizeUser(id, value = {}) {
   if (!Number.isSafeInteger(vipLevel) || vipLevel < 0 || vipLevel > 10) {
     throw new Error('Cấp VIP của thành viên ' + id + ' không hợp lệ.');
   }
+  const createdAt = value.createdAt || value.created_at || new Date();
+  const createdAtDate = new Date(createdAt);
+  if (Number.isNaN(createdAtDate.getTime())) {
+    throw new Error('Ngày tạo hồ sơ của thành viên ' + id + ' không hợp lệ.');
+  }
   return {
     id: String(id),
     name: String(value.name || 'Người dùng').slice(0, 160),
     username: value.username ? String(value.username).replace(/^@/, '').slice(0, 64) : null,
     balance,
     vipLevel,
-    createdAt: value.createdAt || value.created_at || new Date().toISOString()
+    createdAt: createdAtDate.toISOString()
   };
 }
 
@@ -77,7 +82,11 @@ async function persistPostgres(snapshot) {
 }
 
 function persist() {
-  const snapshot = JSON.parse(JSON.stringify(users));
+  const rawSnapshot = JSON.parse(JSON.stringify(users));
+  const snapshot = {};
+  for (const [id, user] of Object.entries(rawSnapshot)) {
+    snapshot[id] = normalizeUser(id, user);
+  }
   queue = queue.catch(() => {}).then(async () => {
     if (pool) await persistPostgres(snapshot);
     else await persistJson(snapshot);
@@ -123,6 +132,9 @@ async function loadPostgres() {
 
   pool = new Pool({
     connectionString,
+    ...(String(process.env.PGSSLMODE || '').toLowerCase() === 'require'
+      ? { ssl: { rejectUnauthorized: false } }
+      : {}),
     max: Math.max(1, Math.min(20, Number(process.env.PGPOOL_MAX) || 5)),
     connectionTimeoutMillis: 10000,
     idleTimeoutMillis: 30000,
