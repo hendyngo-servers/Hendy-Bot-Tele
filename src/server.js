@@ -15,6 +15,7 @@ const errorHandler = require('./middlewares/errorHandler');
 
 function isProductionRuntime() {
   return process.env.NODE_ENV === 'production' ||
+    process.env.RENDER === 'true' ||
     Boolean(process.env.RENDER_SERVICE_ID || process.env.RENDER_EXTERNAL_URL);
 }
 
