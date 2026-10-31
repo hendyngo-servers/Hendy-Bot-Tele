@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { mainMenu } = require('./botController');
+const { mainMenu } = require('../utils/keyboards');
 
 test('menu thành viên Telegram chỉ dùng callback, không mở Mini App', () => {
   const keyboard = mainMenu('member-regression-test');
