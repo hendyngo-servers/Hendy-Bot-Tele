@@ -10,11 +10,14 @@ router.get('/overview',(req,res)=>{const id=String(req.telegramUser.id);const us
 router.post('/links',async(req,res,next)=>{
   try{
     const {brand,username,password,miniCode}=req.body||{};
-    const allowed=new Set(['QQ88','78WIN','SC88','C168','CM88','F8BET']),b=String(brand||'').toUpperCase();
+    const allowed=new Set(['QQ88','78WIN','SC88','C168','CM88','F8BET']),b=String(brand||'').toUpperCase(),uid=String(req.telegramUser.id);
     if(!allowed.has(b))return res.status(400).json({success:false,message:'Nhà cung cấp không hợp lệ.'});
     if(typeof username!=='string'||username.trim().length<2||username.length>80)return res.status(400).json({success:false,message:'Tên tài khoản phải từ 2 đến 80 ký tự.'});
     if(typeof password!=='string'||password.length<1||password.length>256)return res.status(400).json({success:false,message:'Mật khẩu không hợp lệ.'});
-    const item=await data.addLinkedAccount(req.telegramUser.id,{brand:b,username:username.trim(),miniCode:typeof miniCode==='string'&&miniCode.trim()?miniCode.trim().slice(0,80):username.trim(),encryptedPassword:encryptSecret(password)});
+    const owned=data.listLinkedAccounts(uid);
+    if(owned.length>=10)return res.status(409).json({success:false,message:'Mỗi tài khoản Telegram chỉ được liên kết tối đa 10 tài khoản.'});
+    if(owned.some(x=>x.brand===b&&x.username.toLowerCase()===username.trim().toLowerCase()))return res.status(409).json({success:false,message:'Tài khoản này đã được liên kết.'});
+    const item=await data.addLinkedAccount(uid,{brand:b,username:username.trim(),miniCode:typeof miniCode==='string'&&miniCode.trim()?miniCode.trim().slice(0,80):username.trim(),encryptedPassword:encryptSecret(password)});
     res.status(201).json({success:true,data:item});
   }catch(e){next(e);}
 });
