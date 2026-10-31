@@ -43,6 +43,14 @@ Mở Mini App từ Telegram để có `initData` hợp lệ. Mở URL web trực
 6. Trong BotFather, cấu hình Main Mini App/Web App URL trỏ tới cùng URL HTTPS.
 7. Sau deploy, kiểm tra `https://<service>.onrender.com/healthz`, sau đó mở Bot và nhấn nút Mini App.
 
+## Khắc phục lỗi Telegram Bot không khởi chạy
+
+- Khi gặp lỗi mạng tạm thời, bot sẽ thử kết nối `getMe` tối đa 5 lần; log nêu nguyên nhân/cấp lỗi nhưng che token.
+- HTTP 401/Unauthorized nghĩa là `BOT_TOKEN` không hợp lệ hoặc đã bị thu hồi. Tạo token mới bằng BotFather và cập nhật biến `BOT_TOKEN` trong Render Dashboard → Environment.
+- HTTP 409/Conflict thường cho biết một tiến trình khác đang dùng long polling với cùng bot token. Đảm bảo chỉ có một Render service/instance chạy bot đó.
+- `/healthz` chỉ trả HTTP 200 khi bot đã xác thực được với Telegram; nếu bot chưa sẵn sàng, endpoint trả HTTP 503 để Render không đánh dấu deploy khỏe giả.
+- Sau khi cập nhật token trong Render, lưu thay đổi và redeploy service. Không gửi token trong chat, issue hoặc commit GitHub.
+
 ## Lưu ý dữ liệu trên Render
 Render filesystem mặc định là ephemeral. Blueprint gắn Persistent Disk tại `/var/data`, nên `DATA_DIR` đã được đặt tới mount path này. Disk chỉ được gắn với một instance; cấu hình một instance trong Blueprint và không tăng số instance khi còn dùng lưu trữ JSON cục bộ. Khi có nhiều người dùng hoặc cần scale, nên chuyển hai tệp JSON sang Render Postgres. Gắn Persistent Disk cũng có ảnh hưởng đến zero-downtime deploy; xem tài liệu Render trước khi đổi chiến lược dữ liệu.
 
