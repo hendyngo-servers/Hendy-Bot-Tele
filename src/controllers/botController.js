@@ -3,182 +3,246 @@ const userService = require('../services/userService');
 const backendService = require('../services/backendService');
 const kb = require('../utils/keyboards');
 
-const bot = new Telegraf(process.env.BOT_TOKEN);
-const ADMIN_ID = process.env.ADMIN_ID || '8639286417';
+let bot = null;
+let currentAdminId = process.env.ADMIN_ID;
 
-// Middleware 1: Khởi tạo User 
-bot.use((ctx, next) => {
-  if (ctx.from) userService.initUser(ctx.chat.id.toString(), ctx.from);
-  return next();
-});
+const getVNDateTime = () => new Date().toLocaleString("vi-VN", { timeZone: "Asia/Ho_Chi_Minh" });
 
-// Middleware 2: Phân quyền Admin
-const isAdmin = (ctx, next) => {
-  const chatId = ctx.chat?.id?.toString() || ctx.from?.id?.toString();
-  if (chatId !== ADMIN_ID) {
-    return ctx.answerCbQuery('⛔ Bạn không có quyền truy cập khu vực này!', { show_alert: true });
-  }
-  return next(); 
+const setupBotLogic = (botInstance) => {
+  // Middleware chống Spam (1.5s)
+  botInstance.use(async (ctx, next) => {
+    if (ctx.callbackQuery) {
+      const chatId = ctx.chat?.id?.toString();
+      const cooldowns = userService.getCooldowns();
+      const now = Date.now();
+      if (cooldowns[chatId] && (now - cooldowns[chatId] < 1500)) {
+        return ctx.answerCbQuery('⚠️ Thao tác quá nhanh, từ từ thôi sếp ơi!');
+      }
+      cooldowns[chatId] = now;
+    }
+    return next();
+  });
+
+  // Lệnh /start
+  botInstance.start(async (ctx) => {
+    const chatId = ctx.chat.id.toString();
+    const u = userService.initUser(chatId, ctx.from);
+    backendService.sendLogToWeb(`👤 Khách [${u.name}] (ID: ${chatId}) vừa mở Bot.`);
+
+    const icons = kb.getRandomIcons();
+    const text = `🤖 *BOT HENDY CYBERTECH 2026* [BOT CHÍNH] ${icons.rocket}\nBuổi chiều vui vẻ nhé, *${u.name}* (ID: \`${chatId}\`)\n--------------------------------------------------\n💎 *VIP 0*\n\n💰 **Ví Chính:** \`${u.balance.toLocaleString('vi-VN')} VNĐ\`\n🎁 **Ví Voucher:** \`${u.voucher.toLocaleString('vi-VN')} VNĐ\`\n--------------------------------------------------\n👉 Trang Chủ Website: https://hendy-cybertech.com`;
+    await ctx.reply(text, { parse_mode: 'Markdown', ...kb.getMainMenu() });
+  });
+
+  // Middleware Admin
+  const checkAdmin = (ctx, next) => ctx.chat.id.toString() === currentAdminId ? next() : ctx.reply('⛔ Sếp không có quyền!');
+  
+  botInstance.command('admin', checkAdmin, (ctx) => {
+    ctx.reply("🛠️ *BẢNG QUẢN TRỊ HỆ THỐNG*\n- `/status`: Trạng thái\n- `/user [ID]`: Thông tin KH\n- `/addmoney [ID] [Tiền]`: Cộng trừ tiền\n- `/trungcode [ID] [Trang] [TK] [Code]`: Cấp code\n- `/broadcast [Nội dung]`: Phát loa", { parse_mode: 'Markdown' });
+  });
+
+  botInstance.command('status', checkAdmin, (ctx) => {
+    const mem = Math.round(process.memoryUsage().rss / 1024 / 1024);
+    ctx.reply(`⚙️ *TRẠNG THÁI BOT*\n👥 Tổng khách: \`${Object.keys(userService.getUsers()).length}\`\n🧠 RAM: \`${mem} MB\``, { parse_mode: 'Markdown' });
+  });
+
+  botInstance.command('addmoney', checkAdmin, (ctx) => {
+    const parts = ctx.message.text.split(' ');
+    if (parts.length < 3) return;
+    const targetId = parts[1];
+    const amount = parseInt(parts[2]);
+    const users = userService.getUsers();
+    
+    if (!users[targetId] || isNaN(amount)) return ctx.reply('❌ Lỗi ID hoặc số tiền.');
+    users[targetId].balance += amount;
+    userService.saveDatabase();
+    
+    ctx.reply(`✅ Cập nhật cho ${targetId}. Số dư mới: \`${users[targetId].balance.toLocaleString('vi-VN')} VNĐ\``, { parse_mode: 'Markdown' });
+    botInstance.telegram.sendMessage(targetId, `💰 *BIẾN ĐỘNG SỐ DƯ*\nTài khoản được điều chỉnh: \`${amount > 0 ? '+'+amount : amount} VNĐ\`\n💎 Hiện tại: \`${users[targetId].balance.toLocaleString('vi-VN')} VNĐ\``, { parse_mode: 'Markdown' }).catch(()=>{});
+  });
+
+  botInstance.command('broadcast', checkAdmin, async (ctx) => {
+    const msg = ctx.message.text.substring(11).trim();
+    if (!msg) return ctx.reply('⚠️ Thiếu nội dung!');
+    let count = 0;
+    for (const uid of Object.keys(userService.getUsers())) {
+      try {
+        await botInstance.telegram.sendMessage(uid, `📢 *THÔNG BÁO TỪ HỆ THỐNG:*\n\n${msg}`, { parse_mode: 'Markdown' });
+        count++;
+      } catch (e) {}
+    }
+    ctx.reply(`✅ Phát loa thành công tới \`${count}\` khách!`, { parse_mode: 'Markdown' });
+  });
+
+  // Action Nút Bấm
+  botInstance.action('back_start', async (ctx) => {
+    const chatId = ctx.chat.id.toString();
+    const u = userService.getUser(chatId);
+    const text = `🤖 *BOT HENDY CYBERTECH 2026* [BOT CHÍNH] 🚀\nChào bạn, *${u.name}*\n💰 **Ví Chính:** \`${u.balance.toLocaleString('vi-VN')} VNĐ\``;
+    await ctx.editMessageText(text, { parse_mode: 'Markdown', ...kb.getMainMenu() });
+  });
+
+  botInstance.action('buy_code', async (ctx) => {
+    await ctx.editMessageText('🖤 *TRUNG TÂM MUA CODE*\n💎 *TRẠNG THÁI ĐƠN HÀNG:*\n- Đơn hàng MINI GAME: Chờ [0] | Hoàn tất [0]', { parse_mode: 'Markdown', ...kb.getBuyCodeMenu() });
+  });
+
+  botInstance.action('v2_links', async (ctx) => {
+    const u = userService.getUser(ctx.chat.id.toString());
+    const links = u.linkedAccounts || {};
+    const text = `MINI GAME\n🖤 Chào *${u.name}*\n--------------------------------------------------\n📊 *Thống Kê Liên Kết:*\n- SC88: [${links.SC88?.length || 0}]\n- C168: [${links.C168?.length || 0}]\n- CM88: [${links.CM88?.length || 0}]\n- F8BET: [${links.F8BET?.length || 0}]`;
+    await ctx.editMessageText(text, { parse_mode: 'Markdown', ...kb.getV2LinksMenu(links.SC88?.length||0, links.C168?.length||0, links.CM88?.length||0, links.F8BET?.length||0) });
+  });
+
+  botInstance.action('guide_detail', async (ctx) => {
+    const text = `📖 *HƯỚNG DẪN SỬ DỤNG HỆ THỐNG HENDY CYBERTECH*\n1️⃣ *Liên Kết Tài Khoản xem live:*\n- Cú pháp: \`Taikhoan | Matkhau | TÊN MINI CODE\``;
+    await ctx.editMessageText(text, { parse_mode: 'Markdown', ...kb.getBackMenu('v2_links') });
+  });
+
+  botInstance.action(/^manage_(.+)$/, async (ctx) => {
+    const brand = ctx.match[1];
+    const u = userService.getUser(ctx.chat.id.toString());
+    const accounts = u.linkedAccounts[brand] || [];
+    
+    let text = `📂 *DANH SÁCH TÀI KHOẢN (${brand})*\n--------------------------------------------------\n`;
+    const buttons = [];
+    if (accounts.length === 0) text += "Chưa có tài khoản nào được liên kết.";
+    else {
+      accounts.forEach((acc, idx) => {
+        text += `${idx + 1}. TK: \`${acc.tk}\` - Code: \`${acc.miniCode}\`\n`;
+        buttons.push([{ text: `❌ Xóa ${acc.tk}`, callback_data: `del_${brand}_${idx}` }]);
+      });
+    }
+    buttons.push([{ text: `➕ THÊM LIÊN KẾT | ACC ${brand}`, callback_data: `link_${brand}` }]);
+    buttons.push([{ text: '🔙 Quay lại', callback_data: 'v2_links' }]);
+    
+    await ctx.editMessageText(text, { parse_mode: 'Markdown', reply_markup: { inline_keyboard: buttons } });
+  });
+
+  botInstance.action(/^del_(.+)_(\d+)$/, async (ctx) => {
+    const brand = ctx.match[1];
+    const idx = parseInt(ctx.match[2]);
+    const u = userService.getUser(ctx.chat.id.toString());
+    
+    if (u.linkedAccounts[brand] && u.linkedAccounts[brand].length > idx) {
+      u.linkedAccounts[brand].splice(idx, 1);
+      userService.saveDatabase();
+      await ctx.answerCbQuery('Đã xóa thành công!');
+      ctx.match[1] = brand; 
+      botInstance.handleUpdate({ callback_query: { id: ctx.callbackQuery.id, from: ctx.from, message: ctx.callbackQuery.message, chat_instance: ctx.callbackQuery.chat_instance, data: `manage_${brand}` }});
+    }
+  });
+
+  botInstance.action(/^link_(.+)$/, async (ctx) => {
+    const brand = ctx.match[1];
+    userService.getStates()[ctx.chat.id.toString()] = { step: 'WAITING_FOR_CREDENTIALS', brand };
+    await ctx.reply(`📍 *TRANG: ${brand} MINI GAME*\n🔒 Vui lòng gửi thông tin đăng nhập theo cú pháp:\n\`Taikhoan | Matkhau | TÊN MINI CODE\``, { parse_mode: 'Markdown' });
+  });
+
+  botInstance.action('deposit', async (ctx) => {
+    userService.getStates()[ctx.chat.id.toString()] = { step: 'WAITING_FOR_DEPOSIT_AMOUNT' };
+    await ctx.reply('💵 Nhập số tiền sếp muốn nạp vào ví (Tối thiểu 10.000đ):');
+  });
+
+  botInstance.action('unimplemented', (ctx) => ctx.answerCbQuery('🚀 Tính năng sắp ra mắt!', { show_alert: true }));
+
+  // Xử lý Text Input
+  botInstance.on('text', async (ctx) => {
+    if (ctx.message.text.startsWith('/')) return;
+    const chatId = ctx.chat.id.toString();
+    const text = ctx.message.text.trim();
+    const u = userService.initUser(chatId, ctx.from);
+    const states = userService.getStates();
+
+    if (states[chatId]?.step === 'WAITING_FOR_DEPOSIT_AMOUNT') {
+      const amount = parseInt(text.replace(/\D/g, ''));
+      if (amount && amount >= 10000) {
+        const qrUrl = `https://img.vietqr.io/image/MB-0123456789ABC-compact2.png?amount=${amount}&addInfo=HENDY${chatId}`;
+        await ctx.replyWithPhoto(qrUrl, { caption: `⚡ *LỆNH NẠP TIỀN TỰ ĐỘNG*\n💵 Số tiền: \`${amount.toLocaleString('vi-VN')} VNĐ\`\n📝 Nội dung: \`HENDY${chatId}\``, parse_mode: 'Markdown' });
+        delete states[chatId];
+      } else {
+        await ctx.reply('⚠️ Số tiền nạp tối thiểu là 10.000 VNĐ!');
+      }
+      return;
+    }
+
+    const lines = text.split('\n');
+    let success = [], duplicate = 0, error = 0, limit = 0;
+    const MAX = 4;
+    let totalAcc = Object.values(u.linkedAccounts).reduce((sum, arr) => sum + arr.length, 0);
+
+    for (const line of lines) {
+      if (!line.trim()) continue;
+      const parts = line.split('|').map(s => s.trim());
+      if (parts.length >= 2) {
+        const tk = parts[0], mk = parts[1];
+        const miniCode = parts.length >= 3 ? parts[2] : tk;
+        const brand = parts.length >= 4 ? parts[3].toUpperCase() : (states[chatId]?.brand || 'SC88');
+
+        if (!u.linkedAccounts[brand]) u.linkedAccounts[brand] = [];
+        if (totalAcc >= MAX) { limit++; continue; }
+
+        if (u.linkedAccounts[brand].some(a => a.tk.toLowerCase() === tk.toLowerCase())) {
+          duplicate++;
+        } else {
+          u.linkedAccounts[brand].push({ tk, mk, miniCode });
+          totalAcc++;
+          success.push(`[${tk}] tại ${brand}`);
+          backendService.syncTeleAccount({ tk, mk, tab: miniCode, brand, sender: u.name });
+        }
+      } else {
+        error++;
+      }
+    }
+
+    if (success.length > 0) userService.saveDatabase();
+
+    let replyMsg = "";
+    if (success.length > 0) replyMsg += `🥰 *Ting ting! Chốt đơn ${success.length} acc lúc ${getVNDateTime().split(' ')[1]}:*\n${success.map(s => `👉 ${s}`).join('\n')}\n\n`;
+    if (duplicate > 0) replyMsg += `😅 *Quen quen nha!* Bỏ qua **${duplicate} acc** đã có sẵn.\n`;
+    if (limit > 0) replyMsg += `😢 *Giỏ hàng đầy!* Từ chối **${limit} acc** (Max ${MAX}).\n`;
+    if (error > 0 && success.length === 0 && duplicate === 0) replyMsg += `🤪 *Lạc nhịp rồi!* Sai cú pháp (Chuẩn: TK | MK | Code | Brand).\n`;
+
+    if (success.length === 0 && duplicate > 0 && limit === 0) replyMsg = "😅 *Toàn hàng cũ!* Đã liên kết trước đó rồi.";
+    else if (success.length === 0 && limit > 0) replyMsg = `😢 *Kho đã đầy!* Bạn đã chạm nóc giới hạn ${MAX} acc.`;
+
+    if (replyMsg) {
+      await ctx.reply(replyMsg, { 
+        parse_mode: 'Markdown', 
+        reply_markup: { inline_keyboard: [[{ text: "🌟 Tuyệt!", callback_data: "awesome" }, { text: "📜 Lịch sử", callback_data: "customer_center" }]] } 
+      });
+    }
+
+    if (states[chatId]?.step === 'WAITING_FOR_CREDENTIALS') delete states[chatId];
+  });
 };
 
-// ==========================================
-// A. LỆNH CƠ BẢN & MENU CHÍNH
-// ==========================================
-bot.start(async (ctx) => {
-  const chatId = ctx.chat.id.toString();
-  userService.clearState(chatId);
-  const u = userService.getUser(chatId);
-  const text = `🤖 *BOT HENDY CYBERTECH 2026* [BOT CHÍNH] 🚀\nBuổi chiều vui vẻ nhé, *${u.name}* (ID: \`${chatId}\`)\n--------------------------------------------------\n💎 *VIP 0*\n💰 **Ví Chính:** \`${u.balance.toLocaleString()} VNĐ\``;
-  await ctx.reply(text, { parse_mode: 'Markdown', ...kb.getMainMenu() });
-});
+module.exports = {
+  startBot: async (token, adminId) => {
+    if (bot) bot.stop();
+    if (adminId) currentAdminId = adminId;
+    if (!token) return false;
 
-bot.action('back_start', async (ctx) => {
-  const chatId = ctx.chat.id.toString();
-  userService.clearState(chatId);
-  const u = userService.getUser(chatId);
-  const text = `🤖 *BOT HENDY CYBERTECH 2026* 🚀\nChào mừng bạn quay lại, *${u.name}*\n💰 **Ví Chính:** \`${u.balance.toLocaleString()} VNĐ\``;
-  await ctx.editMessageText(text, { parse_mode: 'Markdown', ...kb.getMainMenu() });
-});
-
-// ==========================================
-// B. CÁC MENU CHỨC NĂNG NGƯỜI DÙNG
-// ==========================================
-bot.action('shop_code_mini', async (ctx) => {
-  await ctx.editMessageText('🛍️ *TRUNG TÂM MUA CODE MINI TRỰC TIẾP*\n\nVui lòng chọn sảnh hoặc gói mã code bên dưới:', { parse_mode: 'Markdown', ...kb.getShopCodeMenu() });
-});
-
-bot.action('cshk_center', async (ctx) => {
-  await ctx.editMessageText('🎴 *TRUNG TÂM QUẢN LÝ TÀI KHOẢN*\nChọn một trong hai cách truy cập bên dưới:', { parse_mode: 'Markdown', ...kb.getCSHKMenu() });
-});
-
-bot.action('deposit', async (ctx) => {
-  const u = userService.getUser(ctx.chat.id.toString());
-  await ctx.editMessageText(`💳 *NẠP TIỀN VÀO HỆ THỐNG*\nChuyển khoản tự động qua Momo/Banking.\nSố dư hiện tại: \`${u.balance.toLocaleString()} VNĐ\``, { parse_mode: 'Markdown', ...kb.getBackStartMenu() });
-});
-
-// Dịch vụ mạng xã hội
-bot.action('social_service', async (ctx) => {
-  await ctx.editMessageText('🌐 *DỊCH VỤ MẠNG XÃ HỘI*\nHệ thống buff tương tác tự động. Vui lòng chọn dịch vụ:', { parse_mode: 'Markdown', ...kb.getSocialServiceMenu() });
-});
-
-bot.action('buff_tiktok', async (ctx) => {
-  userService.setState(ctx.chat.id.toString(), { action: 'waiting_live_link', platform: 'TikTok' });
-  await ctx.editMessageText('🎵 *BUFF 1K MẮT TIKTOK LIVE*\n\n👉 Gửi **Link hoặc Username Livestream TikTok** vào khung chat:', { parse_mode: 'Markdown', ...kb.getBackStartMenu() });
-});
-
-bot.action('buff_fb', async (ctx) => {
-  userService.setState(ctx.chat.id.toString(), { action: 'waiting_live_link', platform: 'Facebook' });
-  await ctx.editMessageText('📘 *BUFF 1K MẮT FACEBOOK LIVE*\n\n👉 Gửi **Link Livestream Facebook** vào khung chat:', { parse_mode: 'Markdown', ...kb.getBackStartMenu() });
-});
-
-// Kho acc động bằng Regex
-bot.action(/^shop_kho_detail_(.+)$/, async (ctx) => {
-  const brand = ctx.match[1];
-  const u = userService.getUser(ctx.chat.id.toString());
-  const list = u.accountKho[brand] || [];
-  const text = `📦 *KHO ACC ${brand}*\n----------------------------------------\n📊 Tổng: \`${list.length}/50\` tài khoản\n✅ Đã check: \`${list.filter(i=>i.checked).length}\``;
-  
-  await ctx.editMessageText(text, { 
-    parse_mode: 'Markdown', 
-    reply_markup: { inline_keyboard: [
-      [{ text: '➕ THÊM ACC VÀO KHO', callback_data: `add_acc_${brand}` }],
-      [{ text: '🗑️ XÓA ACC', callback_data: `clear_acc_${brand}` }],
-      [{ text: '« QUAY LẠI', callback_data: 'shop_code_mini' }]
-    ]}
-  });
-});
-
-bot.action(/^add_acc_(.+)$/, async (ctx) => {
-  const brand = ctx.match[1];
-  userService.setState(ctx.chat.id.toString(), { action: 'waiting_add_acc', brand });
-  await ctx.editMessageText(`➕ *THÊM ACC VÀO KHO ${brand}*\n\n👉 Vui lòng nhập **Tài khoản | Mật khẩu** của bạn vào khung chat:`, { parse_mode: 'Markdown' });
-});
-
-bot.action(/^clear_acc_(.+)$/, async (ctx) => {
-  const brand = ctx.match[1];
-  const u = userService.getUser(ctx.chat.id.toString());
-  u.accountKho[brand] = [];
-  await ctx.editMessageText(`🗑️ Đã xóa toàn bộ tài khoản trong kho *${brand}*!`, { 
-    parse_mode: 'Markdown', 
-    reply_markup: { inline_keyboard: [[{ text: '« Quay lại', callback_data: `shop_kho_detail_${brand}` }]] } 
-  });
-});
-
-bot.action('bot_vietsub', async (ctx) => {
-  const chatId = ctx.chat.id.toString();
-  const u = userService.getUser(chatId);
-  try {
-    await backendService.triggerVietsubPipeline(chatId, u.name);
-    userService.setState(chatId, { action: 'waiting_video_link' });
-    await ctx.editMessageText(`🎬 *BOT DỊCH VỤ VIETSUB V3.0*\n\n✅ Đã gửi lệnh kích hoạt luồng xử lý Video AI!\nVui lòng gửi link Video bạn muốn xử lý vào đây.`, { parse_mode: 'Markdown', ...kb.getBackStartMenu() });
-  } catch (err) {
-    await ctx.editMessageText(`🔴 *MẤT KẾT NỐI*\nKhông thể kết nối đến Máy chủ Core Backend.`, { parse_mode: 'Markdown', ...kb.getBackStartMenu() });
-  }
-});
-
-// ==========================================
-// C. KHU VỰC ADMIN PANEL
-// ==========================================
-bot.action('admin_panel', isAdmin, async (ctx) => {
-  const users = userService.getAllUsers();
-  const totalUsers = Object.keys(users).length;
-  await ctx.editMessageText(`🛠️ *ADMIN QUẢN LÝ*\n\n📊 Thống kê: Có \`${totalUsers}\` user đang hoạt động.`, { parse_mode: 'Markdown', ...kb.getAdminMenu() });
-});
-
-bot.action('admin_list_users', isAdmin, async (ctx) => {
-  const users = userService.getAllUsers();
-  let userListStr = "";
-  let i = 1;
-  for (let id in users) {
-    if (i > 10) { userListStr += `... và còn nhiều user khác.\n`; break; }
-    userListStr += `${i}. ${users[id].name} (\`${id}\`) - Ví: ${users[id].balance.toLocaleString()}đ\n`;
-    i++;
-  }
-  await ctx.editMessageText(`👥 *DANH SÁCH THÀNH VIÊN*\n\n${userListStr || 'Chưa có user nào.'}`, { parse_mode: 'Markdown', ...kb.getBackAdminMenu() });
-});
-
-bot.action('admin_ktor_trigger', isAdmin, async (ctx) => {
-  const res = await backendService.sendAdminCommand('FORCE_SYNC_ALL_PIPELINES', ctx.chat.id.toString());
-  await ctx.editMessageText(`⚡ *KẾT QUẢ KTOR CLIENT*\n\nTrạng thái phản hồi:\n\`${JSON.stringify(res, null, 2)}\``, { parse_mode: 'Markdown', ...kb.getBackAdminMenu() });
-});
-
-// ==========================================
-// D. XỬ LÝ NHẬP VĂN BẢN (STATE TEXT INPUT)
-// ==========================================
-bot.on('text', async (ctx) => {
-  const chatId = ctx.chat.id.toString();
-  const state = userService.getState(chatId);
-  if (!state) return;
-
-  const text = ctx.message.text.trim();
-  const u = userService.getUser(chatId);
-
-  if (state.action === 'waiting_add_acc') {
-    if (!u.accountKho[state.brand]) u.accountKho[state.brand] = [];
-    u.accountKho[state.brand].push({ acc: text, checked: true });
-    userService.clearState(chatId);
-    await ctx.reply(`✅ *THÊM TÀI KHOẢN THÀNH CÔNG!*\nKho: *${state.brand}*\nThông tin: \`${text}\``, { 
-      parse_mode: 'Markdown', 
-      reply_markup: { inline_keyboard: [[{ text: `◀ Quay lại Kho ${state.brand}`, callback_data: `shop_kho_detail_${state.brand}` }]]} 
-    });
-  }
-
-  else if (state.action === 'waiting_live_link') {
-    const cost = state.platform === "TikTok" ? 10000 : 15000;
-    if (u.balance < cost) {
-      userService.clearState(chatId);
-      return ctx.reply(`❌ *GIAO DỊCH THẤT BẠI*\nSố dư (\`${u.balance.toLocaleString()} VNĐ\`) không đủ.`, { parse_mode: 'Markdown', ...kb.getBackStartMenu() });
+    try {
+      bot = new Telegraf(token);
+      setupBotLogic(bot);
+      bot.launch();
+      console.log('🤖 Bot Telegram đã khởi động thành công!');
+      return true;
+    } catch (e) {
+      console.error('❌ Lỗi khởi động bot:', e);
+      return false;
     }
-    u.balance -= cost;
-    u.history.push(`Mua mắt ${state.platform} (-${cost})`);
-    userService.clearState(chatId);
-    await ctx.reply(`🚀 *BUFF MẮT THÀNH CÔNG!*\nNền tảng: *${state.platform}*\nTrừ: \`-${cost.toLocaleString()} VNĐ\``, { parse_mode: 'Markdown', ...kb.getBackStartMenu() });
-  }
-
-  else if (state.action === 'waiting_video_link') {
-    userService.clearState(chatId);
-    await ctx.reply(`🎬 *ĐÃ NHẬN YÊU CẦU*\n\nVideo của bạn đã được đưa vào hệ thống Media Pipeline qua Ktor Client.`, { parse_mode: 'Markdown', ...kb.getBackStartMenu() });
-  }
-});
-
-module.exports = bot;
+  },
+  stopBot: () => {
+    if (bot) {
+      bot.stop();
+      bot = null;
+    }
+  },
+  broadcastToAdmin: (msg) => {
+    if (bot && currentAdminId) {
+      bot.telegram.sendMessage(currentAdminId, `📢 *THÔNG BÁO TỪ TRẠM MẸ:*\n\n${msg}`, { parse_mode: 'Markdown' }).catch(()=>{});
+    }
+  },
+  isRunning: () => bot !== null
+};
