@@ -27,13 +27,13 @@ function mainMenu() {
   return Markup.inlineKeyboard([
     miniAppButton(),
     [
-      callbackButton('🟥 🚀 MINIGAME LIVE', 'live', 'danger'),
-      callbackButton('🟦 🧰 THUÊ TOOL', 'unconfigured', 'primary')
+      callbackButton(' 🚀 MINIGAME LIVE', 'live', 'danger'),
+      callbackButton(' 🧰 THUÊ TOOL', 'unconfigured', 'primary')
     ],
-    [callbackButton('🟩 🎁 MUA LÌ XÌ · CODE', 'catalog', 'success')],
+    [callbackButton(' 🎁 MUA LÌ XÌ · CODE', 'catalog', 'success')],
     [
-      callbackButton('🟥 💳 NẠP TIỀN', 'deposit', 'danger'),
-      callbackButton('🟦 ⚙️ OTP & PROXY', 'unconfigured', 'primary')
+      callbackButton(' 💳 NẠP TIỀN', 'deposit', 'danger'),
+      callbackButton(' ⚙️ OTP & PROXY', 'unconfigured', 'primary')
     ],
     [callbackButton('🏆 VIP KHO CÔNG CỤ ĐẶC QUYỀN', 'unconfigured', 'success')],
     [callbackButton('💎 TRUNG TÂM KHÁCH HÀNG', 'customer', 'primary')],
