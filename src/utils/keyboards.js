@@ -17,46 +17,46 @@ const getRandomIcons = () => {
 const getMainMenu = () => {
   const icons = getRandomIcons();
   return Markup.inlineKeyboard([
-    // Hàng 1: Minigame Live & Thuê Tool (Màu đỏ & Xanh dương nhạt)
+    // Hàng 1: MINIGAME LIVE (Đỏ) & THUÊ TOOL (Xanh dương)
     [
-      Markup.button.callback(`🎯 MINIGAME LIVE`, 'menu_minigame'), 
-      Markup.button.callback(`🌐 THUÊ TOOL (NEW)`, 'unimplemented')
+      Markup.button.callback(`🟥 ${icons.rocket} MINIGAME LIVE`, 'menu_minigame'), 
+      Markup.button.callback(`🟦 ${icons.tool} THUÊ TOOL (NEW)`, 'unimplemented')
     ],
-    // Hàng 2: Mua lì xì (Nút dài màu xanh lá)
+    // Hàng 2: MUA LÌ XÌ (Xanh lá)
     [
-      Markup.button.callback(`🎁 MUA LÌ XÌ - CODE MÀN - CODE TELE`, 'buy_code')
+      Markup.button.callback(`🟩 ${icons.gift} MUA LÌ XÌ - CODE MÀN - CODE TELE`, 'buy_code')
     ],
-    // Hàng 3: Nạp tiền & OTP Proxy (Đỏ & Xanh dương)
+    // Hàng 3: NẠP TIỀN (Đỏ) & OTP & PROXY (Xanh dương)
     [
-      Markup.button.callback(`💳 NẠP TIỀN`, 'deposit'), 
-      Markup.button.callback(`🌐 OTP & PROXY`, 'menu_otp_proxy')
+      Markup.button.callback(`🟥 ${icons.card} NẠP TIỀN`, 'deposit'), 
+      Markup.button.callback(`🟦 ${icons.shield} OTP & PROXY`, 'menu_otp_proxy')
     ],
-    // Hàng 4: VIP Kho công cụ (Cam đậm)
+    // Hàng 4: VIP KHO CÔNG CỤ (Cam)
     [
-      Markup.button.callback('🏆 VIP KHO CÔNG CỤ ĐẶC QUYỀN', 'menu_vip_tools')
+      Markup.button.callback('🟧 🏆 VIP KHO CÔNG CỤ ĐẶC QUYỀN', 'menu_vip_tools')
     ],
-    // Hàng 5: Trung tâm khách hàng (Xanh dương)
+    // Hàng 5: TRUNG TÂM KHÁCH HÀNG (Xanh dương)
     [
-      Markup.button.callback('💎 TRUNG TÂM KHÁCH HÀNG', 'customer_center')
+      Markup.button.callback('🟦 💎 TRUNG TÂM KHÁCH HÀNG', 'customer_center')
     ],
-    // Hàng 6: Hệ thống ghép đối đầu (Đỏ)
+    // Hàng 6: HỆ THỐNG GHÉP ĐỐI ĐẦU (Đỏ)
     [
-      Markup.button.callback('⚔️ HỆ THỐNG GHÉP ĐỐI ĐẦU', 'menu_duel')
+      Markup.button.callback('🟥 ⚔️ HỆ THỐNG GHÉP ĐỐI ĐẦU', 'menu_duel')
     ],
-    // Hàng 7: Giới thiệu REF & VIP Trung tâm VIP (Xanh dương & Vàng cam)
+    // Hàng 7: Giới thiệu REF (Xanh dương) & VIP Trung tâm VIP (Vàng/Cam)
     [
-      Markup.button.callback('👥 Giới thiệu REF', 'unimplemented'), 
-      Markup.button.callback('👑 VIP TRUNG TÂM VIP', 'unimplemented')
+      Markup.button.callback('🟦 👥 Giới thiệu REF', 'unimplemented'), 
+      Markup.button.callback('🟧 👑 VIP TRUNG TÂM VIP', 'unimplemented')
     ],
-    // Hàng 8: Nhóm chat & Kênh thông báo (Xanh lá)
+    // Hàng 8: NHÓM CHAT & KÊNH THÔNG BÁO (Xanh lá)
     [
-      Markup.button.url('👥 NHÓM CHAT', 'https://t.me/Hendy_Support_Group'), 
-      Markup.button.callback('📢 KÊNH THÔNG BÁO', 'unimplemented')
+      Markup.button.url('🟩 👥 NHÓM CHAT', 'https://t.me/lethituanem_nhomchat'), 
+      Markup.button.callback('🟩 📢 KÊNH THÔNG BÁO', 'unimplemented')
     ],
-    // Hàng 9: Nhập Giftcode & Liên hệ CSKH (Đỏ & Nâu)
+    // Hàng 9: NHẬP GIFTCODE (Đỏ) & LIÊN HỆ CSKH (Nâu/Xám)
     [
-      Markup.button.callback('🎟️ NHẬP GIFTCODE', 'unimplemented'), 
-      Markup.button.callback('🧑🏻‍💻 LIÊN HỆ CSKH', 'unimplemented')
+      Markup.button.callback('🟥 🎟️ NHẬP GIFTCODE', 'unimplemented'), 
+      Markup.button.callback('🟫 🧑🏻‍💻 LIÊN HỆ CSKH', 'unimplemented')
     ]
   ]);
 };
