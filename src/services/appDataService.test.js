@@ -6,6 +6,10 @@ const path = require('node:path');
 
 const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'hendy-app-data-'));
 process.env.DATA_DIR = dataDir;
+delete process.env.MONGODB_URI;
+delete process.env.CLOUDFLARE_ACCOUNT_ID;
+delete process.env.CLOUDFLARE_D1_DATABASE_ID;
+delete process.env.CLOUDFLARE_API_TOKEN;
 
 const service = require('./appDataService');
 const dataFile = path.join(dataDir, 'app-data.json');
