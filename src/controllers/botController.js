@@ -111,10 +111,11 @@ function setupBot(instance) {
 
   instance.start(async ctx => {
     const chatId = String(ctx.from.id);
+    const isFirstVisit = !userService.getUser(chatId);
     const user = userService.initUser(chatId, ctx.from);
     const payload = String(ctx.startPayload || '');
     const referralMatch = payload.match(/^ref_(\d{1,20})$/);
-    if (referralMatch) {
+    if (isFirstVisit && referralMatch) {
       const registered = await appDataService.registerReferral(referralMatch[1], chatId);
       if (registered) console.info('[REF] Đã ghi nhận lượt giới thiệu cho ID ' + referralMatch[1] + '.');
     }
