@@ -97,7 +97,7 @@ const setupBotLogic = (botInstance) => {
     await ctx.editMessageText(text, { parse_mode: 'Markdown', ...kb.getMainMenu() });
   });
 
-  // Mở Menu Minigame Live (Đã fix lỗi cú pháp chatId)
+  // Mở Menu Minigame Live
   botInstance.action('menu_minigame', async (ctx) => {
     const chatId = ctx.chat.id.toString();
     const u = userService.getUser(chatId);
