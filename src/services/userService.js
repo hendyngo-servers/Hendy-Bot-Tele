@@ -133,7 +133,7 @@ async function loadPostgres() {
   pool = new Pool({
     connectionString,
     ...(String(process.env.PGSSLMODE || '').toLowerCase() === 'require'
-      ? { ssl: { rejectUnauthorized: false } }
+      ? { ssl: { rejectUnauthorized: true } }
       : {}),
     max: Math.max(1, Math.min(20, Number(process.env.PGPOOL_MAX) || 5)),
     connectionTimeoutMillis: 10000,
