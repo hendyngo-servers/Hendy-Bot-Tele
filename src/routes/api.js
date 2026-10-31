@@ -122,6 +122,7 @@ router.post('/orders', async (req, res, next) => {
   } catch (error) { return next(error); }
 });
 router.get('/orders', (req, res) => ok(res, appDataService.listOrders(req.telegramUser.id)));
+router.get('/activity', (req, res) => ok(res, appDataService.getActivity(req.telegramUser.id)));
 
 router.post('/deposits', async (req, res, next) => {
   try {
