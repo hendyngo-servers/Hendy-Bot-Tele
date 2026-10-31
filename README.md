@@ -79,7 +79,7 @@ Khi khởi động lần đầu với D1:
 4. Chỉ sau khi import thành công, các file JSON cũ được đổi tên thành `*.migrated-d1-<timestamp>`; bản sao lưu vẫn nằm trên Persistent Disk.
 5. Sau migration, D1 là nguồn chính cho hồ sơ và dữ liệu nghiệp vụ.
 
-Render PostgreSQL đang được giữ trong Blueprint để làm nguồn di chuyển/rollback cho dữ liệu cũ. Không xóa database đó trước khi kiểm tra số lượng hồ sơ và sao lưu D1 thành công. Sau khi xác nhận migration, có thể đánh giá riêng việc ngừng database Render để tránh chi phí không cần thiết.
+Blueprint không tạo thêm Render PostgreSQL; D1 là database mục tiêu. Nếu có PostgreSQL cũ bên ngoài Render, chỉ cấu hình `DATABASE_URL` tạm thời trong Environment để import, sau khi xác nhận số lượng dữ liệu và backup xong thì bỏ biến này. Workspace Render được kiểm tra hiện không có PostgreSQL instance.
 
 ## Cloudflare R2 — ảnh và object storage
 
@@ -125,7 +125,7 @@ Khi bật D1 local, phải điền đủ `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_D1
 `render.yaml` khai báo:
 - Một Node Web Service tại Singapore, một instance.
 - Một Persistent Disk tại `/var/data` để giữ backup migration và dùng cho local/legacy adapter.
-- Render PostgreSQL hiện hữu được giữ trong Blueprint làm nguồn migration dự phòng.
+- Không tạo Render PostgreSQL mới; Cloudflare D1 là nguồn dữ liệu chính.
 - Cloudflare D1 và R2 cấu hình bằng Render Environment; không nhúng API token/secret trong YAML.
 - Build: `npm install --no-audit --no-fund && npm run check && npm test && npm run build`.
 - Start: `npm start`; health check: `/healthz`.
@@ -143,7 +143,7 @@ Khi bật D1 local, phải điền đủ `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_D1
 | `BOT_TOKEN` | Token mới từ BotFather |
 | `ADMIN_ID` | Telegram numeric user ID của Admin |
 | `APP_ENCRYPTION_KEY` | Chuỗi ngẫu nhiên riêng, tối thiểu 32 ký tự |
-| `DATABASE_URL` | Được Render nối từ PostgreSQL cũ trong Blueprint để hỗ trợ migration |
+| `DATABASE_URL` | Tùy chọn tạm thời nếu cần nhập từ PostgreSQL cũ; không phải database chạy chính |
 
 Ứng dụng kiểm tra D1 và R2 khi khởi động production. Nếu D1 ID/token, R2 bucket/keys hoặc bucket thực tế không tồn tại/không truy cập được, tiến trình sẽ dừng để tránh chạy với một phần dữ liệu không được lưu bền vững.
 
