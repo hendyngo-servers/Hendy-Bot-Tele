@@ -8,6 +8,26 @@ let currentAdminId = process.env.ADMIN_ID;
 
 const getVNDateTime = () => new Date().toLocaleString("vi-VN", { timeZone: "Asia/Ho_Chi_Minh" });
 
+// Hàm helper để tạo thông tin trang chủ chuẩn theo mẫu yêu cầu
+const getHomeMessage = (u, chatId) => {
+  if (u.nyc === undefined) u.nyc = 0;
+  if (u.vipLevel === undefined) u.vipLevel = 0;
+  if (u.status === undefined) u.status = 'Bình thường';
+
+  return `🏡 *Buổi tối vui vẻ nhé, ${u.name}*
+🆔 ID: \`${chatId}\`
+
+💎 *VIP ${u.vipLevel}* (Tổng nạp: 0 VNĐ)
+
+💳 **Ví Chính:** \`${u.balance.toLocaleString('vi-VN')} VNĐ\`
+💵 **Ví NYC:** \`${u.nyc.toLocaleString('vi-VN')} VNĐ\`
+
+🛡️ **Trạng thái thành viên:** [${u.status}]
+
+🌐 **Website:** https://t.me/Hendy_Support_Group 
+💬 **Nhóm Tuấn Em:** @Hendy_Support_Group`;
+};
+
 const setupBotLogic = (botInstance) => {
   // Middleware chống Spam (1.5s)
   botInstance.use(async (ctx, next) => {
@@ -29,8 +49,7 @@ const setupBotLogic = (botInstance) => {
     const u = userService.initUser(chatId, ctx.from);
     backendService.sendLogToWeb(`👤 Khách [${u.name}] (ID: ${chatId}) vừa mở Bot.`);
 
-    const icons = kb.getRandomIcons();
-    const text = `🤖 *BOT HENDY CYBERTECH 2026* [BOT CHÍNH] ${icons.rocket}\nBuổi chiều vui vẻ nhé, *${u.name}* (ID: \`${chatId}\`)\n--------------------------------------------------\n💎 *VIP 0*\n\n💰 **Ví Chính:** \`${u.balance.toLocaleString('vi-VN')} VNĐ\`\n🎁 **Ví Voucher:** \`${u.voucher.toLocaleString('vi-VN')} VNĐ\`\n--------------------------------------------------\n👉 Trang Chủ Website: https://hendy-cybertech.com`;
+    const text = getHomeMessage(u, chatId);
     await ctx.reply(text, { parse_mode: 'Markdown', ...kb.getMainMenu() });
   });
 
@@ -67,7 +86,7 @@ const setupBotLogic = (botInstance) => {
     let count = 0;
     for (const uid of Object.keys(userService.getUsers())) {
       try {
-        await botInstance.telegram.sendMessage(uid, `📢 *THÔNG BÁO TỪ HỆ THỐNG:*\n\n{msg}`, { parse_mode: 'Markdown' });
+        await botInstance.telegram.sendMessage(uid, `📢 *THÔNG BÁO TỪ HỆ THỐNG:*\n\n${msg}`, { parse_mode: 'Markdown' });
         count++;
       } catch (e) {}
     }
@@ -78,11 +97,11 @@ const setupBotLogic = (botInstance) => {
   botInstance.action('back_start', async (ctx) => {
     const chatId = ctx.chat.id.toString();
     const u = userService.getUser(chatId);
-    const text = `🤖 *BOT HENDY CYBERTECH 2026* [BOT CHÍNH] 🚀\nChào bạn, *${u.name}*\n💰 **Ví Chính:** \`${u.balance.toLocaleString('vi-VN')} VNĐ\``;
+    const text = getHomeMessage(u, chatId);
     await ctx.editMessageText(text, { parse_mode: 'Markdown', ...kb.getMainMenu() });
   });
 
-  // Mở Menu Minigame Live (giống ảnh mẫu Telegram của bạn)
+  // Mở Menu Minigame Live
   botInstance.action('menu_minigame', async (ctx) => {
     const u = userService.getUser(ctx.chat.id.toString());
     const text = `LIVESTREAM 🚀\n*PREMIUM* 👑\n\n╭─────────────╮\n  💭 Chào, *${u.name}*.\n╰─────────────╯\n\n● Tổng đơn đang chờ duyệt chạy: \`[ 0 ]\`\n● Tổng đơn đang chạy: \`[ 0 ]\`\n● Tổng đơn hoàn thành: \`[ 0 ]\`\n--------------------------------------------------\n🎉 🎊 Cập nhật tính năng yêu cầu hoàn đơn nếu trúng mà không thấy phát.`;
@@ -105,10 +124,9 @@ const setupBotLogic = (botInstance) => {
     await ctx.editMessageText(text, { parse_mode: 'Markdown', ...kb.getBackMenu('v2_links') });
   });
 
-  // Điều hướng nhanh khi bấm vào các nhóm sảnh minigame
+  // Điều hướng nhanh nhóm sảnh minigame
   botInstance.action(['minigame_group_1', 'minigame_group_2', 'minigame_group_3'], async (ctx) => {
     await ctx.answerCbQuery('🚀 Chuyển hướng đến trung tâm quản lý tài khoản liên kết sảnh!', { show_alert: false });
-    // Chuyển trực tiếp sang menu v2_links để quản lý tài khoản sảnh
     const u = userService.getUser(ctx.chat.id.toString());
     const links = u.linkedAccounts || {};
     const text = `MINI GAME SẢNH\n🖤 Chào *${u.name}*\n--------------------------------------------------\n👉 Chọn trang game bên dưới để quản lý hoặc đặt đơn:`;
@@ -163,7 +181,7 @@ const setupBotLogic = (botInstance) => {
 
   botInstance.action('unimplemented', (ctx) => ctx.answerCbQuery('🚀 Tính năng sắp ra mắt!', { show_alert: true }));
 
-  // Xử lý Text Input (Nhập thông tin tài khoản hoặc số tiền nạp)
+  // Xử lý Text Input
   botInstance.on('text', async (ctx) => {
     if (ctx.message.text.startsWith('/')) return;
     const chatId = ctx.chat.id.toString();
@@ -185,7 +203,7 @@ const setupBotLogic = (botInstance) => {
 
     const lines = text.split('\n');
     let success = [], duplicate = 0, error = 0, limit = 0;
-    const MAX = 10; // Đã nâng giới hạn lưu trữ acc cho thoải mái
+    const MAX = 10;
     let totalAcc = Object.values(u.linkedAccounts).reduce((sum, arr) => sum + arr.length, 0);
 
     for (const line of lines) {
@@ -262,7 +280,7 @@ module.exports = {
   },
   broadcastToAdmin: (msg) => {
     if (bot && currentAdminId) {
-      bot.telegram.sendMessage(currentAdminId, `📢 *THÔNG BÁO TỪ TRẠM MẸ:*\n\n{msg}`, { parse_mode: 'Markdown' }).catch(()=>{});
+      bot.telegram.sendMessage(currentAdminId, `📢 *THÔNG BÁO TỪ TRẠM MẸ:*\n\n${msg}`, { parse_mode: 'Markdown' }).catch(()=>{});
     }
   },
   isRunning: () => bot !== null
