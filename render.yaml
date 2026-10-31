@@ -1,8 +1,8 @@
 services:
   - type: web
-    name: hendy-bot-tele
+    name: Hendy-Bot-Tele
     runtime: node
-    plan: starter
+    plan: 0.5c-512mb
     region: singapore
     numInstances: 1
     autoDeployTrigger: checksPass
@@ -20,12 +20,6 @@ services:
         value: production
       - key: DATA_DIR
         value: /var/data
-      - key: DATABASE_URL
-        fromDatabase:
-          name: hendy-bot-db
-          property: connectionString
-      - key: PGPOOL_MAX
-        value: "5"
       - key: CLOUDFLARE_ACCOUNT_ID
         value: "918ff2f016938fc978ed23b96505b21e"
       - key: CLOUDFLARE_D1_DATABASE_ID
@@ -56,13 +50,3 @@ services:
         value: "10000"
       - key: SUPPORT_USERNAME
         sync: false
-
-databases:
-  - name: hendy-bot-db
-    databaseName: hendy_bot
-    user: hendy_bot
-    plan: 0.1c-256mb
-    region: singapore
-    postgresMajorVersion: "18"
-    diskSizeGB: 1
-    ipAllowList: []
