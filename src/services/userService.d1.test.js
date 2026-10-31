@@ -14,7 +14,7 @@ process.env.CLOUDFLARE_API_TOKEN = 'test-d1-api-token';
 delete process.env.DATABASE_URL;
 
 const database = new Map();
-let originalFetch;
+const originalFetch = globalThis.fetch;
 
 globalThis.fetch = async (_url, options) => {
   const body = JSON.parse(options.body);
@@ -118,4 +118,3 @@ test.after(async () => {
   fs.rmSync(dataDir, { recursive: true, force: true });
 });
 
-originalFetch = globalThis.fetch;
