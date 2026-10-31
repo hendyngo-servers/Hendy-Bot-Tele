@@ -589,10 +589,62 @@ export default function App() {
       )}
 
       {page === 'admin' && session.isAdmin && (
-        <main>
-          <section className="admin-header"><div><span className="eyebrow">KHU VỰC QUẢN TRỊ</span><h1>HENDY ADMIN PANEL</h1><p>{session.profile.name} · ID {session.profile.id}</p></div><button className="back-button" onClick={() => setPage('home')}>← Trang chủ</button></section>
-          <nav className="admin-tabs">{ADMIN_TABS.map(([id, label]) => <button key={id} className={adminTab === id ? 'active' : ''} onClick={() => loadAdminTab(id).catch(e => setNotice(e.message))}>{label}</button>)}</nav>
+        <main className="admin-dashboard">
+          <aside className="admin-sidebar">
+            <div className="admin-brand">
+              <span className="admin-brand-mark">H</span>
+              <div><strong>HENDY</strong><small>CONTROL CENTER</small></div>
+            </div>
+            <div className="admin-account">
+              <span className="admin-account-avatar">{(session.profile.name || 'A').slice(0, 1).toUpperCase()}</span>
+              <div><strong>{session.profile.name}</strong><small>ADMIN · {session.profile.id}</small></div>
+              <span className="admin-online-dot" />
+            </div>
+            <div className="admin-nav-label">QUẢN TRỊ HỆ THỐNG</div>
+            <nav className="admin-side-nav">
+              {ADMIN_TABS.map(([id, label]) => {
+                const meta = {
+                  overview: ['▦', 'Tổng quan hệ thống'],
+                  settings: ['⌘', 'Ngân hàng & QR'],
+                  deposits: ['↧', 'Duyệt giao dịch'],
+                  catalog: ['▤', 'Sản phẩm & dịch vụ'],
+                  orders: ['▣', 'Xử lý đơn hàng'],
+                  giftcodes: ['✳', 'Mã quà tặng'],
+                  users: ['♙', 'Tài khoản thành viên'],
+                  tickets: ['✉', 'Chăm sóc khách hàng'],
+                  broadcast: ['◉', 'Thông báo hàng loạt']
+                }[id];
+                return (
+                  <button key={id} className={adminTab === id ? 'active' : ''} onClick={() => loadAdminTab(id).catch(e => setNotice(e.message))}>
+                    <span className="admin-nav-icon">{meta[0]}</span>
+                    <span className="admin-nav-copy"><strong>{label}</strong><small>{meta[1]}</small></span>
+                    {adminTab === id && <span className="admin-nav-active">●</span>}
+                  </button>
+                );
+              })}
+            </nav>
+            <div className="admin-sidebar-bottom">
+              <span className="admin-secure-label">● KẾT NỐI BẢO MẬT</span>
+              <button onClick={() => setPage('home')}>↩ Về trang thành viên</button>
+              <small>HENDY CYBERTECH · ADMIN</small>
+            </div>
+          </aside>
 
+          <section className="admin-workspace">
+            <header className="admin-topbar">
+              <div>
+                <div className="admin-breadcrumb">HENDY CONTROL CENTER <span>/</span> {ADMIN_TABS.find(([id]) => id === adminTab)?.[1] || 'Tổng quan'}</div>
+                <h1>{ADMIN_TABS.find(([id]) => id === adminTab)?.[1] || 'Tổng quan'}</h1>
+                <p>Xin chào {session.profile.name}. Theo dõi và vận hành hệ thống Hendy tại đây.</p>
+              </div>
+              <div className="admin-top-actions">
+                <span className="admin-live-status"><i /> HỆ THỐNG ADMIN</span>
+                <button onClick={() => loadAdminTab(adminTab).catch(e => setNotice(e.message))} disabled={busy}>⟳ Làm mới</button>
+                <button className="admin-mobile-home" onClick={() => setPage('home')}>Trang thành viên</button>
+              </div>
+            </header>
+
+            <div className="admin-content">
           {adminTab === 'overview' && <section className="admin-stats">
             {[
               ['Thành viên', adminData?.totals?.users],
@@ -686,6 +738,31 @@ export default function App() {
               </div>}
             </article>) : <Empty>Chưa có yêu cầu hỗ trợ.</Empty>}
           </section>}
+
+              {adminTab === 'overview' && <section className="admin-overview-lower">
+                <article className="admin-welcome-panel">
+                  <span className="admin-panel-kicker">HENDY OPERATIONS</span>
+                  <h2>Trung tâm vận hành</h2>
+                  <p>Quản lý thanh toán, dịch vụ, thành viên và chăm sóc khách hàng từ một nơi.</p>
+                  <div className="admin-shortcuts">
+                    <button onClick={() => loadAdminTab('deposits').catch(e => setNotice(e.message))}>↧ Duyệt nạp tiền</button>
+                    <button onClick={() => loadAdminTab('catalog').catch(e => setNotice(e.message))}>＋ Thêm dịch vụ</button>
+                    <button onClick={() => loadAdminTab('broadcast').catch(e => setNotice(e.message))}>◉ Gửi thông báo</button>
+                  </div>
+                </article>
+                <article className="admin-activity-panel">
+                  <div className="admin-panel-heading"><div><span className="admin-panel-kicker">MEMBERS</span><h2>Thành viên mới</h2></div><button onClick={() => loadAdminTab('users').catch(e => setNotice(e.message))}>Xem tất cả →</button></div>
+                  {adminData?.users?.length ? adminData.users.slice(0, 6).map(member => (
+                    <div className="admin-mini-member" key={member.id}>
+                      <span>{(member.name || 'U').slice(0, 1).toUpperCase()}</span>
+                      <div><strong>{member.name}</strong><small>ID {member.id}</small></div>
+                      <b>VIP {member.vipLevel || 0}</b>
+                    </div>
+                  )) : <Empty>Chưa có thành viên được ghi nhận.</Empty>}
+                </article>
+              </section>}
+            </div>
+          </section>
         </main>
       )}
 
