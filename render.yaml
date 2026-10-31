@@ -3,7 +3,9 @@ services:
     name: hendy-bot-tele
     runtime: node
     plan: starter
-    buildCommand: npm install && npm run build
+    region: singapore
+    numInstances: 1
+    buildCommand: npm install && npm run check && npm test && npm run build
     startCommand: npm start
     healthCheckPath: /healthz
     disk:
@@ -12,7 +14,7 @@ services:
       sizeGB: 1
     envVars:
       - key: NODE_VERSION
-        value: "20"
+        value: "24.22.1"
       - key: NODE_ENV
         value: production
       - key: DATA_DIR
@@ -24,10 +26,6 @@ services:
       - key: MINI_APP_URL
         sync: false
       - key: APP_ENCRYPTION_KEY
-        sync: false
-      - key: WS_URL
-        sync: false
-      - key: WS_TOKEN
         sync: false
       - key: BANK_BIN
         sync: false

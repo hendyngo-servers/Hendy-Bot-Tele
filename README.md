@@ -1,39 +1,61 @@
 # Hendy Bot Telegram
 
-Hendy Bot Telegram gồm Telegram Bot (Telegraf), API Express và Telegram Mini App (React/Vite), với menu nhiều màu theo thiết kế Hendy.
+Hendy Bot Telegram là một ứng dụng Node.js đơn máy chủ gồm Telegram Bot (Telegraf), API Express và Telegram Mini App (React/Vite). Ứng dụng chạy như **một Render Web Service** và không sử dụng WebSocket, background worker hoặc dịch vụ điều phối bên ngoài.
 
-## Tính năng đã xây dựng
-- Bot Telegram: menu điều hướng, nút mở Mini App, trạng thái, danh sách yêu cầu nạp chờ và broadcast quản trị.
-- Mini App: trang tổng quan, hồ sơ, ví, tạo yêu cầu nạp, lịch sử nạp, quản lý tài khoản liên kết và gửi yêu cầu hỗ trợ.
-- Xác thực Telegram.WebApp.initData tại máy chủ.
-- Mật khẩu tài khoản liên kết mã hóa AES-256-GCM trước khi lưu.
-- Lưu dữ liệu nguyên tử trên persistent disk; health check tại /healthz.
-- CI kiểm tra cú pháp, test và build.
+## Chức năng đang có
+- Telegram Bot: menu màu, mở Mini App, lệnh trạng thái, danh sách yêu cầu nạp chờ và broadcast quản trị.
+- Mini App: trang tổng quan, hồ sơ, số dư, lịch sử yêu cầu nạp, quản lý tài khoản liên kết và gửi yêu cầu hỗ trợ.
+- Xác thực chữ ký `Telegram.WebApp.initData` tại máy chủ; dữ liệu API cá nhân được đặt `Cache-Control: no-store`.
+- Mật khẩu tài khoản liên kết mã hóa AES-256-GCM trước khi ghi xuống ổ đĩa.
+- Lưu dữ liệu bền vững trong Render Persistent Disk tại `/var/data`.
+- Health check tại `/healthz` và GitHub Actions kiểm tra cú pháp, test, build.
 
 ## Chạy local
-Yêu cầu Node.js 20+. Sao chép .env.example thành .env, điền BOT_TOKEN và tạo APP_ENCRYPTION_KEY ngẫu nhiên tối thiểu 32 ký tự.
+Yêu cầu Node.js 22 hoặc 24. Sao chép `.env.example` thành `.env`, sau đó điền token Bot và khóa mã hóa thử nghiệm của riêng bạn.
 
-    npm install
-    npm run check
-    npm test
-    npm run build
-    npm start
+```bash
+npm install
+npm run check
+npm test
+npm run build
+npm start
+```
 
-Bot có thể không khởi chạy khi thiếu BOT_TOKEN; API và Mini App vẫn chạy. Mini App chỉ xác thực khi mở từ Telegram.
+Mở Mini App từ Telegram để có `initData` hợp lệ. Mở URL web trực tiếp trong trình duyệt không tạo phiên đăng nhập giả.
 
-## Render
-Blueprint render.yaml tạo Node Web Service và Persistent Disk tại /var/data. Cấu hình BOT_TOKEN, ADMIN_ID, MINI_APP_URL và APP_ENCRYPTION_KEY trong Render Dashboard. Tùy chọn: BANK_BIN, BANK_ACCOUNT, BANK_ACCOUNT_NAME, BANK_NAME, MIN_DEPOSIT_VND, SUPPORT_USERNAME, WS_URL, WS_TOKEN. Sau khi có URL Render, đặt MINI_APP_URL chính xác và cấu hình Main Mini App/Web App URL trong BotFather trỏ tới URL HTTPS đó.
+## Triển khai Render Web Service
+1. Vào Render Dashboard và chọn **New → Blueprint** hoặc **New → Web Service**.
+2. Kết nối repository `hendyngo-servers/Hendy-Bot-Tele`, nhánh `main`.
+3. Nếu tạo Web Service thủ công, đặt:
+   - Runtime: Node
+   - Build Command: `npm install && npm run check && npm test && npm run build`
+   - Start Command: `npm start`
+   - Health Check Path: `/healthz`
+4. Nếu dùng Blueprint, cấu hình đã có trong `render.yaml`: một Web Service, một instance, Node 24.22.1, Persistent Disk gắn tại `/var/data`.
+5. Điền các biến môi trường trong Render Dashboard:
+   - `BOT_TOKEN`: token mới lấy từ BotFather.
+   - `ADMIN_ID`: Telegram numeric user ID của quản trị viên.
+   - `MINI_APP_URL`: URL HTTPS của chính Web Service sau khi tạo.
+   - `APP_ENCRYPTION_KEY`: khóa ngẫu nhiên riêng, ít nhất 32 ký tự.
+   - `BANK_BIN`, `BANK_ACCOUNT`, `BANK_ACCOUNT_NAME`, `BANK_NAME`: tùy chọn để tạo QR.
+   - `MIN_DEPOSIT_VND`: mức nạp tối thiểu, mặc định 10.000.
+   - `SUPPORT_USERNAME`: username hỗ trợ Telegram, không gồm @.
+6. Trong BotFather, cấu hình Main Mini App/Web App URL trỏ tới cùng URL HTTPS.
+7. Sau deploy, kiểm tra `https://<service>.onrender.com/healthz`, sau đó mở Bot và nhấn nút Mini App.
 
-## Tệp .env công khai
-Tệp .env được giữ lại nhưng chỉ chứa giá trị giữ chỗ. Không commit token, mật khẩu, khóa mã hóa hoặc dữ liệu ngân hàng thật. Bí mật từng xuất hiện trong lịch sử Git phải được thu hồi và tạo lại.
+## Lưu ý dữ liệu trên Render
+Render filesystem mặc định là ephemeral. Blueprint gắn Persistent Disk tại `/var/data`, nên `DATA_DIR` đã được đặt tới mount path này. Disk chỉ được gắn với một instance; cấu hình một instance trong Blueprint và không tăng số instance khi còn dùng lưu trữ JSON cục bộ. Khi có nhiều người dùng hoặc cần scale, nên chuyển hai tệp JSON sang Render Postgres. Gắn Persistent Disk cũng có ảnh hưởng đến zero-downtime deploy; xem tài liệu Render trước khi đổi chiến lược dữ liệu.
 
-## Giới hạn tích hợp phải lưu ý
-- Yêu cầu nạp tiền tạo ở trạng thái pending. QR chỉ hiển thị nếu cấu hình tài khoản ngân hàng. Ứng dụng không tự cộng số dư khi tạo QR; cần webhook/đối soát ngân hàng có chữ ký và bước phê duyệt kế toán trước khi tự động ghi có.
-- Thuê tool, code, OTP, proxy, VIP, REF và giftcode chưa có nhà cung cấp/dữ liệu thật nên hiện trạng thái chưa kết nối, không tạo sản phẩm hoặc đơn hàng giả.
-- WebSocket điều phối chỉ chạy khi có cả WS_URL và WS_TOKEN; lệnh khởi chạy từ xa dùng BOT_TOKEN trên máy chủ.
-- Dữ liệu users.json và app-data.json nằm trong DATA_DIR. Trên Render thư mục này gắn với Persistent Disk. Cần sao lưu định kỳ. Mất APP_ENCRYPTION_KEY đồng nghĩa không thể giải mã mật khẩu đã lưu.
+## Bảo mật và tệp .env công khai
+Tệp `.env` được giữ trong repository theo yêu cầu nhưng chỉ chứa giá trị trống/placeholder. Không commit Bot Token, API key, mật khẩu, khóa mã hóa hoặc thông tin ngân hàng thật. Các giá trị thật chỉ đặt trong Render Environment. Một Bot Token đã từng xuất hiện trong repository công khai phải được thu hồi ở BotFather và thay bằng token mới; xóa khỏi commit hiện tại không xóa lịch sử Git.
+
+## Thanh toán và dịch vụ chưa cấu hình
+- Tạo yêu cầu nạp chỉ đặt trạng thái `pending`; tạo QR không có nghĩa là đã nhận tiền. Hệ thống không tự cộng số dư. Muốn tự động ghi có phải tích hợp webhook/đối soát ngân hàng có chữ ký, chống xử lý trùng và quy trình kiểm toán.
+- Thuê tool, code, OTP, proxy, VIP, REF và giftcode cần nhà cung cấp cùng nghiệp vụ thực tế. Khi chưa cấu hình, Mini App hiển thị chưa kết nối và không tạo đơn hàng giả.
 
 ## Kiểm thử
-    npm run check
-    npm test
-    npm run build
+```bash
+npm run check
+npm test
+npm run build
+```
