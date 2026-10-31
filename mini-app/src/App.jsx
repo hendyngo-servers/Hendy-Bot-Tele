@@ -343,8 +343,6 @@ export default function App() {
           <section className="admin-stats">
             <div><strong>{adminOverview?.totals?.users ?? 0}</strong><span>Thành viên</span></div>
             <div><strong>{adminOverview?.totals?.linkedAccounts ?? 0}</strong><span>Tài khoản liên kết</span></div>
-            <div><strong>{adminOverview?.totals?.pendingDeposits ?? 0}</strong><span>Yêu cầu cũ đang chờ</span></div>
-            <div><strong>{adminOverview?.totals?.openTickets ?? 0}</strong><span>Yêu cầu hỗ trợ cũ</span></div>
           </section>
 
           <section className="panel">
