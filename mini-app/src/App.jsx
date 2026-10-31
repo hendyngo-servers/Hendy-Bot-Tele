@@ -439,6 +439,19 @@ export default function App() {
                   ))}
                 </section>
 
+                <section className="admin-integration-status">
+                  <article>
+                    <span className="admin-integration-mark">D1</span>
+                    <div><strong>Cloudflare D1</strong><small>{adminData?.integrations?.database === 'cloudflare-d1' ? 'Cơ sở dữ liệu đã kết nối' : 'Chưa kết nối D1'}</small></div>
+                    <b className={adminData?.integrations?.database === 'cloudflare-d1' ? 'connected' : 'disconnected'}>{adminData?.integrations?.database === 'cloudflare-d1' ? '● CONNECTED' : '● OFFLINE'}</b>
+                  </article>
+                  <article>
+                    <span className="admin-integration-mark r2">R2</span>
+                    <div><strong>Cloudflare R2</strong><small>Object Storage · ảnh QR và tài liệu</small></div>
+                    <b className={adminData?.integrations?.objectStorage === 'cloudflare-r2' ? 'connected' : 'disconnected'}>{adminData?.integrations?.objectStorage === 'cloudflare-r2' ? '● CONNECTED' : '● OFFLINE'}</b>
+                  </article>
+                </section>
+
                 <section className="admin-overview-lower">
                   <article className="admin-welcome-panel">
                     <span className="admin-panel-kicker">HENDY OPERATIONS</span>
