@@ -36,7 +36,8 @@ Hendy-Bot-Tele/
 │   │   ├── telegramStartup.js
 │   │   ├── telegramStartup.test.js
 │   │   ├── userService.js
-│   │   └── userService.test.js
+│   │   ├── userService.test.js
+│   │   └── userService.postgres.test.js
 │   ├── utils/
 │   │   └── keyboards.js
 │   └── server.js
@@ -145,8 +146,9 @@ GitHub Actions `.github/workflows/ci.yml` dùng Node version từ `.node-version
 1. `npm install`
 2. `npm run check`
 3. `npm test`
-4. `npm run build`
-5. Kiểm tra `public/index.html` đã được sinh.
+4. Test tích hợp PostgreSQL: tạo bảng, import `users.json` và đọc lại hồ sơ.
+5. `npm run build`
+6. Kiểm tra `public/index.html` đã được sinh.
 
 ## Bảo mật quan trọng
 
