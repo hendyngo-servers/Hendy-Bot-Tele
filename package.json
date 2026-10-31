@@ -12,7 +12,7 @@
     "start": "node src/server.js",
     "build": "vite build --config mini-app/vite.config.mjs",
     "test": "node --test",
-    "check": "node --check src/server.js && node --check src/routes/api.js && node --check src/controllers/botController.js && node --check src/controllers/botController.test.js && node --check src/middlewares/errorHandler.js && node --check src/services/userService.js && node --check src/services/userService.test.js && node --check src/services/appDataService.js && node --check src/services/appDataService.test.js && node --check src/security/telegramAuth.js && node --check src/security/cryptoService.js && node --check src/services/telegramStartup.js && node --check src/utils/keyboards.js && node --check mini-app/vite.config.mjs"
+    "check": "node --check src/server.js && node --check src/routes/api.js && node --check src/controllers/botController.js && node --check src/controllers/botController.test.js && node --check src/middlewares/errorHandler.js && node --check src/services/userService.js && node --check src/services/userService.test.js && node --check src/services/userService.postgres.test.js && node --check src/services/appDataService.js && node --check src/services/appDataService.test.js && node --check src/security/telegramAuth.js && node --check src/security/cryptoService.js && node --check src/services/telegramStartup.js && node --check src/utils/keyboards.js && node --check mini-app/vite.config.mjs"
   },
   "dependencies": {
     "dotenv": "^16.4.7",
