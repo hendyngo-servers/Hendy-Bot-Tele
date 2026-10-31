@@ -2,7 +2,7 @@
   "name": "hendy-bot-tele",
   "version": "4.1.0",
   "private": true,
-  "description": "Hendy Telegram Bot, Cloudflare D1/R2 storage, Admin Mini App on Render",
+  "description": "Hendy Telegram Bot, MongoDB Atlas storage, Admin Mini App on Render",
   "main": "src/server.js",
   "engines": {
     "node": ">=22 <25"
@@ -12,7 +12,7 @@
     "start": "node src/server.js",
     "build": "vite build --config mini-app/vite.config.mjs",
     "test": "node --test",
-    "check": "node --check src/server.js && node --check src/routes/api.js && node --check src/controllers/botController.js && node --check src/controllers/botController.test.js && node --check src/middlewares/errorHandler.js && node --check src/services/cloudflareD1Service.js && node --check src/services/r2StorageService.js && node --check src/services/userService.js && node --check src/services/userService.test.js && node --check src/services/userService.d1.test.js && node --check src/services/userService.postgres.test.js && node --check src/services/cloudflareD1Service.test.js && node --check src/services/r2StorageService.test.js && node --check src/services/appDataService.js && node --check src/services/appDataService.test.js && node --check src/services/appDataService.d1.test.js && node --check src/security/telegramAuth.js && node --check src/security/cryptoService.js && node --check src/services/telegramStartup.js && node --check src/utils/keyboards.js && node --check mini-app/vite.config.mjs"
+    "check": "node --check src/server.js && node --check src/routes/api.js && node --check src/controllers/botController.js && node --check src/controllers/botController.test.js && node --check src/middlewares/errorHandler.js && node --check src/services/cloudflareD1Service.js && node --check src/services/r2StorageService.js && node --check src/services/mongoService.js && node --check src/services/userService.js && node --check src/services/userService.test.js && node --check src/services/userService.d1.test.js && node --check src/services/userService.postgres.test.js && node --check src/services/cloudflareD1Service.test.js && node --check src/services/r2StorageService.test.js && node --check src/services/appDataService.js && node --check src/services/appDataService.test.js && node --check src/services/appDataService.d1.test.js && node --check src/security/telegramAuth.js && node --check src/security/cryptoService.js && node --check src/services/telegramStartup.js && node --check src/utils/keyboards.js && node --check mini-app/vite.config.mjs"
   },
   "dependencies": {
     "dotenv": "^16.4.7",
@@ -22,7 +22,8 @@
     "telegraf": "^4.16.3",
     "pg": "^8.16.3",
     "@aws-sdk/client-s3": "^3.1161.0",
-    "@aws-sdk/s3-request-presigner": "^3.1161.0"
+    "@aws-sdk/s3-request-presigner": "^3.1161.0",
+    "mongodb": "^6.12.0"
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^4.3.4",
