@@ -91,7 +91,7 @@ router.get('/admin/settings', ...admin, async (_req, res, next) => {
 router.post('/admin/assets/qr', ...admin, async (req, res, next) => {
   try {
     const dataUrl = String(req.body?.dataUrl || '');
-    const match = dataUrl.match(/^data:(image\\/(?:png|jpeg|webp));base64,([A-Za-z0-9+/=]+)$/);
+    const match = dataUrl.match(/^data:(image\/(?:png|jpeg|webp));base64,([A-Za-z0-9+/=]+)$/);
     if (!match) return fail(res, 400, 'Ảnh QR phải là PNG, JPEG hoặc WebP.');
     const contentType = match[1].toLowerCase();
     const buffer = Buffer.from(match[2], 'base64');
