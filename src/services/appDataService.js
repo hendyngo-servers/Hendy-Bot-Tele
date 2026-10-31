@@ -1,6 +1,7 @@
 const fs = require('node:fs/promises');
 const path = require('node:path');
 const crypto = require('node:crypto');
+const { CloudflareD1Client } = require('./cloudflareD1Service');
 const r2StorageService = require('./r2StorageService');
 
 const dir = process.env.DATA_DIR || path.join(process.cwd(), 'data');
@@ -33,6 +34,18 @@ let state = {
   paymentSettings: defaultPaymentSettings()
 };
 let queue = Promise.resolve();
+let d1Client = null;
+let d1Active = false;
+let persistedD1State = null;
+const D1_COLLECTIONS = [
+  'linkedAccounts',
+  'deposits',
+  'tickets',
+  'catalog',
+  'orders',
+  'giftcodes',
+  'referrals'
+];
 
 function normalizeState(value = {}) {
   const defaults = {
@@ -62,18 +75,218 @@ function normalizeState(value = {}) {
   return next;
 }
 
+function cloneState(value) {
+  return JSON.parse(JSON.stringify(value));
+}
+
+function recordId(item) {
+  const id = String(item?.id || '');
+  if (!id) throw new Error('Bản ghi D1 thiếu id.');
+  return id;
+}
+
+function d1UpsertRecord(collection, item) {
+  const json = JSON.stringify(item);
+  if (Buffer.byteLength(json, 'utf8') > 1800000) {
+    throw new Error('Bản ghi ' + collection + '/' + item.id + ' vượt giới hạn 1,8 MB của D1.');
+  }
+  return {
+    sql: 'INSERT INTO hendy_app_records ' +
+      '(collection, record_id, user_id, created_at, data_json, updated_at) ' +
+      'VALUES (?, ?, NULLIF(?, \'\'), ?, ?, ?) ' +
+      'ON CONFLICT (collection, record_id) DO UPDATE SET ' +
+      'user_id = excluded.user_id, created_at = excluded.created_at, ' +
+      'data_json = excluded.data_json, updated_at = excluded.updated_at',
+    params: [
+      collection,
+      recordId(item),
+      item.userId || '',
+      String(item.createdAt || item.created_at || ''),
+      json,
+      new Date().toISOString()
+    ]
+  };
+}
+
+async function persistD1() {
+  if (!d1Client) throw new Error('Cloudflare D1 chưa được khởi tạo.');
+  const previous = persistedD1State || normalizeState();
+  const queries = [];
+
+  for (const collection of D1_COLLECTIONS) {
+    const before = new Map((previous[collection] || []).map(item => [recordId(item), item]));
+    const after = new Map((state[collection] || []).map(item => [recordId(item), item]));
+
+    for (const [id, item] of after) {
+      const oldItem = before.get(id);
+      if (!oldItem || JSON.stringify(oldItem) !== JSON.stringify(item)) {
+        queries.push(d1UpsertRecord(collection, item));
+      }
+    }
+    for (const id of before.keys()) {
+      if (!after.has(id)) {
+        queries.push({
+          sql: 'DELETE FROM hendy_app_records WHERE collection = ? AND record_id = ?',
+          params: [collection, id]
+        });
+      }
+    }
+  }
+
+  if (JSON.stringify(previous.paymentSettings) !== JSON.stringify(state.paymentSettings)) {
+    const json = JSON.stringify(state.paymentSettings);
+    if (Buffer.byteLength(json, 'utf8') > 1800000) {
+      throw new Error('Cấu hình thanh toán vượt giới hạn 1,8 MB của D1.');
+    }
+    queries.push({
+      sql: 'INSERT INTO hendy_app_settings (setting_key, value_json, updated_at) ' +
+        'VALUES (?, ?, ?) ON CONFLICT (setting_key) DO UPDATE SET ' +
+        'value_json = excluded.value_json, updated_at = excluded.updated_at',
+      params: ['payment', json, new Date().toISOString()]
+    });
+  }
+
+  for (let offset = 0; offset < queries.length; offset += 50) {
+    await d1Client.batch(queries.slice(offset, offset + 50));
+  }
+  persistedD1State = cloneState(state);
+}
+
 function persist() {
-  const snapshot = JSON.stringify(state, null, 2);
-  queue = queue.then(async () => {
+  const snapshot = cloneState(state);
+  queue = queue.catch(() => {}).then(async () => {
+    if (d1Active) {
+      state = snapshot;
+      await persistD1();
+      return;
+    }
     await fs.mkdir(dir, { recursive: true });
     const tmp = file + '.tmp';
-    await fs.writeFile(tmp, snapshot, { encoding: 'utf8', mode: 0o600 });
+    await fs.writeFile(tmp, JSON.stringify(snapshot, null, 2), {
+      encoding: 'utf8',
+      mode: 0o600
+    });
     await fs.rename(tmp, file);
   });
   return queue;
 }
 
+async function loadD1State() {
+  d1Client = CloudflareD1Client.fromEnv();
+  d1Client.validateConfig();
+  await d1Client.query(
+    'CREATE TABLE IF NOT EXISTS hendy_app_records (' +
+    'collection TEXT NOT NULL, ' +
+    'record_id TEXT NOT NULL, ' +
+    'user_id TEXT, ' +
+    'created_at TEXT, ' +
+    'data_json TEXT NOT NULL, ' +
+    'updated_at TEXT NOT NULL, ' +
+    'PRIMARY KEY (collection, record_id))'
+  );
+  await d1Client.query(
+    'CREATE INDEX IF NOT EXISTS hendy_app_records_user_idx ' +
+    'ON hendy_app_records (collection, user_id, created_at DESC)'
+  );
+  await d1Client.query(
+    'CREATE TABLE IF NOT EXISTS hendy_app_settings (' +
+    'setting_key TEXT PRIMARY KEY, ' +
+    'value_json TEXT NOT NULL, ' +
+    'updated_at TEXT NOT NULL)'
+  );
+
+  const [recordsResult, settingsResult] = await Promise.all([
+    d1Client.query('SELECT collection, record_id, data_json FROM hendy_app_records'),
+    d1Client.query('SELECT setting_key, value_json FROM hendy_app_settings WHERE setting_key = ?', ['payment'])
+  ]);
+
+  const raw = {
+    linkedAccounts: [],
+    deposits: [],
+    tickets: [],
+    catalog: [],
+    orders: [],
+    giftcodes: [],
+    referrals: [],
+    paymentSettings: defaultPaymentSettings()
+  };
+
+  for (const row of recordsResult.results || []) {
+    if (!D1_COLLECTIONS.includes(row.collection)) continue;
+    let item;
+    try {
+      item = JSON.parse(row.data_json);
+    } catch {
+      throw new Error('Dữ liệu D1 lỗi JSON tại ' + row.collection + '/' + row.record_id + '.');
+    }
+    raw[row.collection].push(item);
+  }
+
+  const hasRemoteSettings = Boolean(settingsResult.results?.length);
+  if (hasRemoteSettings) {
+    try {
+      raw.paymentSettings = {
+        ...defaultPaymentSettings(),
+        ...JSON.parse(settingsResult.results[0].value_json)
+      };
+    } catch {
+      throw new Error('Cấu hình thanh toán trong Cloudflare D1 bị lỗi JSON.');
+    }
+  }
+
+  // Giữ snapshot remote nguyên trạng để các đơn đang xử lý được chuẩn hóa về pending và ghi lại.
+  state = normalizeState(raw);
+  persistedD1State = cloneState(raw);
+  d1Active = true;
+
+  let legacyData = null;
+  try {
+    legacyData = JSON.parse(await fs.readFile(file, 'utf8'));
+    if (!legacyData || typeof legacyData !== 'object' || Array.isArray(legacyData)) {
+      throw new Error('Tệp app-data.json không có định dạng object.');
+    }
+  } catch (error) {
+    if (error.code !== 'ENOENT') {
+      await fs.rename(file, file + '.corrupt-' + Date.now()).catch(() => {});
+      console.error('[D1] Dữ liệu Mini App JSON lỗi; đã cách ly tệp lỗi:', error.message);
+    }
+  }
+
+  if (legacyData) {
+    const legacy = normalizeState(legacyData);
+    for (const collection of D1_COLLECTIONS) {
+      const knownIds = new Set(state[collection].map(recordId));
+      for (const item of legacy[collection]) {
+        const id = recordId(item);
+        if (!knownIds.has(id)) {
+          state[collection].push(item);
+          knownIds.add(id);
+        }
+      }
+    }
+    if (!hasRemoteSettings) state.paymentSettings = legacy.paymentSettings;
+    await persist();
+    const backup = file + '.migrated-d1-' + Date.now();
+    await fs.rename(file, backup);
+    console.info('[D1] Đã nhập dữ liệu app-data.json vào Cloudflare D1. Bản sao lưu: ' + path.basename(backup));
+  } else {
+    await persist();
+  }
+
+  console.info('[D1] Đã tải ' +
+    D1_COLLECTIONS.reduce((total, key) => total + state[key].length, 0) +
+    ' bản ghi nghiệp vụ từ Cloudflare D1.');
+}
+
 async function init() {
+  if (CloudflareD1Client.hasAnyEnvironmentConfig()) {
+    await loadD1State();
+    return;
+  }
+
+  d1Active = false;
+  d1Client = null;
+  persistedD1State = null;
   await fs.mkdir(dir, { recursive: true });
   try {
     const data = JSON.parse(await fs.readFile(file, 'utf8'));
