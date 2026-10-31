@@ -1,6 +1,6 @@
 const { Markup } = require('telegraf');
 
-// Bộ icon động phong phú để random
+// Bộ icon động và màu sắc phong phú để random
 const getRandomIcons = () => {
   const sample = (arr) => arr[Math.floor(Math.random() * arr.length)];
   return {
@@ -18,31 +18,31 @@ const getMainMenu = () => {
   const icons = getRandomIcons();
   return Markup.inlineKeyboard([
     [
-      Markup.button.callback(`${icons.rocket} MINIGAME LIVE`, 'menu_minigame'), 
-      Markup.button.callback(`${icons.tool} THUÊ TOOL (NEW)`, 'unimplemented')
+      Markup.button.callback(`🔴 ${icons.rocket} MINIGAME LIVE`, 'menu_minigame'), 
+      Markup.button.callback(`🔵 ${icons.tool} THUÊ TOOL (NEW)`, 'unimplemented')
     ],
     [
-      Markup.button.callback(`${icons.gift} MUA LÌ XÌ - CODE MÀN - CODE TELE`, 'buy_code')
+      Markup.button.callback(`🟢 ${icons.gift} MUA LÌ XÌ - CODE MÀN - CODE TELE`, 'buy_code')
     ],
     [
-      Markup.button.callback(`${icons.card} NẠP TIỀN`, 'deposit'), 
-      Markup.button.callback(`${icons.shield} OTP & PROXY`, 'menu_otp_proxy')
+      Markup.button.callback(`🔴 ${icons.card} NẠP TIỀN`, 'deposit'), 
+      Markup.button.callback(`🔵 ${icons.shield} OTP & PROXY`, 'menu_otp_proxy')
     ],
     [
-      Markup.button.callback('🏆 KHO CÔNG CỤ ĐẶC QUYỀN', 'menu_vip_tools')
+      Markup.button.callback(`🟠 ${icons.fire} VIP KHO CÔNG CỤ ĐẶC QUYỀN`, 'menu_vip_tools')
     ],
     [
-      Markup.button.callback(`${icons.gem} TRUNG TÂM KHÁCH HÀNG`, 'customer_center')
+      Markup.button.callback(`🔵 ${icons.gem} TRUNG TÂM KHÁCH HÀNG`, 'customer_center')
     ],
     [
-      Markup.button.callback('⚔️ HỆ THỐNG GHÉP ĐỐI ĐẦU', 'menu_duel')
+      Markup.button.callback(`🔴 ⚔️ HỆ THỐNG GHÉP ĐỐI ĐẦU`, 'menu_duel')
     ],
     [
       Markup.button.callback('👥 Giới thiệu REF', 'unimplemented'), 
-      Markup.button.callback('👑 TRUNG TÂM VIP', 'unimplemented')
+      Markup.button.callback('👑 VIP TRUNG TÂM VIP', 'unimplemented')
     ],
     [
-      Markup.button.url('👨‍👩‍👧 NHÓM CHAT', 'https://t.me/lethituanem_nhomchat'), 
+      Markup.button.url('🟢 NHÓM CHAT', 'https://t.me/Hendy_Support_Group'), 
       Markup.button.callback('📢 KÊNH THÔNG BÁO', 'unimplemented')
     ],
     [
