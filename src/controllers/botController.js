@@ -251,13 +251,14 @@ async function openMemberSection(ctx, action) {
 
   if (action === 'wallet') {
     const pending = appDataService.listDeposits(userId).filter(item => item.status === 'pending').length;
-    const buttons = [
-      [10000, 20000],
-      [50000, 100000],
-      [200000, 500000]
-    ].map(row => row.map(amount =>
-      Markup.button.callback(money(amount), 'member:deposit:' + amount)
-    ));
+    const presetAmounts = [10000, 20000, 50000, 100000, 200000, 500000]
+      .filter(amount => amount >= settings.minDeposit);
+    const buttons = [];
+    for (let index = 0; index < presetAmounts.length; index += 2) {
+      buttons.push(presetAmounts.slice(index, index + 2).map(amount =>
+        Markup.button.callback(money(amount), 'member:deposit:' + amount)
+      ));
+    }
     buttons.push([Markup.button.callback('✍️ NHẬP SỐ TIỀN KHÁC', 'member:deposit-custom')]);
     buttons.push([Markup.button.callback('📜 LỊCH SỬ GIAO DỊCH', 'member:deposit-history')]);
     buttons.push([Markup.button.callback('🏠 MENU CHÍNH', 'member:home')]);
