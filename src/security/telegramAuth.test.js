@@ -9,5 +9,5 @@ function make(token,user,date=Math.floor(Date.now()/1000)){
  p.set('hash',crypto.createHmac('sha256',secret).update(check).digest('hex'));return p.toString();
 }
 test('accepts valid Telegram initData',()=>{const t='123456:TEST_TOKEN',u={id:12345,first_name:'Hendy'};assert.deepEqual(verifyTelegramInitData(make(t,u),t),u);});
-test('rejects altered initData',()=>{const t='123456:TEST_TOKEN';assert.throws(()=>verifyTelegramInitData(make(t,{id:12345,first_name:'Hendy'}).replace('Hendy','Other'),t),/chữ ký/i);});
-test('rejects expired initData',()=>{const t='123456:TEST_TOKEN';assert.throws(()=>verifyTelegramInitData(make(t,{id:12345},Math.floor(Date.now()/1000)-90000),t),/hết hạn/i);});
+test('rejects altered Telegram initData',()=>{const t='123456:TEST_TOKEN';assert.throws(()=>verifyTelegramInitData(make(t,{id:12345,first_name:'Hendy'}).replace('Hendy','Other'),t),/chữ ký/i);});
+test('rejects expired Telegram initData',()=>{const t='123456:TEST_TOKEN';assert.throws(()=>verifyTelegramInitData(make(t,{id:12345},Math.floor(Date.now()/1000)-90000),t),/hết hạn/i);});
