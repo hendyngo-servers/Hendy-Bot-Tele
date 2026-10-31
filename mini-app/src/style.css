@@ -43,9 +43,9 @@ footer{display:flex;flex-direction:column;align-items:center;gap:4px;padding:22p
 
 
 /* Admin control center */
-.app-shell:has(.admin-dashboard){width:min(100%,1440px);max-width:1440px;min-height:100vh;padding:0;background:#0b1422}
-.app-shell:has(.admin-dashboard)>.topbar{display:none}
-.app-shell:has(.admin-dashboard)>footer{display:none}
+.app-shell.admin-app-shell{width:min(100%,1440px);max-width:1440px;min-height:100vh;padding:0;background:#0b1422}
+.app-shell.admin-app-shell>.topbar{display:none}
+.app-shell.admin-app-shell>footer{display:none}
 .admin-dashboard{display:grid;grid-template-columns:258px minmax(0,1fr);min-height:100vh;background:#0b1422;color:#eaf1f7}
 .admin-sidebar{position:sticky;top:0;height:100vh;display:flex;flex-direction:column;padding:23px 15px 16px;background:linear-gradient(180deg,#111e30 0%,#101a2a 100%);border-right:1px solid #ffffff12}
 .admin-brand{display:flex;align-items:center;gap:11px;padding:0 8px 23px;border-bottom:1px solid #ffffff13}
@@ -125,7 +125,7 @@ footer{display:flex;flex-direction:column;align-items:center;gap:4px;padding:22p
 .admin-mini-member>div{display:flex;flex-direction:column;gap:3px;min-width:0;flex:1}
 .admin-mini-member strong{font-size:9px;color:#e8f2f8}.admin-mini-member small{font-size:8px;color:#7892a6}
 .admin-mini-member>b{color:#e8bf78;font-size:8px}
-.app-shell:has(.admin-dashboard) .notice{font-size:10px}
+.app-shell.admin-app-shell .notice{font-size:10px}
 @media(max-width:900px){
   .admin-dashboard{grid-template-columns:205px minmax(0,1fr)}
   .admin-sidebar{padding:18px 11px}
@@ -134,7 +134,7 @@ footer{display:flex;flex-direction:column;align-items:center;gap:4px;padding:22p
   .admin-side-nav button{padding:9px 7px}
 }
 @media(max-width:680px){
-  .app-shell:has(.admin-dashboard){width:100%}
+  .app-shell.admin-app-shell{width:100%}
   .admin-dashboard{display:flex;flex-direction:column}
   .admin-sidebar{position:relative;top:auto;height:auto;padding:12px 13px 10px;border-right:0;border-bottom:1px solid #ffffff17}
   .admin-brand{padding:0 2px 10px;border-bottom:0}
