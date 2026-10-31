@@ -593,6 +593,33 @@ function setupBot(instance) {
     }
   });
 
+  // Optional Admin Mini App -> Bot message channel.
+  // Only accepts an authenticated Admin ping; business mutations stay on Admin REST APIs.
+  instance.on('message', async (ctx, next) => {
+    const raw = ctx.message?.web_app_data?.data;
+    if (typeof raw !== 'string') return next();
+
+    const userId = String(ctx.from?.id || '');
+    if (!currentAdminId || userId !== currentAdminId) {
+      return ctx.reply('⛔ Chỉ Admin mới được gửi dữ liệu từ Mini App.');
+    }
+    if (raw.length > 4096) {
+      return ctx.reply('Dữ liệu Mini App vượt giới hạn cho phép.');
+    }
+
+    let payload;
+    try {
+      payload = JSON.parse(raw);
+    } catch {
+      return ctx.reply('Dữ liệu Mini App không đúng định dạng JSON.');
+    }
+
+    if (payload?.action === 'admin:ping') {
+      return ctx.reply('✅ Hendy Bot đã nhận dữ liệu từ Admin Mini App.');
+    }
+    return ctx.reply('Đã nhận dữ liệu Mini App. Các thay đổi nghiệp vụ phải dùng Admin REST API đã xác thực.');
+  });
+
   instance.on('text', async ctx => {
     const userId = String(ctx.from.id);
     const pending = pendingInputs.get(userId);
