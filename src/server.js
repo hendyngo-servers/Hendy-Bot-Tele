@@ -12,6 +12,7 @@ const appDataService = require('./services/appDataService');
 const botController = require('./controllers/botController');
 const r2StorageService = require('./services/r2StorageService');
 const { CloudflareD1Client } = require('./services/cloudflareD1Service');
+const mongoService = require('./services/mongoService');
 const apiRouter = require('./routes/api');
 const errorHandler = require('./middlewares/errorHandler');
 
@@ -33,9 +34,7 @@ function validateProductionConfig() {
     'BOT_TOKEN',
     'ADMIN_ID',
     'APP_ENCRYPTION_KEY',
-    'CLOUDFLARE_ACCOUNT_ID',
-    'CLOUDFLARE_D1_DATABASE_ID',
-    'CLOUDFLARE_API_TOKEN',
+    'MONGODB_URI',
     'R2_BUCKET_NAME',
     'R2_ACCESS_KEY_ID',
     'R2_SECRET_ACCESS_KEY'
@@ -51,8 +50,8 @@ function validateProductionConfig() {
   if (!/^https:\/\//i.test(webAppUrl)) {
     throw new Error('WEBAPP_URL hoặc MINI_APP_URL phải là địa chỉ HTTPS hợp lệ.');
   }
-  if (!CloudflareD1Client.fromEnv().isConfigured()) {
-    throw new Error('Cloudflare D1 chưa được cấu hình đầy đủ.');
+  if (!mongoService.hasConfig()) {
+    throw new Error('MongoDB Atlas chưa được cấu hình đầy đủ.');
   }
   r2StorageService.validateConfig();
   if (process.env.APP_ENCRYPTION_KEY.length < 32) {
@@ -95,7 +94,7 @@ app.get('/healthz', (_req, res) => {
     success: botReady,
     service: 'hendy-bot-tele',
     bot: botReady,
-    database: userService.isCloudflareD1() ? 'cloudflare-d1' : userService.isPostgres() ? 'postgres' : 'local-json',
+    database: userService.isMongo() ? 'mongodb-atlas' : userService.isCloudflareD1() ? 'cloudflare-d1' : userService.isPostgres() ? 'postgres' : 'local-json',
     storage: r2StorageService.hasAnyConfig() ? 'cloudflare-r2' : 'unconfigured',
     timestamp: new Date().toISOString()
   });
@@ -134,7 +133,7 @@ function shutdown(signal) {
       r2StorageService.close();
       process.exit(0);
     }).catch(error => {
-      console.error('Lỗi khi đóng PostgreSQL:', error.message);
+      console.error('Lỗi khi đóng database:', error.message);
       process.exit(1);
     });
     return;
@@ -150,7 +149,7 @@ function shutdown(signal) {
       r2StorageService.close();
       process.exit(0);
     }).catch(dbError => {
-      console.error('Lỗi khi đóng PostgreSQL:', dbError.message);
+      console.error('Lỗi khi đóng database:', dbError.message);
       process.exit(1);
     });
   });
@@ -163,6 +162,7 @@ async function start() {
   await userService.loadDatabase();
   await appDataService.init();
   if (isProductionRuntime()) {
+    if (!userService.isMongo()) throw new Error('MongoDB Atlas chưa sẵn sàng sau khi kết nối.');
     await r2StorageService.checkBucket();
     console.info('[R2] Bucket Cloudflare R2 đã sẵn sàng.');
   }
