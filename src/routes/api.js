@@ -333,6 +333,13 @@ router.patch('/admin/orders/:id', ...admin, async (req, res, next) => {
           throw new Error('Số dư thành viên không đủ để thanh toán đơn hàng.');
         }
         user.balance = Number(user.balance || 0) - Number(currentOrder.amount);
+        if (currentOrder.category === 'vip') {
+          const requestedLevel = Number(currentOrder.vipLevel || 0);
+          if (requestedLevel < 1 || requestedLevel > 10) {
+            throw new Error('Sản phẩm VIP chưa được cấu hình cấp nâng cấp hợp lệ.');
+          }
+          user.vipLevel = Math.max(Number(user.vipLevel || 0), requestedLevel);
+        }
         await userService.saveDatabase();
       }
     );
@@ -353,14 +360,16 @@ router.post('/admin/catalog', ...admin, async (req, res, next) => {
     const category = String(body.category || '');
     const price = Number(body.price);
     const durationDays = Number(body.durationDays || 0);
+    const vipLevel = Number(body.vipLevel || 0);
     const stock = body.stock === '' || body.stock === null || body.stock === undefined ? null : Number(body.stock);
     if (!CATEGORIES.has(category)) return fail(res, 400, 'Danh mục không hợp lệ.');
     if (name.length < 2 || name.length > 100) return fail(res, 400, 'Tên sản phẩm phải từ 2 đến 100 ký tự.');
     if (!Number.isSafeInteger(price) || price < 0 || price > 1000000000) return fail(res, 400, 'Giá không hợp lệ.');
     if (!Number.isSafeInteger(durationDays) || durationDays < 0 || durationDays > 3650) return fail(res, 400, 'Thời hạn không hợp lệ.');
+    if (!Number.isSafeInteger(vipLevel) || vipLevel < 0 || vipLevel > 10 || (category === 'vip' && vipLevel < 1)) return fail(res, 400, 'Cấp VIP phải từ 1 đến 10 với sản phẩm VIP.');
     if (stock !== null && (!Number.isSafeInteger(stock) || stock < 0 || stock > 1000000)) return fail(res, 400, 'Tồn kho không hợp lệ.');
     const item = await appDataService.saveCatalogItem({
-      category, name, description, price, durationDays, stock, active: body.active !== false
+      category, name, description, price, durationDays, vipLevel, stock, active: body.active !== false
     });
     return ok(res, item, 201);
   } catch (error) { return next(error); }
@@ -375,16 +384,18 @@ router.put('/admin/catalog/:id', ...admin, async (req, res, next) => {
     const name = String(body.name || '').trim();
     const price = Number(body.price);
     const durationDays = Number(body.durationDays || 0);
+    const vipLevel = Number(body.vipLevel || 0);
     const stock = body.stock === '' || body.stock === null || body.stock === undefined ? null : Number(body.stock);
     if (!CATEGORIES.has(category) || name.length < 2 || name.length > 100 ||
       !Number.isSafeInteger(price) || price < 0 || price > 1000000000 ||
       !Number.isSafeInteger(durationDays) || durationDays < 0 || durationDays > 3650 ||
+      !Number.isSafeInteger(vipLevel) || vipLevel < 0 || vipLevel > 10 || (category === 'vip' && vipLevel < 1) ||
       (stock !== null && (!Number.isSafeInteger(stock) || stock < 0 || stock > 1000000))) {
       return fail(res, 400, 'Thông tin sản phẩm không hợp lệ.');
     }
     return ok(res, await appDataService.saveCatalogItem({
       category, name, description: String(body.description || '').slice(0, 500),
-      price, durationDays, stock, active: body.active !== false
+      price, durationDays, vipLevel, stock, active: body.active !== false
     }, req.params.id));
   } catch (error) { return next(error); }
 });
