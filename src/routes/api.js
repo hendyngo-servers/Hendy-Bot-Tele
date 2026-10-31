@@ -4,6 +4,7 @@ const userService = require('../services/userService');
 const appDataService = require('../services/appDataService');
 const { requireTelegramAuth } = require('../security/telegramAuth');
 const { encryptSecret } = require('../security/cryptoService');
+const botController = require('../controllers/botController');
 
 const router = express.Router();
 const ALLOWED_BRANDS = new Set(['QQ88', '78WIN', 'SC88', 'C168', 'CM88', 'F8BET']);
@@ -457,6 +458,17 @@ router.patch('/admin/users/:id', ...admin, async (req, res, next) => {
   } catch (error) { return next(error); }
 });
 
+router.post('/admin/broadcast', ...admin, async (req, res, next) => {
+  try {
+    const message = String(req.body?.message || '').trim();
+    if (message.length < 2 || message.length > 3500) {
+      return fail(res, 400, 'Nội dung thông báo phải từ 2 đến 3.500 ký tự.');
+    }
+    const result = await botController.broadcastToUsers('📢 THÔNG BÁO TỪ HENDY\\n\\n' + message);
+    return ok(res, result);
+  } catch (error) { return next(error); }
+});
+
 router.get('/admin/tickets', ...admin, (_req, res) => ok(res, appDataService.listTickets(null)));
 router.patch('/admin/tickets/:id', ...admin, async (req, res, next) => {
   try {
@@ -464,6 +476,16 @@ router.patch('/admin/tickets/:id', ...admin, async (req, res, next) => {
     const reply = String(req.body?.reply || '').trim();
     const result = await appDataService.updateTicket(req.params.id, status, reply);
     if (!result) return fail(res, 404, 'Không tìm thấy yêu cầu hỗ trợ hoặc trạng thái không hợp lệ.');
+    if (status === 'answered' && reply) {
+      try {
+        await botController.sendUserMessage(
+          result.userId,
+          '💬 PHẢN HỒI TỪ HENDY CSKH\\n\\n' + reply
+        );
+      } catch (error) {
+        return fail(res, 503, 'Đã lưu phản hồi nhưng Bot chưa gửi được tin nhắn Telegram. Hãy kiểm tra trạng thái Bot.');
+      }
+    }
     return ok(res, result);
   } catch (error) { return next(error); }
 });
