@@ -259,10 +259,10 @@ router.put('/admin/settings', ...admin, async (req, res, next) => {
     if (supportUsername && !/^[a-zA-Z0-9_]{5,32}$/.test(supportUsername)) {
       return fail(res, 400, 'Username hỗ trợ không hợp lệ.');
     }
-    if (bankBin && !/^\\d{6}$/.test(bankBin)) {
+    if (bankBin && !/^\d{6}$/.test(bankBin)) {
       return fail(res, 400, 'Mã BIN ngân hàng phải gồm 6 chữ số.');
     }
-    if (bankAccount && !/^\\d{4,24}$/.test(bankAccount)) {
+    if (bankAccount && !/^\d{4,24}$/.test(bankAccount)) {
       return fail(res, 400, 'Số tài khoản ngân hàng phải gồm 4 đến 24 chữ số.');
     }
     if (Boolean(bankBin) !== Boolean(bankAccount)) {
