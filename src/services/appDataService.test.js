@@ -114,6 +114,34 @@ test('dịch vụ dữ liệu lưu cấu hình QR, đơn hàng, giftcode, REF v�
       assert.equal(service.getReferralStats('referrer-1').commission, 10000);
     });
 
+    await t.test('đơn dịch vụ có thời hạn và lịch sử hoạt động của thành viên', async () => {
+      await resetData();
+      const item = await service.saveCatalogItem({
+        category: 'tool',
+        name: 'Tool thuê 7 ngày',
+        description: 'Gói dịch vụ có thời hạn',
+        price: 70000,
+        durationDays: 7,
+        vipLevel: 0,
+        stock: null,
+        active: true
+      });
+      const order = await service.createOrder('user-5', item.id);
+      const result = await service.processOrder(order.id, 'approved', 'admin-1');
+      assert.equal(result.order.status, 'approved');
+      assert.ok(result.order.activatedAt);
+      assert.ok(result.order.expiresAt);
+      assert.equal(
+        Math.round((Date.parse(result.order.expiresAt) - Date.parse(result.order.activatedAt)) / 86400000),
+        7
+      );
+      const history = service.getActivity('user-5');
+      assert.equal(history.length, 1);
+      assert.equal(history[0].type, 'order');
+      assert.equal(history[0].status, 'approved');
+      assert.ok(history[0].expiresAt);
+    });
+
     await t.test('ticket lưu phản hồi và trạng thái', async () => {
       await resetData();
       const ticket = await service.createTicket('user-4', 'Tôi cần hỗ trợ tài khoản.');
