@@ -1,6 +1,8 @@
 node_modules/
-.env
+mini-app/dist/
+.env.local
+.env.*.local
+*.log
 data/
-database.json
-database_backup.json
-bot.log
+coverage/
+.DS_Store

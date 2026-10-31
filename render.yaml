@@ -1,30 +1,43 @@
 services:
   - type: web
     name: hendy-bot-tele
-    env: node
-    plan: free
-    buildCommand: npm install
+    runtime: node
+    plan: starter
+    buildCommand: npm install && npm run build
     startCommand: npm start
+    healthCheckPath: /healthz
+    disk:
+      name: hendy-bot-data
+      mountPath: /var/data
+      sizeGB: 1
     envVars:
+      - key: NODE_VERSION
+        value: "20"
       - key: NODE_ENV
         value: production
-
-      # Render sẽ tự sinh URL (vd: https://hendy-bot.onrender.com) và gán vào đây
-      - key: WEBHOOK_DOMAIN
-        value: ${RENDER_EXTERNAL_URL}
-
-      # Bạn tự tạo một chuỗi ngẫu nhiên (vd: secret_123_abc) để bảo mật webhook
-      - key: WEBHOOK_SECRET_TOKEN
-        sync: false 
-
-      # Các biến này sẽ không lưu trong mã nguồn, Render sẽ hỏi bạn lúc deploy
+      - key: DATA_DIR
+        value: /var/data
       - key: BOT_TOKEN
         sync: false
       - key: ADMIN_ID
         sync: false
       - key: MINI_APP_URL
         sync: false
-      - key: WEB_APP_URL
+      - key: APP_ENCRYPTION_KEY
         sync: false
-      - key: CORE_BACKEND_URL
+      - key: WS_URL
+        sync: false
+      - key: WS_TOKEN
+        sync: false
+      - key: BANK_BIN
+        sync: false
+      - key: BANK_ACCOUNT
+        sync: false
+      - key: BANK_ACCOUNT_NAME
+        sync: false
+      - key: BANK_NAME
+        sync: false
+      - key: MIN_DEPOSIT_VND
+        value: "10000"
+      - key: SUPPORT_USERNAME
         sync: false

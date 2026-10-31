@@ -1,16 +1,7 @@
 {
-  "name": "hendy-bot-tele-pro",
-  "version": "3.1.0",
-  "description": "Telegram Bot Hendy Cybertech - Telegraf MVC (Railway Ready)",
-  "main": "src/server.js",
-  "scripts": {
-    "start": "node src/server.js",
-    "dev": "node --watch src/server.js"
-  },
-  "dependencies": {
-    "dotenv": "^16.4.5",
-    "express": "^4.19.2",
-    "telegraf": "^4.16.3",
-    "ws": "^8.16.0"
-  }
+  "name":"hendy-bot-tele","version":"4.0.0","private":true,
+  "description":"Hendy Telegram Bot va Mini App","main":"src/server.js","engines":{"node":">=20"},
+  "scripts":{"dev":"node --watch src/server.js","start":"node src/server.js","build":"vite build --config mini-app/vite.config.js","test":"node --test","check":"node --check src/server.js && node --check src/routes/api.js && node --check src/services/appDataService.js"},
+  "dependencies":{"dotenv":"^16.4.7","express":"^4.21.2","express-rate-limit":"^7.5.0","helmet":"^8.0.0","telegraf":"^4.16.3","ws":"^8.18.0"},
+  "devDependencies":{"@vitejs/plugin-react":"^4.3.4","vite":"^6.1.0","react":"^19.0.0","react-dom":"^19.0.0"}
 }
