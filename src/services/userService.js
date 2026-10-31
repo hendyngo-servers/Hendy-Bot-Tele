@@ -1,61 +1,26 @@
-const fs = require('fs').promises;
-const path = require('path');
-
-const DATA_DIR = process.env.RAILWAY_ENVIRONMENT ? '/app/data' : path.join(__dirname, '../../data');
-const DB_FILE = path.join(DATA_DIR, 'database.json');
-const BACKUP_FILE = path.join(DATA_DIR, 'database_backup.json');
-
+const fs = require('node:fs/promises');
+const path = require('node:path');
+const dir = process.env.DATA_DIR || path.join(process.cwd(),'data');
+const file = path.join(dir,'users.json');
 let users = {};
-let userStates = {};
-let userCooldowns = {};
-let isSaving = false;
-
-const loadDatabase = async () => {
-  try {
-    await fs.mkdir(DATA_DIR, { recursive: true });
-    const data = await fs.readFile(DB_FILE, 'utf8');
-    users = JSON.parse(data);
-    console.log(`✅ Đã tải dữ liệu ${Object.keys(users).length} khách hàng từ database.json`);
-  } catch (err) {
-    console.log("⚠️ Không tìm thấy hoặc database trống, sẽ tạo mới khi có khách.");
-    users = {};
+let queue = Promise.resolve();
+function persist() {
+  const snapshot = JSON.stringify(users,null,2);
+  queue = queue.then(async()=>{await fs.mkdir(dir,{recursive:true});const tmp=file+'.tmp';await fs.writeFile(tmp,snapshot,{encoding:'utf8',mode:0o600});await fs.rename(tmp,file);});
+  return queue;
+}
+async function loadDatabase() {
+  await fs.mkdir(dir,{recursive:true});
+  try { const value=JSON.parse(await fs.readFile(file,'utf8'));users=value&&typeof value==='object'&&!Array.isArray(value)?value:{}; }
+  catch(error) {
+    if(error.code!=='ENOENT'){await fs.rename(file,file+'.corrupt-'+Date.now()).catch(()=>{});console.error('Dữ liệu người dùng lỗi; đã cách ly tệp lỗi.');}
+    users={};await persist();
   }
-};
-
-const saveDatabase = async () => {
-  if (isSaving) return;
-  isSaving = true;
-  try {
-    try { await fs.copyFile(DB_FILE, BACKUP_FILE); } catch (e) {} 
-    await fs.writeFile(DB_FILE, JSON.stringify(users, null, 2), 'utf8');
-  } catch (err) {
-    console.error("❌ Lỗi lưu file database.json:", err);
-  } finally {
-    isSaving = false;
-  }
-};
-
-const initUser = (chatId, user) => {
-  const name = user?.first_name || 'Khách';
-  if (!users[chatId]) {
-    users[chatId] = {
-      name, balance: 1501, voucher: 0, wonCodes: [],
-      linkedAccounts: { QQ88: [], '78WIN': [], SC88: [], C168: [], CM88: [], F8BET: [] }
-    };
-    saveDatabase();
-  } else {
-    users[chatId].name = name;
-    if (!users[chatId].linkedAccounts) {
-      users[chatId].linkedAccounts = { QQ88: [], '78WIN': [], SC88: [], C168: [], CM88: [], F8BET: [] };
-    }
-  }
-  return users[chatId];
-};
-
-module.exports = { 
-  loadDatabase, saveDatabase, initUser, 
-  getUsers: () => users, 
-  getUser: (id) => users[id],
-  getStates: () => userStates,
-  getCooldowns: () => userCooldowns
-};
+}
+function initUser(chatId,telegramUser={}) {
+  const id=String(chatId),name=[telegramUser.first_name,telegramUser.last_name].filter(Boolean).join(' ')||'Người dùng';
+  if(!users[id]){users[id]={id,name,username:telegramUser.username||null,balance:0,vipLevel:0,createdAt:new Date().toISOString()};persist().catch(e=>console.error('Lưu người dùng:',e.message));}
+  else{users[id].name=name;users[id].username=telegramUser.username||users[id].username||null;}
+  return users[id];
+}
+module.exports={loadDatabase,saveDatabase:persist,initUser,getUser:id=>users[String(id)]||null,getUsers:()=>users};
