@@ -74,6 +74,7 @@ export default function App() {
 
   const [session, setSession] = useState(null);
   const [overview, setOverview] = useState(null);
+  const [publicSettings, setPublicSettings] = useState({});
   const [page, setPage] = useState('home');
   const [adminTab, setAdminTab] = useState('overview');
   const [busy, setBusy] = useState(false);
@@ -129,9 +130,13 @@ export default function App() {
     try {
       const data = await api('/session', initData);
       setSession(data);
-      const home = await api('/overview', initData);
+      const [home, publicConfig] = await Promise.all([
+        api('/overview', initData),
+        api('/public-settings', initData)
+      ]);
       setOverview(home);
       setLinkedAccounts(home.linkedAccounts || []);
+      setPublicSettings(publicConfig || {});
     } catch (error) {
       setNotice(error.message);
       setSession(null);
@@ -187,6 +192,7 @@ export default function App() {
         if (id === 'group') window.open('https://t.me/Hendy_Support_Group', '_blank', 'noopener,noreferrer');
         if (id === 'news') setNotice('Kênh thông báo sẽ được mở khi Admin cấu hình liên kết kênh.');
         if (id === 'duel') setNotice('Hệ thống ghép đối đầu cần cấu hình nhà cung cấp và luật chơi trước khi mở đơn.');
+        if (id === 'group' || id === 'news') setPage('home');
       }
     } catch (error) {
       setNotice(error.message);
@@ -335,7 +341,11 @@ export default function App() {
     event.preventDefault();
     await adminAction('/admin/settings', 'PUT', {
       payment: adminSettings.payment,
-      referralCommissionPercent: Number(adminSettings.referralCommissionPercent || 0)
+      botUsername: adminSettings.payment.botUsername,
+      groupChatUrl: adminSettings.payment.groupChatUrl,
+      newsChannelUrl: adminSettings.payment.newsChannelUrl,
+      supportUsername: adminSettings.payment.supportUsername,
+      referralCommissionPercent: Number(adminSettings.payment.referralCommissionPercent ?? adminSettings.referralCommissionPercent ?? 0)
     }, 'Đã lưu cấu hình thanh toán và QR.');
   }
 
@@ -569,6 +579,10 @@ export default function App() {
               <label>Số tài khoản<input value={adminSettings.payment.bankAccount || ''} onChange={e => setAdminSettings(v => ({ ...v, payment: { ...v.payment, bankAccount: e.target.value } }))} /></label>
               <label>Chủ tài khoản<input value={adminSettings.payment.bankAccountName || ''} onChange={e => setAdminSettings(v => ({ ...v, payment: { ...v.payment, bankAccountName: e.target.value } }))} /></label>
               <label>URL ảnh QR tĩnh (tùy chọn, HTTPS)<input value={adminSettings.payment.qrImageUrl || ''} onChange={e => setAdminSettings(v => ({ ...v, payment: { ...v.payment, qrImageUrl: e.target.value } }))} placeholder="https://..." /></label>
+              <label>Username Bot Telegram (không có @)<input value={adminSettings.payment.botUsername || adminSettings.botUsername || ''} onChange={e => setAdminSettings(v => ({ ...v, payment: { ...v.payment, botUsername: e.target.value } }))} placeholder="HendyBot" /></label>
+              <label>Liên kết nhóm chat (HTTPS)<input value={adminSettings.payment.groupChatUrl || ''} onChange={e => setAdminSettings(v => ({ ...v, payment: { ...v.payment, groupChatUrl: e.target.value } }))} placeholder="https://t.me/..." /></label>
+              <label>Liên kết kênh thông báo (HTTPS)<input value={adminSettings.payment.newsChannelUrl || ''} onChange={e => setAdminSettings(v => ({ ...v, payment: { ...v.payment, newsChannelUrl: e.target.value } }))} placeholder="https://t.me/..." /></label>
+              <label>Username CSKH (không có @)<input value={adminSettings.payment.supportUsername || ''} onChange={e => setAdminSettings(v => ({ ...v, payment: { ...v.payment, supportUsername: e.target.value } }))} placeholder="HendySupport" /></label>
               <label>Mức nạp tối thiểu<input type="number" min="10000" max="100000000" value={adminSettings.payment.minDeposit || 10000} onChange={e => setAdminSettings(v => ({ ...v, payment: { ...v.payment, minDeposit: Number(e.target.value) } }))} /></label>
               <label>Hướng dẫn chuyển khoản<textarea rows="3" value={adminSettings.payment.instructions || ''} onChange={e => setAdminSettings(v => ({ ...v, payment: { ...v.payment, instructions: e.target.value } }))} /></label>
               <label>Hoa hồng REF (%)<input type="number" min="0" max="20" step="0.1" value={adminSettings.referralCommissionPercent || 0} onChange={e => setAdminSettings(v => ({ ...v, referralCommissionPercent: Number(e.target.value) }))} /></label>
