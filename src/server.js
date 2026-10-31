@@ -120,12 +120,13 @@ async function start() {
   await userService.loadDatabase();
   await appDataService.init();
 
-  server.listen(PORT, '0.0.0.0', async () => {
+  const botStarted = await botController.startBot();
+  if (process.env.NODE_ENV === 'production' && !botStarted) {
+    throw new Error('Telegram Bot không khởi chạy được. Kiểm tra BOT_TOKEN tại Render.');
+  }
+
+  server.listen(PORT, '0.0.0.0', () => {
     console.log('Hendy Bot Web Service đang chạy tại cổng ' + PORT);
-    const botStarted = await botController.startBot();
-    if (!botStarted) {
-      console.error('Không thể khởi chạy Telegram Bot. Kiểm tra BOT_TOKEN và trạng thái BotFather.');
-    }
   });
 }
 
