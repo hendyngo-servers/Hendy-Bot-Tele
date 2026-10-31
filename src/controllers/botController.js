@@ -8,24 +8,20 @@ let currentAdminId = process.env.ADMIN_ID;
 
 const getVNDateTime = () => new Date().toLocaleString("vi-VN", { timeZone: "Asia/Ho_Chi_Minh" });
 
-// Hàm helper để tạo thông tin trang chủ chuẩn theo mẫu yêu cầu
-const getHomeMessage = (u, chatId) => {
-  if (u.nyc === undefined) u.nyc = 0;
-  if (u.vipLevel === undefined) u.vipLevel = 0;
-  if (u.status === undefined) u.status = 'Bình thường';
-
-  return `🏡 *Buổi tối vui vẻ nhé, ${u.name}*
-🆔 ID: \`${chatId}\`
-
-💎 *VIP ${u.vipLevel}* (Tổng nạp: 0 VNĐ)
-
-💳 **Ví Chính:** \`${u.balance.toLocaleString('vi-VN')} VNĐ\`
-💵 **Ví NYC:** \`${u.nyc.toLocaleString('vi-VN')} VNĐ\`
-
-🛡️ **Trạng thái thành viên:** [${u.status}]
-
-🌐 **Website:** https://t.me/Hendy_Support_Group 
-💬 **Nhóm Tuấn Em:** @Hendy_Support_Group`;
+// Hàm chung để tạo nội dung thông điệp Trang Chủ / Chào mừng
+const getWelcomeText = (u, chatId) => {
+  const icons = kb.getRandomIcons();
+  return `🤖 *HENDY BOT | HENDY CYBERTECH PRO v2026* [BOT CHÍNH] ${icons.rocket}\n` +
+         `Buổi tối vui vẻ nhé, *${u.name}*\n` +
+         `ID: \`${chatId}\`\n` +
+         `--------------------------------------------------\n` +
+         `💎 *VIP 0* (Tổng nạp: \`0 VNĐ\`)\n\n` +
+         `💰 **Ví Chính:** \`${(u.balance || 0).toLocaleString('vi-VN')} VNĐ\`\n` +
+         `🪙 **Ví NYC:** \`${(u.nycBalance || 0).toLocaleString('vi-VN')} NYC\`\n\n` +
+         `🛡️ Trạng thái thành viên: \`[Bình thường]\`\n` +
+         `--------------------------------------------------\n` +
+         `🌐 Website: https://hendy-bot-tele.onrender.com/` +
+         `👥 Nhóm HenDY: @Hendy_Support_Group`;
 };
 
 const setupBotLogic = (botInstance) => {
@@ -49,7 +45,7 @@ const setupBotLogic = (botInstance) => {
     const u = userService.initUser(chatId, ctx.from);
     backendService.sendLogToWeb(`👤 Khách [${u.name}] (ID: ${chatId}) vừa mở Bot.`);
 
-    const text = getHomeMessage(u, chatId);
+    const text = getWelcomeText(u, chatId);
     await ctx.reply(text, { parse_mode: 'Markdown', ...kb.getMainMenu() });
   });
 
@@ -57,7 +53,7 @@ const setupBotLogic = (botInstance) => {
   const checkAdmin = (ctx, next) => ctx.chat.id.toString() === currentAdminId ? next() : ctx.reply('⛔ Sếp không có quyền!');
   
   botInstance.command('admin', checkAdmin, (ctx) => {
-    ctx.reply("🛠️ *BẢNG QUẢN TRỊ HỆ THỐNG*\n- `/status`: Trạng thái\n- `/user [ID]`: Thông tin KH\n- `/addmoney [ID] [Tiền]`: Cộng trừ tiền\n- `/trungcode [ID] [Trang] [TK] [Code]`: Cấp code\n- `/broadcast [Nội dung]`: Phát loa", { parse_mode: 'Markdown' });
+    ctx.reply("🛠️ *BẢNG QUẢN TRỊ HỆ THỐNG*\n- `/status`: Trạng thái\n- `/user [ID]`: Thông tin KH\n- `/addmoney [ID] [Tiền]`: Cộng trừ tiền\n- `/broadcast [Nội dung]`: Phát loa", { parse_mode: 'Markdown' });
   });
 
   botInstance.command('status', checkAdmin, (ctx) => {
@@ -73,7 +69,7 @@ const setupBotLogic = (botInstance) => {
     const users = userService.getUsers();
     
     if (!users[targetId] || isNaN(amount)) return ctx.reply('❌ Lỗi ID hoặc số tiền.');
-    users[targetId].balance += amount;
+    users[targetId].balance = (users[targetId].balance || 0) + amount;
     userService.saveDatabase();
     
     ctx.reply(`✅ Cập nhật cho ${targetId}. Số dư mới: \`${users[targetId].balance.toLocaleString('vi-VN')} VNĐ\``, { parse_mode: 'Markdown' });
@@ -93,17 +89,17 @@ const setupBotLogic = (botInstance) => {
     ctx.reply(`✅ Phát loa thành công tới \`${count}\` khách!`, { parse_mode: 'Markdown' });
   });
 
-  // Action Nút Bấm
+  // Action Nút Bấm Trở Về Menu Chính
   botInstance.action('back_start', async (ctx) => {
     const chatId = ctx.chat.id.toString();
     const u = userService.getUser(chatId);
-    const text = getHomeMessage(u, chatId);
+    const text = getWelcomeText(u, chatId);
     await ctx.editMessageText(text, { parse_mode: 'Markdown', ...kb.getMainMenu() });
   });
 
   // Mở Menu Minigame Live
   botInstance.action('menu_minigame', async (ctx) => {
-    const u = userService.getUser(ctx.chat.id.toString());
+    const u = userService.getUser(chatId = ctx.chat.id.toString());
     const text = `LIVESTREAM 🚀\n*PREMIUM* 👑\n\n╭─────────────╮\n  💭 Chào, *${u.name}*.\n╰─────────────╯\n\n● Tổng đơn đang chờ duyệt chạy: \`[ 0 ]\`\n● Tổng đơn đang chạy: \`[ 0 ]\`\n● Tổng đơn hoàn thành: \`[ 0 ]\`\n--------------------------------------------------\n🎉 🎊 Cập nhật tính năng yêu cầu hoàn đơn nếu trúng mà không thấy phát.`;
     await ctx.editMessageText(text, { parse_mode: 'Markdown', ...kb.getMinigameMenu() });
   });
@@ -120,13 +116,12 @@ const setupBotLogic = (botInstance) => {
   });
 
   botInstance.action('guide_detail', async (ctx) => {
-    const text = `📖 *HƯỚNG DẪN SỬ DỤNG HỆ THỐNG HENDY CYBERTECH*\n1️⃣ *Liên Kết Tài Khoản xem live:*\n- Cú pháp: \`Taikhoan | Matkhau | TÊN MINI CODE\``;
+    const text = `📖 *HƯỚNG DẪN SỬ DỤNG HỆ THỐNG*\n1️⃣ *Liên Kết Tài Khoản xem live:*\n- Cú pháp: \`Taikhoan | Matkhau | TÊN MINI CODE\``;
     await ctx.editMessageText(text, { parse_mode: 'Markdown', ...kb.getBackMenu('v2_links') });
   });
 
-  // Điều hướng nhanh nhóm sảnh minigame
   botInstance.action(['minigame_group_1', 'minigame_group_2', 'minigame_group_3'], async (ctx) => {
-    await ctx.answerCbQuery('🚀 Chuyển hướng đến trung tâm quản lý tài khoản liên kết sảnh!', { show_alert: false });
+    await ctx.answerCbQuery('🚀 Chuyển hướng đến trung tâm quản lý tài khoản liên kết sảnh!');
     const u = userService.getUser(ctx.chat.id.toString());
     const links = u.linkedAccounts || {};
     const text = `MINI GAME SẢNH\n🖤 Chào *${u.name}*\n--------------------------------------------------\n👉 Chọn trang game bên dưới để quản lý hoặc đặt đơn:`;
