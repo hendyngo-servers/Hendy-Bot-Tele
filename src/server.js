@@ -13,13 +13,18 @@ const botController = require('./controllers/botController');
 const apiRouter = require('./routes/api');
 const errorHandler = require('./middlewares/errorHandler');
 
+function isProductionRuntime() {
+  return process.env.NODE_ENV === 'production' ||
+    Boolean(process.env.RENDER_SERVICE_ID || process.env.RENDER_EXTERNAL_URL);
+}
+
 const app = express();
 const server = http.createServer(app);
 const PORT = Number(process.env.PORT) || 3000;
 const DIST_PATH = path.join(__dirname, '../mini-app/dist');
 
 function validateProductionConfig() {
-  if (process.env.NODE_ENV !== 'production') return;
+  if (!isProductionRuntime()) return;
 
   const required = ['BOT_TOKEN', 'ADMIN_ID', 'MINI_APP_URL', 'APP_ENCRYPTION_KEY'];
   const missing = required.filter(key => !String(process.env[key] || '').trim());
@@ -63,12 +68,15 @@ app.use('/api', rateLimit({
   legacyHeaders: false
 }));
 
-app.get('/healthz', (_req, res) => res.status(200).json({
-  success: true,
-  service: 'hendy-bot-tele',
-  bot: botController.isRunning(),
-  timestamp: new Date().toISOString()
-}));
+app.get('/healthz', (_req, res) => {
+  const botReady = botController.isRunning();
+  res.status(botReady ? 200 : 503).json({
+    success: botReady,
+    service: 'hendy-bot-tele',
+    bot: botReady,
+    timestamp: new Date().toISOString()
+  });
+});
 
 app.use('/api/mini', apiRouter);
 
@@ -121,7 +129,7 @@ async function start() {
   await appDataService.init();
 
   const botStarted = await botController.startBot();
-  if (process.env.NODE_ENV === 'production' && !botStarted) {
+  if (isProductionRuntime() && !botStarted) {
     throw new Error('Telegram Bot không khởi chạy được. Kiểm tra BOT_TOKEN tại Render.');
   }
 
