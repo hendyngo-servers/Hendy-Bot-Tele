@@ -1,42 +1,36 @@
 require('dotenv').config();
 const express = require('express');
-const bot = require('./controllers/botController');
+const userService = require('./services/userService');
+const backendService = require('./services/backendService');
+const botController = require('./controllers/botController');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
-const WEBHOOK_DOMAIN = process.env.RENDER_EXTERNAL_URL || process.env.WEBHOOK_DOMAIN;
-const WEBHOOK_SECRET_TOKEN = process.env.WEBHOOK_SECRET_TOKEN;
+const BOT_TOKEN = process.env.BOT_TOKEN;
 
 app.use(express.json());
 
-// API gốc để Render ping Health check
+// API Healthcheck
 app.get('/', (req, res) => {
-  res.send("🤖 Bot Hendy MVC đang chạy trên Render!");
+  res.send("🤖 Hendy Cybertech Pro (Node.js Version) đang hoạt động ổn định!");
 });
 
-// Tích hợp Telegraf Webhook
-if (WEBHOOK_DOMAIN) {
-  // Tạo đường dẫn bí mật để gắn webhook
-  const secretPath = `/telegraf/${bot.secretPathComponent()}`;
+app.listen(PORT, async () => {
+  console.log(`🚀 Web Server đang chạy trên cổng ${PORT}`);
   
-  // Express lắng nghe request webhook từ Telegram
-  app.use(bot.webhookCallback(secretPath));
+  // 1. Tải Database cục bộ an toàn (Tự động tạo folder data)
+  await userService.loadDatabase();
   
-  // Gọi Telegram API để set URL webhook
-  const webhookUrl = `${WEBHOOK_DOMAIN}${secretPath}`;
-  bot.telegram.setWebhook(webhookUrl, {
-    secret_token: WEBHOOK_SECRET_TOKEN // Tăng cường bảo mật
-  })
-    .then(() => console.log(`✅ Webhook set successfully at ${WEBHOOK_DOMAIN}`))
-    .catch((err) => console.error('❌ Failed to set webhook:', err));
-} else {
-  // Chạy Long Polling nếu test nội bộ (không có domain)
-  bot.launch().then(() => console.log('✅ Bot running in Long Polling mode'));
-}
+  // 2. Khởi chạy Bot bằng Token 
+  if (BOT_TOKEN) {
+    await botController.startBot(BOT_TOKEN, process.env.ADMIN_ID);
+  }
 
-app.listen(PORT, () => {
-  console.log(`🚀 Server đang chạy trên cổng ${PORT}`);
+  // 3. Khởi tạo kết nối WebSocket với Trạm Mẹ
+  backendService.initWebSocket(botController);
+  console.log('🤖 Module Hendy Cybertech Pro sẵn sàng...');
 });
 
-process.once('SIGINT', () => bot.stop('SIGINT'));
-process.once('SIGTERM', () => bot.stop('SIGTERM'));
+// Bắt tín hiệu tắt an toàn
+process.once('SIGINT', () => botController.stopBot());
+process.once('SIGTERM', () => botController.stopBot());
