@@ -67,7 +67,7 @@ const setupBotLogic = (botInstance) => {
     let count = 0;
     for (const uid of Object.keys(userService.getUsers())) {
       try {
-        await botInstance.telegram.sendMessage(uid, `📢 *THÔNG BÁO TỪ HỆ THỐNG:*\n\n${msg}`, { parse_mode: 'Markdown' });
+        await botInstance.telegram.sendMessage(uid, `📢 *THÔNG BÁO TỪ HỆ THỐNG:*\n\n{msg}`, { parse_mode: 'Markdown' });
         count++;
       } catch (e) {}
     }
@@ -82,6 +82,13 @@ const setupBotLogic = (botInstance) => {
     await ctx.editMessageText(text, { parse_mode: 'Markdown', ...kb.getMainMenu() });
   });
 
+  // Mở Menu Minigame Live (giống ảnh mẫu Telegram của bạn)
+  botInstance.action('menu_minigame', async (ctx) => {
+    const u = userService.getUser(ctx.chat.id.toString());
+    const text = `LIVESTREAM 🚀\n*PREMIUM* 👑\n\n╭─────────────╮\n  💭 Chào, *${u.name}*.\n╰─────────────╯\n\n● Tổng đơn đang chờ duyệt chạy: \`[ 0 ]\`\n● Tổng đơn đang chạy: \`[ 0 ]\`\n● Tổng đơn hoàn thành: \`[ 0 ]\`\n--------------------------------------------------\n🎉 🎊 Cập nhật tính năng yêu cầu hoàn đơn nếu trúng mà không thấy phát.`;
+    await ctx.editMessageText(text, { parse_mode: 'Markdown', ...kb.getMinigameMenu() });
+  });
+
   botInstance.action('buy_code', async (ctx) => {
     await ctx.editMessageText('🖤 *TRUNG TÂM MUA CODE*\n💎 *TRẠNG THÁI ĐƠN HÀNG:*\n- Đơn hàng MINI GAME: Chờ [0] | Hoàn tất [0]', { parse_mode: 'Markdown', ...kb.getBuyCodeMenu() });
   });
@@ -89,8 +96,8 @@ const setupBotLogic = (botInstance) => {
   botInstance.action('v2_links', async (ctx) => {
     const u = userService.getUser(ctx.chat.id.toString());
     const links = u.linkedAccounts || {};
-    const text = `MINI GAME\n🖤 Chào *${u.name}*\n--------------------------------------------------\n📊 *Thống Kê Liên Kết:*\n- SC88: [${links.SC88?.length || 0}]\n- C168: [${links.C168?.length || 0}]\n- CM88: [${links.CM88?.length || 0}]\n- F8BET: [${links.F8BET?.length || 0}]`;
-    await ctx.editMessageText(text, { parse_mode: 'Markdown', ...kb.getV2LinksMenu(links.SC88?.length||0, links.C168?.length||0, links.CM88?.length||0, links.F8BET?.length||0) });
+    const text = `MINI GAME\n🖤 Chào *${u.name}*\n--------------------------------------------------\n📊 *Thống Kê Liên Kết:*\n- QQ88: [${links.QQ88?.length || 0}]\n- 78Win: [${links['78WIN']?.length || 0}]\n- SC88: [${links.SC88?.length || 0}]\n- C168: [${links.C168?.length || 0}]`;
+    await ctx.editMessageText(text, { parse_mode: 'Markdown', ...kb.getV2LinksMenu(links) });
   });
 
   botInstance.action('guide_detail', async (ctx) => {
@@ -98,10 +105,21 @@ const setupBotLogic = (botInstance) => {
     await ctx.editMessageText(text, { parse_mode: 'Markdown', ...kb.getBackMenu('v2_links') });
   });
 
+  // Điều hướng nhanh khi bấm vào các nhóm sảnh minigame
+  botInstance.action(['minigame_group_1', 'minigame_group_2', 'minigame_group_3'], async (ctx) => {
+    await ctx.answerCbQuery('🚀 Chuyển hướng đến trung tâm quản lý tài khoản liên kết sảnh!', { show_alert: false });
+    // Chuyển trực tiếp sang menu v2_links để quản lý tài khoản sảnh
+    const u = userService.getUser(ctx.chat.id.toString());
+    const links = u.linkedAccounts || {};
+    const text = `MINI GAME SẢNH\n🖤 Chào *${u.name}*\n--------------------------------------------------\n👉 Chọn trang game bên dưới để quản lý hoặc đặt đơn:`;
+    await ctx.editMessageText(text, { parse_mode: 'Markdown', ...kb.getV2LinksMenu(links) });
+  });
+
   botInstance.action(/^manage_(.+)$/, async (ctx) => {
     const brand = ctx.match[1];
     const u = userService.getUser(ctx.chat.id.toString());
-    const accounts = u.linkedAccounts[brand] || [];
+    if (!u.linkedAccounts[brand]) u.linkedAccounts[brand] = [];
+    const accounts = u.linkedAccounts[brand];
     
     let text = `📂 *DANH SÁCH TÀI KHOẢN (${brand})*\n--------------------------------------------------\n`;
     const buttons = [];
@@ -145,7 +163,7 @@ const setupBotLogic = (botInstance) => {
 
   botInstance.action('unimplemented', (ctx) => ctx.answerCbQuery('🚀 Tính năng sắp ra mắt!', { show_alert: true }));
 
-  // Xử lý Text Input
+  // Xử lý Text Input (Nhập thông tin tài khoản hoặc số tiền nạp)
   botInstance.on('text', async (ctx) => {
     if (ctx.message.text.startsWith('/')) return;
     const chatId = ctx.chat.id.toString();
@@ -167,7 +185,7 @@ const setupBotLogic = (botInstance) => {
 
     const lines = text.split('\n');
     let success = [], duplicate = 0, error = 0, limit = 0;
-    const MAX = 4;
+    const MAX = 10; // Đã nâng giới hạn lưu trữ acc cho thoải mái
     let totalAcc = Object.values(u.linkedAccounts).reduce((sum, arr) => sum + arr.length, 0);
 
     for (const line of lines) {
@@ -176,7 +194,7 @@ const setupBotLogic = (botInstance) => {
       if (parts.length >= 2) {
         const tk = parts[0], mk = parts[1];
         const miniCode = parts.length >= 3 ? parts[2] : tk;
-        const brand = parts.length >= 4 ? parts[3].toUpperCase() : (states[chatId]?.brand || 'SC88');
+        const brand = parts.length >= 4 ? parts[3].toUpperCase() : (states[chatId]?.brand || 'QQ88');
 
         if (!u.linkedAccounts[brand]) u.linkedAccounts[brand] = [];
         if (totalAcc >= MAX) { limit++; continue; }
@@ -208,7 +226,7 @@ const setupBotLogic = (botInstance) => {
     if (replyMsg) {
       await ctx.reply(replyMsg, { 
         parse_mode: 'Markdown', 
-        reply_markup: { inline_keyboard: [[{ text: "🌟 Tuyệt!", callback_data: "awesome" }, { text: "📜 Lịch sử", callback_data: "customer_center" }]] } 
+        reply_markup: { inline_keyboard: [[{ text: "🌟 Tuyệt!", callback_data: "buy_code" }, { text: "📜 Quản lý tài khoản", callback_data: "v2_links" }]] } 
       });
     }
 
@@ -226,7 +244,6 @@ module.exports = {
       bot = new Telegraf(token);
       setupBotLogic(bot);
 
-      // FIX LỖI 409 CONFLICT: Xóa webhook cũ & bỏ qua các update tồn đọng trước đó
       await bot.telegram.deleteWebhook({ drop_pending_updates: true });
       bot.launch({ dropPendingUpdates: true });
 
@@ -245,7 +262,7 @@ module.exports = {
   },
   broadcastToAdmin: (msg) => {
     if (bot && currentAdminId) {
-      bot.telegram.sendMessage(currentAdminId, `📢 *THÔNG BÁO TỪ TRẠM MẸ:*\n\n${msg}`, { parse_mode: 'Markdown' }).catch(()=>{});
+      bot.telegram.sendMessage(currentAdminId, `📢 *THÔNG BÁO TỪ TRẠM MẸ:*\n\n{msg}`, { parse_mode: 'Markdown' }).catch(()=>{});
     }
   },
   isRunning: () => bot !== null
