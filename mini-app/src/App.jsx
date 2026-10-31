@@ -111,7 +111,7 @@ export default function App() {
   const [editingItem, setEditingItem] = useState(null);
   const [catalogForm, setCatalogForm] = useState({
     category: 'tool', name: '', description: '', price: '0',
-    durationDays: '0', stock: '', active: true
+    durationDays: '0', vipLevel: '0', stock: '', active: true
   });
   const [giftForm, setGiftForm] = useState({
     code: '', rewardType: 'balance', rewardValue: '50000', maxUses: '1', expiresAt: ''
@@ -366,6 +366,7 @@ export default function App() {
       ...catalogForm,
       price: Number(catalogForm.price),
       durationDays: Number(catalogForm.durationDays),
+      vipLevel: Number(catalogForm.vipLevel || 0),
       stock: catalogForm.stock === '' ? null : Number(catalogForm.stock)
     };
     setBusy(true);
@@ -376,7 +377,7 @@ export default function App() {
         await api('/admin/catalog', initData, { method: 'POST', body: JSON.stringify(body) });
       }
       setEditingItem(null);
-      setCatalogForm({ category: 'tool', name: '', description: '', price: '0', durationDays: '0', stock: '', active: true });
+      setCatalogForm({ category: 'tool', name: '', description: '', price: '0', durationDays: '0', vipLevel: '0', stock: '', active: true });
       setAdminCatalog(await api('/admin/catalog', initData));
       setNotice('Đã lưu sản phẩm/dịch vụ.');
     } catch (error) { setNotice(error.message); }
@@ -613,13 +614,14 @@ export default function App() {
               <label>Mô tả<input value={catalogForm.description} onChange={e => setCatalogForm(v => ({ ...v, description: e.target.value }))} maxLength="500" /></label>
               <label>Giá (VNĐ)<input type="number" min="0" value={catalogForm.price} onChange={e => setCatalogForm(v => ({ ...v, price: e.target.value }))} required /></label>
               <label>Thời hạn (ngày, 0 nếu không áp dụng)<input type="number" min="0" value={catalogForm.durationDays} onChange={e => setCatalogForm(v => ({ ...v, durationDays: e.target.value }))} /></label>
+              <label>Cấp VIP nhận được (chỉ áp dụng cho danh mục VIP)<input type="number" min="0" max="10" value={catalogForm.vipLevel || 0} onChange={e => setCatalogForm(v => ({ ...v, vipLevel: e.target.value }))} /></label>
               <label>Tồn kho (để trống = không giới hạn)<input type="number" min="0" value={catalogForm.stock} onChange={e => setCatalogForm(v => ({ ...v, stock: e.target.value }))} /></label>
               <label className="check-label"><input type="checkbox" checked={catalogForm.active} onChange={e => setCatalogForm(v => ({ ...v, active: e.target.checked }))} /> Đang hiển thị</label>
               <button className="primary-button" disabled={busy}>{editingItem ? 'Lưu thay đổi' : 'Thêm sản phẩm'}</button>
-              {editingItem && <button type="button" className="back-button" onClick={() => { setEditingItem(null); setCatalogForm({ category: 'tool', name: '', description: '', price: '0', durationDays: '0', stock: '', active: true }); }}>Hủy chỉnh sửa</button>}
+              {editingItem && <button type="button" className="back-button" onClick={() => { setEditingItem(null); setCatalogForm({ category: 'tool', name: '', description: '', price: '0', durationDays: '0', vipLevel: '0', stock: '', active: true }); }}>Hủy chỉnh sửa</button>}
             </form>
             <h2>Danh mục hiện tại</h2>
-            {adminCatalog.length ? adminCatalog.map(item => <article className="admin-record" key={item.id}><div><strong>{item.name}</strong><small>{item.category} · {money(item.price)} · {item.durationDays || 0} ngày</small><span className="status">{item.active ? 'Đang bán' : 'Đã ẩn'}</span></div><div className="record-actions"><button onClick={() => { setEditingItem(item.id); setCatalogForm({ ...item, price: String(item.price), durationDays: String(item.durationDays), stock: item.stock === null ? '' : String(item.stock) }); }}>Sửa</button><button className="danger-button" onClick={() => adminAction('/admin/catalog/' + item.id, 'DELETE', {}, 'Đã xóa danh mục.')} disabled={busy}>Xóa</button></div></article>) : <Empty>Chưa có sản phẩm/dịch vụ.</Empty>}
+            {adminCatalog.length ? adminCatalog.map(item => <article className="admin-record" key={item.id}><div><strong>{item.name}</strong><small>{item.category} · {money(item.price)} · {item.durationDays || 0} ngày</small><span className="status">{item.active ? 'Đang bán' : 'Đã ẩn'}</span></div><div className="record-actions"><button onClick={() => { setEditingItem(item.id); setCatalogForm({ ...item, price: String(item.price), durationDays: String(item.durationDays), vipLevel: String(item.vipLevel || 0), stock: item.stock === null ? '' : String(item.stock) }); }}>Sửa</button><button className="danger-button" onClick={() => adminAction('/admin/catalog/' + item.id, 'DELETE', {}, 'Đã xóa danh mục.')} disabled={busy}>Xóa</button></div></article>) : <Empty>Chưa có sản phẩm/dịch vụ.</Empty>}
           </section>}
 
           {adminTab === 'orders' && <section className="panel"><h2>Đơn hàng dịch vụ</h2>
