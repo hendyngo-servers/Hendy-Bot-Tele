@@ -5,6 +5,7 @@ services:
     plan: starter
     region: singapore
     numInstances: 1
+    autoDeployTrigger: checksPass
     buildCommand: npm install && npm run check && npm test && npm run build
     startCommand: npm start
     healthCheckPath: /healthz
