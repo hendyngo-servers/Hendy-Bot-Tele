@@ -25,7 +25,8 @@ const ADMIN_TABS = [
   ['orders', 'Đơn hàng'],
   ['giftcodes', 'Giftcode'],
   ['users', 'Thành viên'],
-  ['tickets', 'Hỗ trợ']
+  ['tickets', 'Hỗ trợ'],
+  ['broadcast', 'Thông báo']
 ];
 
 const BRANDS = ['QQ88', '78WIN', 'SC88', 'C168', 'CM88', 'F8BET'];
@@ -116,6 +117,8 @@ export default function App() {
     code: '', rewardType: 'balance', rewardValue: '50000', maxUses: '1', expiresAt: ''
   });
   const [memberAdjustments, setMemberAdjustments] = useState({});
+  const [ticketReplies, setTicketReplies] = useState({});
+  const [broadcastMessage, setBroadcastMessage] = useState('');
 
   useEffect(() => {
     telegram?.ready();
@@ -538,7 +541,7 @@ export default function App() {
         <main><PageTitle eyebrow="TRUNG TÂM KHÁCH HÀNG" title="HỒ SƠ & HỖ TRỢ" onBack={() => setPage('home')} />
           <section className="panel"><h2>Thông tin thành viên</h2><article className="profile-row"><span>Họ tên</span><strong>{user?.name || session.profile.name}</strong></article><article className="profile-row"><span>Telegram ID</span><strong>{user?.id || session.profile.id}</strong></article><article className="profile-row"><span>Số dư</span><strong>{money(user?.balance)}</strong></article><article className="profile-row"><span>Cấp VIP</span><strong>VIP {user?.vipLevel || 0}</strong></article></section>
           <section className="panel"><h2>Gửi yêu cầu hỗ trợ</h2><form className="form-stack" onSubmit={submitSupport}><label>Nội dung<textarea rows="4" minLength="5" maxLength="2000" value={supportText} onChange={e => setSupportText(e.target.value)} required placeholder="Mô tả vấn đề bạn gặp phải..." /></label><button className="primary-button" disabled={busy}>Gửi CSKH</button></form></section>
-          <section className="panel"><h2>Lịch sử hỗ trợ</h2>{tickets.length ? tickets.map(ticket => <article className="history-row" key={ticket.id}><div><strong>{ticket.message}</strong><small>{dateText(ticket.createdAt)}</small></div><small className={'status ' + ticket.status}>{ticket.status === 'open' ? 'Đang mở' : ticket.status === 'answered' ? 'Đã trả lời' : 'Đã đóng'}</small></article>) : <Empty>Chưa có yêu cầu hỗ trợ.</Empty>}</section>
+          <section className="panel"><h2>Lịch sử hỗ trợ</h2>{tickets.length ? tickets.map(ticket => <article className="history-row" key={ticket.id}><div><strong>{ticket.message}</strong><small>{dateText(ticket.createdAt)}</small>{ticket.reply && <small className="ticket-reply">Phản hồi: {ticket.reply}</small>}</div><small className={'status ' + ticket.status}>{ticket.status === 'open' ? 'Đang mở' : ticket.status === 'answered' ? 'Đã trả lời' : 'Đã đóng'}</small></article>) : <Empty>Chưa có yêu cầu hỗ trợ.</Empty>}</section>
         </main>
       )}
 
@@ -638,8 +641,28 @@ export default function App() {
             {adminUsers.length ? adminUsers.map(item => <article className="user-admin-card" key={item.id}><div><strong>{item.name}</strong><small>ID {item.id}{item.username ? ' · @' + item.username : ''}</small><small>Ví: {money(item.balance)} · VIP {item.vipLevel} · {item.linkedAccounts} liên kết</small></div><div className="member-edit"><input type="number" placeholder="± Số dư" value={memberAdjustments[item.id]?.balanceDelta ?? ''} onChange={e => setMemberAdjustments(v => ({ ...v, [item.id]: { ...v[item.id], balanceDelta: e.target.value } }))} /><input type="number" min="0" max="10" placeholder="VIP" value={memberAdjustments[item.id]?.vipLevel ?? ''} onChange={e => setMemberAdjustments(v => ({ ...v, [item.id]: { ...v[item.id], vipLevel: e.target.value } }))} /><button onClick={() => saveMember(item.id)} disabled={busy}>Lưu</button></div></article>) : <Empty>Chưa có thành viên.</Empty>}
           </section>}
 
+          {adminTab === 'broadcast' && <section className="panel">
+            <h2>Gửi thông báo tới thành viên</h2>
+            <p className="muted">Bot sẽ gửi nội dung tới danh sách thành viên đã từng mở bot. Telegram có thể từ chối một số người dùng đã chặn bot.</p>
+            <form className="form-stack" onSubmit={async event => {
+              event.preventDefault();
+              await adminAction('/admin/broadcast', 'POST', { message: broadcastMessage }, 'Đã hoàn tất gửi thông báo.');
+              setBroadcastMessage('');
+            }}>
+              <label>Nội dung thông báo<textarea rows="6" minLength="2" maxLength="3500" value={broadcastMessage} onChange={e => setBroadcastMessage(e.target.value)} required placeholder="Nhập nội dung thông báo..." /></label>
+              <button className="primary-button" disabled={busy}>Gửi thông báo</button>
+            </form>
+          </section>}
+
           {adminTab === 'tickets' && <section className="panel"><h2>Yêu cầu hỗ trợ</h2>
-            {adminTickets.length ? adminTickets.map(item => <article className="admin-record" key={item.id}><div><strong>UID {item.userId}</strong><p>{item.message}</p><small>{dateText(item.createdAt)}</small><span className={'status ' + item.status}>{item.status}</span></div>{item.status !== 'closed' && <button className="danger-button" onClick={() => adminAction('/admin/tickets/' + item.id, 'PATCH', { status: 'closed' }, 'Đã đóng yêu cầu hỗ trợ.')}>Đóng</button>}</article>) : <Empty>Chưa có yêu cầu hỗ trợ.</Empty>}
+            {adminTickets.length ? adminTickets.map(item => <article className="admin-record ticket-admin-record" key={item.id}>
+              <div><strong>UID {item.userId}</strong><p>{item.message}</p><small>{dateText(item.createdAt)}</small><span className={'status ' + item.status}>{item.status === 'open' ? 'Đang mở' : item.status === 'answered' ? 'Đã trả lời' : 'Đã đóng'}</span>{item.reply && <p className="muted">Phản hồi trước: {item.reply}</p>}</div>
+              {item.status !== 'closed' && <div className="ticket-actions">
+                <textarea rows="2" value={ticketReplies[item.id] || ''} onChange={e => setTicketReplies(v => ({ ...v, [item.id]: e.target.value }))} placeholder="Nhập phản hồi cho khách..." />
+                <button onClick={() => adminAction('/admin/tickets/' + item.id, 'PATCH', { status: 'answered', reply: ticketReplies[item.id] || '' }, 'Đã gửi phản hồi cho khách.') } disabled={busy || !(ticketReplies[item.id] || '').trim()}>Trả lời</button>
+                <button className="danger-button" onClick={() => adminAction('/admin/tickets/' + item.id, 'PATCH', { status: 'closed' }, 'Đã đóng yêu cầu hỗ trợ.')}>Đóng</button>
+              </div>}
+            </article>) : <Empty>Chưa có yêu cầu hỗ trợ.</Empty>}
           </section>}
         </main>
       )}
