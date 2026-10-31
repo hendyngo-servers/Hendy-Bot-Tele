@@ -1,52 +1,47 @@
 const { Markup } = require('telegraf');
 
-const MINI_APP_URL = process.env.MINI_APP_URL || 'https://ngogiaidy56-eng.github.io/BOT-TELE';
-const WEB_APP_URL = process.env.WEB_APP_URL || 'https://telegram-mini-app.ngogiaidy56.workers.dev';
+const getRandomIcons = () => {
+  const sample = (arr) => arr[Math.floor(Math.random() * arr.length)];
+  return {
+    rocket: sample(['🚀', '🛸', '🛰️', '☄️']),
+    gem: sample(['💎', '💍', '🔮', '✨']),
+    gift: sample(['🎁', '🎊', '🎉', '🧧']),
+    card: sample(['💳', '💰', '💸', '💵']),
+    tool: sample(['🧰', '🔧', '🔨', '⚙️']),
+    shield: sample(['🛡️', '⚔️', '🔒', '🔑'])
+  };
+};
 
-const getMainMenu = () => Markup.inlineKeyboard([
-  [Markup.button.callback('🛍️ TRUNG TÂM MUA CODE MINI TRỰC TIẾP', 'shop_code_mini')],
-  [Markup.button.callback('🌐 DỊCH VỤ MẠNG XÃ HỘI', 'social_service')],
-  [Markup.button.callback('💳 NẠP TIỀN', 'deposit')],
-  [Markup.button.callback('💎 TRUNG TÂM KHÁCH HÀNG', 'cshk_center')],
-  [Markup.button.callback('🤖 BOT DỊCH VỤ VIETSUB (PIPELINE)', 'bot_vietsub')],
-  [Markup.button.callback('🚀 COMPOSE WEB / TMA KTOR ENTRYPOINT', 'compose_web_tma')],
-  [Markup.button.url('🎧 LIÊN HỆ CSKH', 'https://t.me/your_support')],
-  [Markup.button.callback('🛠 ADMIN QUẢN LÝ XÂY DỰNG PHÁT TRIỂN Vietsub', 'admin_panel')]
-]);
+const getMainMenu = () => {
+  const icons = getRandomIcons();
+  return Markup.inlineKeyboard([
+    [Markup.button.callback(`${icons.rocket} MINIGAME LIVE`, 'menu_minigame'), Markup.button.callback(`${icons.tool} THUÊ TOOL (NEW)`, 'unimplemented')],
+    [Markup.button.callback(`${icons.gift} MUA LÌ XÌ - CODE MÀN - CODE TELE`, 'buy_code')],
+    [Markup.button.callback(`${icons.card} NẠP TIỀN`, 'deposit'), Markup.button.callback(`${icons.shield} OTP & PROXY`, 'menu_otp_proxy')],
+    [Markup.button.callback('🏆 KHO CÔNG CỤ ĐẶC QUYỀN', 'menu_vip_tools')],
+    [Markup.button.callback(`${icons.gem} TRUNG TÂM KHÁCH HÀNG`, 'customer_center')],
+    [Markup.button.callback('⚔️ HỆ THỐNG GHÉP ĐỐI ĐẦU', 'menu_duel')],
+    [Markup.button.callback('👥 Giới thiệu REF', 'unimplemented'), Markup.button.callback('👑 TRUNG TÂM VIP', 'unimplemented')],
+    [Markup.button.url('👨‍👩‍👧 NHÓM CHAT', 'https://t.me/Hendy_Support_Group'), Markup.button.callback('📢 KÊNH THÔNG BÁO', 'unimplemented')],
+    [Markup.button.callback('🎟️ NHẬP GIFTCODE', 'unimplemented'), Markup.button.callback('🧑🏻‍💻 LIÊN HỆ CSKH', 'unimplemented')]
+  ]);
+};
 
-const getShopCodeMenu = () => Markup.inlineKeyboard([
-  [Markup.button.callback('🚀 Liên Minh KJC', 'shop_kjc'), Markup.button.callback('🚀 Liên Minh KJC CŨ', 'shop_kjc_cu')],
-  [Markup.button.callback('🚀 Liên Minh ABCVIP', 'shop_abcvip_group')],
-  [Markup.button.callback('🐶 TRỞ VỀ MENU CHÍNH', 'back_start')]
-]);
-
-const getSocialServiceMenu = () => Markup.inlineKeyboard([
-  [Markup.button.callback('🎵 Buff 1K Mắt TikTok Live (10k VNĐ)', 'buff_tiktok')],
-  [Markup.button.callback('📘 Buff 1K Mắt Facebook Live (15k VNĐ)', 'buff_fb')],
+const getBuyCodeMenu = () => Markup.inlineKeyboard([
+  [Markup.button.callback('🎮 V2 LIÊN KẾT (SC88, C168, CM88, F8BET)', 'v2_links')],
+  [Markup.button.callback('🕹️ Trang Live Riêng [QQ88, Hi88, 78Win..]', 'unimplemented')],
   [Markup.button.callback('🔙 Quay lại', 'back_start')]
 ]);
 
-const getCSHKMenu = () => Markup.inlineKeyboard([
-  [Markup.button.webApp('🚀 [MINI APP] BẢN MỚI | CHỈ MOBILE', MINI_APP_URL)],
-  [Markup.button.url('🔑 PHIÊN BẢN WEB CŨ', WEB_APP_URL)],
-  [Markup.button.callback('⬅️ TRỞ VỀ MENU CHÍNH', 'back_start')]
+const getV2LinksMenu = (cSC88, cC168, cCM88, cF8BET) => Markup.inlineKeyboard([
+  [Markup.button.callback(`🎯 SC88 (${cSC88})`, 'manage_SC88'), Markup.button.callback(`🎯 C168 (${cC168})`, 'manage_C168')],
+  [Markup.button.callback(`🎯 CM88 (${cCM88})`, 'manage_CM88'), Markup.button.callback(`🎯 F8BET (${cF8BET})`, 'manage_F8BET')],
+  [Markup.button.callback('📖 HƯỚNG DẪN - CHI TIẾT', 'guide_detail')],
+  [Markup.button.callback('🔙 Quay lại', 'buy_code')]
 ]);
 
-const getAdminMenu = () => Markup.inlineKeyboard([
-  [Markup.button.callback('👥 Danh Sách User Online', 'admin_list_users')],
-  [Markup.button.callback('⚡ Ký Lệnh Quản Trị Ktor Client', 'admin_ktor_trigger')],
-  [Markup.button.callback('🔙 Quay lại Menu Chính', 'back_start')]
+const getBackMenu = (callbackData) => Markup.inlineKeyboard([
+  [Markup.button.callback('🔙 Quay lại', callbackData)]
 ]);
 
-const getBackAdminMenu = () => Markup.inlineKeyboard([
-  [Markup.button.callback('◀ Quay lại Admin', 'admin_panel')]
-]);
-
-const getBackStartMenu = () => Markup.inlineKeyboard([
-  [Markup.button.callback('🔙 Quay lại Menu Chính', 'back_start')]
-]);
-
-module.exports = { 
-  getMainMenu, getShopCodeMenu, getSocialServiceMenu, 
-  getCSHKMenu, getAdminMenu, getBackAdminMenu, getBackStartMenu 
-};
+module.exports = { getRandomIcons, getMainMenu, getBuyCodeMenu, getV2LinksMenu, getBackMenu };
