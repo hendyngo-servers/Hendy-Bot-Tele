@@ -246,9 +246,10 @@ async function loadMongo() {
   const database = await mongoService.connectMongo();
   mongoUsers = database.collection('users');
   await mongoUsers.createIndex({ createdAt: -1 });
-  await migrateLegacyUsersToMongo();
-  await migratePostgresUsersToMongo();
+  // D1 is the former primary store, so import it before older PostgreSQL/JSON backups.
   await migrateD1UsersToMongo();
+  await migratePostgresUsersToMongo();
+  await migrateLegacyUsersToMongo();
   const documents = await mongoUsers.find({}).sort({ createdAt: 1 }).toArray();
   const loaded = {};
   for (const document of documents) {
