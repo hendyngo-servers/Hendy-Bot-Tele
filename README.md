@@ -2,12 +2,14 @@
 
 Hendy Bot Telegram là một ứng dụng Node.js đơn máy chủ gồm Telegram Bot (Telegraf), API Express và Telegram Mini App (React/Vite). Ứng dụng chạy như **một Render Web Service** và không sử dụng WebSocket, background worker hoặc dịch vụ điều phối bên ngoài.
 
-## Chức năng đang có
-- Telegram Bot: menu màu, mở Mini App, lệnh trạng thái, danh sách yêu cầu nạp chờ và broadcast quản trị.
-- Mini App: trang tổng quan, hồ sơ, số dư, lịch sử yêu cầu nạp, quản lý tài khoản liên kết và gửi yêu cầu hỗ trợ.
-- Xác thực chữ ký `Telegram.WebApp.initData` tại máy chủ; dữ liệu API cá nhân được đặt `Cache-Control: no-store`.
-- Mật khẩu tài khoản liên kết mã hóa AES-256-GCM trước khi ghi xuống ổ đĩa.
-- Lưu dữ liệu bền vững trong Render Persistent Disk tại `/var/data`.
+## Chức năng hiện tại
+- Telegram Bot giữ luồng chào mừng, menu truy cập Mini App và các lệnh quản trị `/admin`, `/status`, `/user`, `/addmoney`, `/broadcast`.
+- Mini App chỉ có hai khu vực đăng nhập: **TRUNG TÂM QUẢN LÝ TÀI KHOẢN** cho thành viên và **ĐĂNG NHẬP ADMIN** cho tài khoản quản trị.
+- Trung tâm thành viên cho phép thêm, xem và xóa tài khoản liên kết theo từng nhà cung cấp.
+- Admin dashboard chỉ hiển thị tổng số thành viên, số tài khoản liên kết, danh sách thành viên và các liên kết mới nhất; không trả về mật khẩu.
+- Xác thực bằng chữ ký `Telegram.WebApp.initData` ở máy chủ. Quyền Admin được xác minh bằng `ADMIN_ID` tại API, không tin cậy trạng thái giao diện.
+- Mật khẩu tài khoản liên kết được mã hóa AES-256-GCM trước khi ghi xuống ổ đĩa.
+- Lưu dữ liệu trong Render Persistent Disk tại `/var/data`; không dùng WebSocket hoặc worker riêng.
 - Health check tại `/healthz` và GitHub Actions kiểm tra cú pháp, test, build.
 
 ## Chạy local
@@ -37,11 +39,16 @@ Mở Mini App từ Telegram để có `initData` hợp lệ. Mở URL web trực
    - `ADMIN_ID`: Telegram numeric user ID của quản trị viên.
    - `MINI_APP_URL`: URL HTTPS của chính Web Service sau khi tạo.
    - `APP_ENCRYPTION_KEY`: khóa ngẫu nhiên riêng, ít nhất 32 ký tự.
-   - `BANK_BIN`, `BANK_ACCOUNT`, `BANK_ACCOUNT_NAME`, `BANK_NAME`: tùy chọn để tạo QR.
-   - `MIN_DEPOSIT_VND`: mức nạp tối thiểu, mặc định 10.000.
-   - `SUPPORT_USERNAME`: username hỗ trợ Telegram, không gồm @.
 6. Trong BotFather, cấu hình Main Mini App/Web App URL trỏ tới cùng URL HTTPS.
 7. Sau deploy, kiểm tra `https://<service>.onrender.com/healthz`, sau đó mở Bot và nhấn nút Mini App.
+
+
+## Đăng nhập Mini App
+
+- Thành viên mở bot và chọn **TRUNG TÂM QUẢN LÝ TÀI KHOẢN**. Mini App xác minh phiên Telegram rồi mở trang quản lý liên kết của chính ID Telegram đó.
+- Quản trị viên chọn **ĐĂNG NHẬP ADMIN**. Nút này chỉ hiện cho ID Admin, nhưng API vẫn tự kiểm tra `ADMIN_ID` trước khi trả dữ liệu quản trị.
+- Không sử dụng mật khẩu Admin tĩnh. Danh tính Admin được xác thực bằng chữ ký `initData` hợp lệ của Telegram kết hợp với danh sách cho phép `ADMIN_ID`.
+- Mở Mini App trực tiếp trên trình duyệt ngoài Telegram sẽ không tạo phiên đăng nhập hợp lệ.
 
 ## Khắc phục lỗi Telegram Bot không khởi chạy
 
