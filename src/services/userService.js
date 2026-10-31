@@ -2,12 +2,14 @@ const fs = require('node:fs/promises');
 const path = require('node:path');
 const { Pool } = require('pg');
 const { CloudflareD1Client } = require('./cloudflareD1Service');
+const mongoService = require('./mongoService');
 
 const dir = process.env.DATA_DIR || path.join(process.cwd(), 'data');
 const legacyFile = path.join(dir, 'users.json');
 
 let users = {};
 let pool = null;
+let mongoUsers = null;
 let d1Client = null;
 let activeStore = 'json';
 let persistedSnapshot = {};
@@ -85,6 +87,138 @@ async function persistPostgres(snapshot) {
   }
 }
 
+async function persistMongo(snapshot) {
+  if (!mongoUsers) throw new Error('MongoDB users collection chưa được khởi tạo.');
+  const operations = Object.values(snapshot).map(user => ({
+    updateOne: {
+      filter: { _id: user.id },
+      update: {
+        $set: {
+          name: user.name,
+          username: user.username,
+          balance: user.balance,
+          vipLevel: user.vipLevel,
+          createdAt: user.createdAt,
+          updatedAt: new Date()
+        },
+        $setOnInsert: { _id: user.id }
+      },
+      upsert: true
+    }
+  }));
+  for (let offset = 0; offset < operations.length; offset += 500) {
+    await mongoUsers.bulkWrite(operations.slice(offset, offset + 500), { ordered: true });
+  }
+}
+
+async function migrateLegacyUsersToMongo() {
+  const legacyUsers = await readLegacyUsers();
+  if (!legacyUsers) return 0;
+  const operations = Object.entries(legacyUsers).map(([id, value]) => {
+    const user = normalizeUser(id, value);
+    return {
+      updateOne: {
+        filter: { _id: user.id },
+        update: {
+          $setOnInsert: {
+            _id: user.id,
+            name: user.name,
+            username: user.username,
+            balance: user.balance,
+            vipLevel: user.vipLevel,
+            createdAt: user.createdAt,
+            updatedAt: new Date()
+          }
+        },
+        upsert: true
+      }
+    };
+  });
+  for (let offset = 0; offset < operations.length; offset += 500) {
+    await mongoUsers.bulkWrite(operations.slice(offset, offset + 500), { ordered: true });
+  }
+  const backup = legacyFile + '.migrated-mongodb-' + Date.now();
+  await fs.rename(legacyFile, backup);
+  console.info('[DB] Đã nhập ' + operations.length + ' hồ sơ JSON vào MongoDB. Bản sao lưu: ' + path.basename(backup));
+  return operations.length;
+}
+
+async function migratePostgresUsersToMongo() {
+  const connectionString = String(process.env.DATABASE_URL || '').trim();
+  if (!connectionString) return 0;
+  const legacyPool = new Pool({
+    connectionString,
+    ...(String(process.env.PGSSLMODE || '').toLowerCase() === 'require'
+      ? { ssl: { rejectUnauthorized: true } }
+      : {}),
+    max: 2,
+    connectionTimeoutMillis: 10000,
+    idleTimeoutMillis: 10000,
+    allowExitOnIdle: true
+  });
+  try {
+    const result = await legacyPool.query(
+      'SELECT telegram_id, name, username, balance, vip_level, created_at FROM hendy_users'
+    );
+    const operations = result.rows.map(row => {
+      const user = normalizeUser(row.telegram_id, {
+        name: row.name,
+        username: row.username,
+        balance: Number(row.balance),
+        vipLevel: row.vip_level,
+        createdAt: row.created_at
+      });
+      return {
+        updateOne: {
+          filter: { _id: user.id },
+          update: {
+            $setOnInsert: {
+              _id: user.id,
+              name: user.name,
+              username: user.username,
+              balance: user.balance,
+              vipLevel: user.vipLevel,
+              createdAt: user.createdAt,
+              updatedAt: new Date()
+            }
+          },
+          upsert: true
+        }
+      };
+    });
+    for (let offset = 0; offset < operations.length; offset += 500) {
+      await mongoUsers.bulkWrite(operations.slice(offset, offset + 500), { ordered: true });
+    }
+    console.info('[DB] Đã nhập ' + operations.length + ' hồ sơ từ PostgreSQL cũ vào MongoDB (không ghi đè ID đã có).');
+    return operations.length;
+  } catch (error) {
+    if (error.code === '42P01') {
+      console.warn('[DB] Bỏ qua migration PostgreSQL: chưa có bảng hendy_users.');
+      return 0;
+    }
+    throw error;
+  } finally {
+    await legacyPool.end();
+  }
+}
+
+async function loadMongo() {
+  const database = await mongoService.connectMongo();
+  mongoUsers = database.collection('users');
+  await mongoUsers.createIndex({ createdAt: -1 });
+  await migrateLegacyUsersToMongo();
+  await migratePostgresUsersToMongo();
+  const documents = await mongoUsers.find({}).sort({ createdAt: 1 }).toArray();
+  const loaded = {};
+  for (const document of documents) {
+    loaded[String(document._id)] = normalizeUser(document._id, document);
+  }
+  users = loaded;
+  persistedSnapshot = cloneUsers(loaded);
+  activeStore = 'mongodb';
+  console.info('[DB] MongoDB Atlas sẵn sàng. Đã tải ' + documents.length + ' thành viên.');
+}
+
 function persist() {
   const rawSnapshot = JSON.parse(JSON.stringify(users));
   const snapshot = {};
@@ -93,6 +227,7 @@ function persist() {
   }
   queue = queue.catch(() => {}).then(async () => {
     if (activeStore === 'd1') await persistD1Snapshot(snapshot);
+    else if (activeStore === 'mongodb') await persistMongo(snapshot);
     else if (pool) await persistPostgres(snapshot);
     else await persistJson(snapshot);
   });
@@ -353,6 +488,10 @@ async function loadPostgres() {
 }
 
 async function loadDatabase() {
+  if (mongoService.hasConfig()) {
+    await loadMongo();
+    return;
+  }
   if (CloudflareD1Client.hasAnyEnvironmentConfig()) {
     await loadD1();
     return;
@@ -421,6 +560,8 @@ function initUser(chatId, telegramUser = {}) {
 
 async function closeDatabase() {
   await queue.catch(() => {});
+  if (mongoService.isConnected()) await mongoService.closeMongo();
+  mongoUsers = null;
   if (pool) {
     const current = pool;
     pool = null;
@@ -436,5 +577,6 @@ module.exports = {
   getUsers: () => users,
   closeDatabase,
   isPostgres: () => activeStore === 'postgres' && Boolean(pool),
+  isMongo: () => activeStore === 'mongodb' && Boolean(mongoUsers && mongoService.isConnected()),
   isCloudflareD1: () => activeStore === 'd1' && Boolean(d1Client?.isConfigured())
 };
