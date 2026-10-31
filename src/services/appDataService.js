@@ -38,8 +38,49 @@ function listPendingDeposits(limit=20){return state.deposits.filter(x=>x.status=
 async function createTicket(uid,message){
   const x={id:crypto.randomUUID(),userId:String(uid),message,status:'open',createdAt:new Date().toISOString()};state.tickets.push(x);await persist();return{id:x.id,status:x.status,createdAt:x.createdAt};
 }
+function getAdminOverview(users = {}) {
+  const userEntries = Object.entries(users);
+  const accountCounts = new Map();
+  for (const account of state.linkedAccounts) {
+    accountCounts.set(account.userId, (accountCounts.get(account.userId) || 0) + 1);
+  }
+
+  const recentUsers = userEntries
+    .sort((a, b) => String(b[1].createdAt || '').localeCompare(String(a[1].createdAt || '')))
+    .slice(0, 30)
+    .map(([id, user]) => ({
+      id,
+      name: String(user.name || 'Người dùng').slice(0, 100),
+      username: user.username || null,
+      balance: Number(user.balance || 0),
+      vipLevel: Number(user.vipLevel || 0),
+      linkedAccounts: accountCounts.get(id) || 0,
+      createdAt: user.createdAt || null
+    }));
+
+  const recentAccounts = state.linkedAccounts
+    .slice()
+    .sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')))
+    .slice(0, 20)
+    .map(account => ({
+      ...publicAccount(account),
+      ownerId: account.userId
+    }));
+
+  return {
+    totals: {
+      users: userEntries.length,
+      linkedAccounts: state.linkedAccounts.length,
+      pendingDeposits: state.deposits.filter(item => item.status === 'pending').length,
+      openTickets: state.tickets.filter(item => item.status === 'open').length
+    },
+    users: recentUsers,
+    recentAccounts
+  };
+}
+
 function getOverview(uid,user){
   const id=String(uid);
   return {profile:{id,name:user.name,username:user.username||null,balance:Number(user.balance||0),vipLevel:Number(user.vipLevel||0)},linkedAccounts:listLinkedAccounts(id),deposits:listDeposits(id).slice(0,5),counts:{linkedAccounts:state.linkedAccounts.filter(x=>x.userId===id).length,pendingDeposits:state.deposits.filter(x=>x.userId===id&&x.status==='pending').length,openTickets:state.tickets.filter(x=>x.userId===id&&x.status==='open').length}};
 }
-module.exports={init,persist,listLinkedAccounts,addLinkedAccount,deleteLinkedAccount,createDeposit,listDeposits,listPendingDeposits,createTicket,getOverview};
+module.exports={init,persist,listLinkedAccounts,addLinkedAccount,deleteLinkedAccount,createDeposit,listDeposits,listPendingDeposits,createTicket,getOverview,getAdminOverview};
