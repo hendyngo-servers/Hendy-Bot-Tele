@@ -13,10 +13,6 @@ const originalFetch = globalThis.fetch;
 const records = new Map();
 const settings = new Map();
 
-function result(results = []) {
-  return { success: true, result: [{ success: true, results }] };
-}
-
 globalThis.fetch = async (_url, options) => {
   const body = JSON.parse(options.body);
   const execute = statement => {
@@ -60,9 +56,10 @@ globalThis.fetch = async (_url, options) => {
     throw new Error('Unexpected mocked D1 SQL: ' + sql);
   };
 
-  return new Response(JSON.stringify(result(
-    body.batch ? body.batch.map(execute) : [execute(body)]
-  )), {
+  return new Response(JSON.stringify({
+    success: true,
+    result: body.batch ? body.batch.map(execute) : [execute(body)]
+  }), {
     status: 200,
     headers: { 'Content-Type': 'application/json' }
   });
