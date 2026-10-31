@@ -48,7 +48,7 @@ test('userService does not accept unsafe balance or VIP values', async () => {
     vipLevel: 0,
     createdAt: new Date().toISOString()
   };
-  await assert.rejects(userService.saveDatabase(), /số nguyên an toàn/i);
+  assert.throws(() => userService.saveDatabase(), /số nguyên an toàn/i);
   delete userService.getUsers()['invalid-user'];
 });
 
