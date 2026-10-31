@@ -1,6 +1,6 @@
 # Hendy-Bot-Tele
 
-Hendy-Bot-Tele là Telegram Bot Telegraf + REST API Express + Admin Mini App React/Vite. Bot/API/Mini App chạy trên một Render Web Service; dữ liệu nghiệp vụ quan hệ nằm trong Cloudflare D1 và tệp/ảnh nằm trong Cloudflare R2. Không sử dụng WebSocket hoặc worker riêng.
+Hendy-Bot-Tele là Telegram Bot Telegraf + REST API Express + Admin Mini App React/Vite. Bot, API và Mini App chạy trên một Render Web Service. **MongoDB Atlas là database chính**; Cloudflare R2 tiếp tục lưu ảnh QR riêng tư. Không sử dụng WebSocket hoặc worker riêng.
 
 ## Cấu trúc repository
 
@@ -14,19 +14,16 @@ Hendy-Bot-Tele/
 │   ├── index.html
 │   └── vite.config.mjs
 ├── public/                         # Vite tự sinh khi npm run build; không commit
-├── migrations/d1/
-│   ├── 0001_hendy_users.sql
-│   └── 0002_hendy_app_data.sql
+├── migrations/d1/                  # SQL migration cũ, dùng để đối chiếu dữ liệu legacy
 ├── src/
 │   ├── controllers/
 │   ├── middlewares/
 │   ├── routes/
 │   ├── security/
 │   ├── services/
-│   │   ├── cloudflareD1Service.js
-│   │   ├── r2StorageService.js
-│   │   ├── userService.js
-│   │   └── appDataService.js
+│   │   ├── mongoService.js         # Kết nối MongoDB Atlas
+│   │   ├── userService.js          # Hồ sơ, số dư, VIP
+│   │   └── appDataService.js       # Đơn hàng, nạp tiền, giftcode, REF...
 │   ├── utils/keyboards.js
 │   └── server.js
 ├── .env.example
@@ -39,78 +36,68 @@ Hendy-Bot-Tele/
 
 ## Menu thành viên — Telegram Bot native
 
-14 nút thành viên là Telegram Inline Keyboard callback, được xử lý trực tiếp trong `src/controllers/botController.js` và `src/utils/keyboards.js`. Menu thành viên không mở Mini App và không gọi REST API Mini App.
+Các nút thành viên là Telegram Inline Keyboard callback, xử lý trực tiếp trong `src/controllers/botController.js` và `src/utils/keyboards.js`. Menu thành viên không mở Mini App và không gọi REST API Mini App.
 
-- **Mini Game Live:** thêm/xóa tài khoản liên kết theo nhà cung cấp; mật khẩu được mã hóa AES-256-GCM.
-- **Thuê Tool, Mua Code, OTP & Proxy, VIP, Ghép đối đầu:** đọc danh mục từ D1 và tạo đơn trực tiếp từ Bot.
-- **Ví điện tử:** tạo yêu cầu nạp, QR VietQR hoặc ảnh QR đã lưu ở R2, xem lịch sử giao dịch.
-- **Trung tâm khách hàng:** hồ sơ, số dư, VIP và lịch sử hoạt động.
-- **REF:** mã/link giới thiệu, thống kê và hoa hồng.
-- **Giftcode:** nhập ngay trong cuộc trò chuyện.
-- **Nhóm chat, kênh thông báo, CSKH:** liên kết cấu hình được lấy từ D1; yêu cầu hỗ trợ được lưu thành ticket.
-
-Lệnh thành viên: `/start`, `/menu` mở menu và `/cancel` hủy bước nhập liệu.
+- Mini Game Live: quản lý tài khoản liên kết; mật khẩu được mã hóa AES-256-GCM.
+- Thuê Tool, Mua Code, OTP & Proxy, VIP, Ghép đối đầu: danh mục và đơn hàng.
+- Ví điện tử: tạo yêu cầu nạp, QR VietQR/ảnh QR và lịch sử.
+- Trung tâm khách hàng: hồ sơ, số dư, VIP và lịch sử.
+- REF: mã/link giới thiệu và hoa hồng.
+- Giftcode: nhập mã trong Telegram.
+- Nhóm chat, kênh thông báo và CSKH.
 
 ## Mini App — chỉ dành cho Admin
 
-Mini App React/Vite chỉ phục vụ quản trị. Người không có quyền Admin sẽ thấy hướng dẫn quay lại Bot và không tải dữ liệu nghiệp vụ thành viên. Admin được xác thực bằng chữ ký `Telegram.WebApp.initData` và Telegram ID khớp `ADMIN_ID` tại máy chủ.
+Mini App React/Vite chỉ phục vụ Admin. Người không có quyền Admin không truy cập được dữ liệu quản trị. Máy chủ xác thực chữ ký `Telegram.WebApp.initData` và Telegram ID khớp `ADMIN_ID`.
 
-Admin dashboard có tổng quan, trạng thái D1/R2, QR/thanh toán, duyệt nạp, danh mục, đơn hàng, giftcode, thành viên, hỗ trợ và broadcast.
+Dashboard gồm tổng quan, QR/thanh toán, duyệt nạp, danh mục, đơn hàng, giftcode, thành viên, hỗ trợ và broadcast.
 
-## Cloudflare D1 — dữ liệu quan hệ
+## MongoDB Atlas — database chính
 
-Ứng dụng sử dụng D1 qua Cloudflare REST API:
-`POST /accounts/{account_id}/d1/database/{database_id}/query`.
-Token API chỉ được lưu trong Render Environment, không gửi xuống Mini App.
+Backend dùng official MongoDB Node.js driver. Khi khởi động, ứng dụng:
+1. Kết nối `MONGODB_URI`, ping database và tạo index cần thiết.
+2. Tải hồ sơ thành viên từ collection `users`.
+3. Tải dữ liệu nghiệp vụ từ các collection `linkedAccounts`, `deposits`, `tickets`, `catalog`, `orders`, `giftcodes`, `referrals` và cấu hình từ `settings`.
+4. Ghi mọi thay đổi từ Bot/Admin về MongoDB; MongoDB là nguồn dữ liệu chính trên Render.
 
-D1 là kho chính của:
-- Hồ sơ thành viên (`hendy_users`): Telegram ID, tên, username, số dư, VIP và ngày tạo.
-- Tài khoản liên kết, yêu cầu nạp, catalog, đơn hàng, ticket, giftcode, referral.
-- Cấu hình thanh toán và liên kết Bot.
+### Tạo MongoDB Atlas
 
-Các bảng được tạo lúc ứng dụng khởi động. SQL migration tương ứng nằm tại `migrations/d1/`.
+1. Mở [MongoDB Atlas](https://cloud.mongodb.com/), tạo Project và Cluster.
+2. Chọn AWS Singapore (`ap-southeast-1`) để gần Render Singapore.
+3. Tạo **Database User** riêng cho ứng dụng, chỉ cấp quyền đọc/ghi trên database `hendy_bot`; không dùng tài khoản Atlas đăng nhập Dashboard.
+4. Vào **Network Access** và cho phép các outbound IP ranges được Render hiển thị cho Web Service. Không mở `0.0.0.0/0` lâu dài nếu có thể giới hạn theo IP.
+5. Chọn **Connect → Drivers → Node.js**, sao chép URI `mongodb+srv://...`, thay placeholder bằng mật khẩu Database User đã URL-encode nếu có ký tự đặc biệt.
+6. Đặt tên database là `hendy_bot` qua biến `MONGODB_DB_NAME`.
 
-### Di chuyển dữ liệu cũ
+Tài liệu chính thức:
+- [MongoDB Atlas — Connect to a cluster](https://www.mongodb.com/docs/atlas/driver-connection/)
+- [MongoDB Node.js Driver — Connection targets](https://www.mongodb.com/docs/drivers/node/current/connect/connection-targets/)
+- [Render — Connect to MongoDB Atlas](https://render.com/docs/connect-to-mongodb-atlas)
 
-Khi khởi động lần đầu với D1:
-1. Code tạo bảng/index nếu chưa có.
-2. Import `users.json` và `app-data.json` hiện có vào D1, dùng ID làm khóa và không ghi đè bản ghi đã có.
-3. Nếu Render PostgreSQL cũ còn được kết nối, hồ sơ từ bảng `hendy_users` cũng được nhập vào D1 bằng `ON CONFLICT DO NOTHING`.
-4. Chỉ sau khi import thành công, các file JSON cũ được đổi tên thành `*.migrated-d1-<timestamp>`; bản sao lưu vẫn nằm trên Persistent Disk.
-5. Sau migration, D1 là nguồn chính cho hồ sơ và dữ liệu nghiệp vụ.
+### Tự động di chuyển dữ liệu cũ
 
-Blueprint không tạo thêm Render PostgreSQL; D1 là database mục tiêu. Nếu có PostgreSQL cũ bên ngoài Render, chỉ cấu hình `DATABASE_URL` tạm thời trong Environment để import, sau khi xác nhận số lượng dữ liệu và backup xong thì bỏ biến này. Workspace Render được kiểm tra hiện không có PostgreSQL instance.
+Khi khởi động với MongoDB:
+- `users.json` được nhập vào collection `users`.
+- `app-data.json` được nhập vào các collection nghiệp vụ.
+- Nếu cung cấp đủ biến D1 legacy (`CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_D1_DATABASE_ID`, `CLOUDFLARE_API_TOKEN`), dữ liệu D1 được nhập theo ID và không ghi đè bản ghi đã tồn tại trong MongoDB.
+- Nếu cung cấp `DATABASE_URL` legacy, hồ sơ từ PostgreSQL `hendy_users` được nhập theo Telegram ID và không ghi đè bản ghi đã tồn tại.
+- Các file JSON chỉ được đổi tên thành bản sao lưu sau khi nhập thành công.
 
-## Cloudflare R2 — ảnh và object storage
+**Không xóa D1/PostgreSQL cũ hoặc Persistent Disk trước khi xác nhận số lượng hồ sơ, đơn hàng, số dư, giftcode và cấu hình trong MongoDB.** Nên giữ backup ít nhất một bản ngoài hệ thống.
 
-R2 được dùng cho ảnh QR thanh toán:
-- Admin tải PNG/JPEG/WebP tối đa 2 MB lên từ trang **QR & Thanh toán**.
-- Backend lưu object vào bucket riêng theo prefix `private/qr/`.
-- Bucket không cần public; Bot và giao diện Admin dùng presigned GET URL có thời hạn 1 giờ.
-- S3 Access Key/Secret chỉ tồn tại ở backend Render; không đưa vào browser hoặc database.
+## Cloudflare R2 — lưu ảnh QR
 
-Muốn thêm loại tệp khác, nên bổ sung namespace, MIME allowlist, giới hạn kích thước và quyền tải riêng trước khi bật chức năng.
+R2 vẫn được dùng để lưu ảnh QR tải lên từ Admin. Bucket giữ private; backend sử dụng S3 Access Key/Secret và presigned URL có thời hạn. Không đưa R2 credentials xuống Mini App.
 
-## Tạo tài nguyên Cloudflare
-
-Cloudflare account ID lấy từ đường dẫn Dashboard mà bạn đã cung cấp:
-`918ff2f016938fc978ed23b96505b21e`.
-
-1. **Tạo D1 database:** trong Cloudflare Dashboard → Storage & databases → D1 SQL Database → Create database. Đặt tên gợi ý `hendy-bot-data`; sao chép Database ID (UUID).
-2. **Tạo R2 bucket:** Storage & databases → R2 object storage → Create bucket. Dùng đúng tên `hendy-bot-assets` để khớp Blueprint.
-3. **Tạo Cloudflare API Token cho D1:** cấp quyền `D1 Read` và `D1 Write`, giới hạn đúng account cần dùng. Lưu token một lần vào Render Environment.
-4. **Tạo R2 API Token:** tại R2 → Manage R2 API Tokens, cấp `Object Read & Write` và giới hạn bucket `hendy-bot-assets`. Lưu riêng Access Key ID và Secret Access Key. Đây là cặp credential S3, khác với Cloudflare API Token của D1.
-
-Không dùng Global API Key cho ứng dụng.
+Tạo bucket riêng, ví dụ `hendy-bot-assets`, rồi cấp R2 Object Read & Write giới hạn đúng bucket.
 
 ## Chạy local
 
-Yêu cầu Node.js 24.22.1 (được khóa trong `.node-version`).
+Yêu cầu Node.js 24.22.1.
 
 ```bash
 cp .env.example .env
-# Điền Telegram BOT_TOKEN, ADMIN_ID và APP_ENCRYPTION_KEY.
-# Khi chưa cấu hình Cloudflare, có thể để trống CLOUDFLARE_* / R2_* để chạy JSON local.
+# Điền BOT_TOKEN, ADMIN_ID, APP_ENCRYPTION_KEY và MONGODB_URI.
 npm install
 npm run check
 npm test
@@ -118,55 +105,56 @@ npm run build
 npm start
 ```
 
-Khi bật D1 local, phải điền đủ `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_D1_DATABASE_ID`, `CLOUDFLARE_API_TOKEN`. Khi bật R2, phải điền đủ `R2_BUCKET_NAME`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`; `CLOUDFLARE_ACCOUNT_ID` dùng chung endpoint R2.
+Ví dụ định dạng URI (không dùng nguyên văn):
+`mongodb+srv://<database-user>:<encoded-password>@<cluster-host>/hendy_bot?retryWrites=true&w=majority`
 
 ## Render Web Service
 
-`render.yaml` khai báo:
+Blueprint `render.yaml` cấu hình:
 - Một Node Web Service tại Singapore, một instance.
-- Một Persistent Disk tại `/var/data` để giữ backup migration và dùng cho local/legacy adapter.
-- Không tạo Render PostgreSQL mới; Cloudflare D1 là nguồn dữ liệu chính.
-- Cloudflare D1 và R2 cấu hình bằng Render Environment; không nhúng API token/secret trong YAML.
+- Persistent Disk tại `/var/data` để giữ backup JSON cũ trong giai đoạn migration.
+- MongoDB Atlas là database chính qua `MONGODB_URI`.
+- Cloudflare R2 tiếp tục lưu ảnh QR.
+- D1 và PostgreSQL chỉ là nguồn migration cũ nếu bạn chủ động cấu hình các biến tương ứng.
 - Build: `npm install --no-audit --no-fund && npm run check && npm test && npm run build`.
 - Start: `npm start`; health check: `/healthz`.
 
-### Biến môi trường cần có trên Render
+### Secrets cần cấu hình trong Render Environment
 
-| Biến | Giá trị / nguồn |
+| Biến | Cách cấu hình |
 |---|---|
-| `CLOUDFLARE_ACCOUNT_ID` | Đã điền từ Cloudflare Dashboard |
-| `CLOUDFLARE_D1_DATABASE_ID` | Database ID của D1 `hendy-bot-data` |
-| `CLOUDFLARE_API_TOKEN` | Secret token có D1 Read + D1 Write |
-| `R2_BUCKET_NAME` | `hendy-bot-assets` |
-| `R2_ACCESS_KEY_ID` | R2 S3 Access Key ID |
-| `R2_SECRET_ACCESS_KEY` | R2 S3 Secret Access Key |
-| `BOT_TOKEN` | Token mới từ BotFather |
-| `ADMIN_ID` | Telegram numeric user ID của Admin |
-| `APP_ENCRYPTION_KEY` | Chuỗi ngẫu nhiên riêng, tối thiểu 32 ký tự |
-| `DATABASE_URL` | Tùy chọn tạm thời nếu cần nhập từ PostgreSQL cũ; không phải database chạy chính |
+| `MONGODB_URI` | Secret URI từ Atlas → Connect → Drivers |
+| `MONGODB_DB_NAME` | `hendy_bot` |
+| `BOT_TOKEN` | Token mới tạo từ BotFather |
+| `ADMIN_ID` | Telegram numeric user ID Admin |
+| `APP_ENCRYPTION_KEY` | Khóa ngẫu nhiên riêng, tối thiểu 32 ký tự |
+| `R2_BUCKET_NAME` | Tên bucket R2 |
+| `R2_ACCESS_KEY_ID` | R2 S3 Access Key ID mới |
+| `R2_SECRET_ACCESS_KEY` | R2 S3 Secret Access Key mới |
+| `CLOUDFLARE_ACCOUNT_ID` | Account ID; chỉ cần cho R2 và migration D1 |
+| `CLOUDFLARE_D1_DATABASE_ID` | Tùy chọn, chỉ khi import D1 cũ |
+| `CLOUDFLARE_API_TOKEN` | Tùy chọn, chỉ khi import D1 cũ; D1 Read + D1 Write |
+| `DATABASE_URL` | Tùy chọn tạm thời, chỉ khi import PostgreSQL cũ |
 
-Ứng dụng kiểm tra D1 và R2 khi khởi động production. Nếu D1 ID/token, R2 bucket/keys hoặc bucket thực tế không tồn tại/không truy cập được, tiến trình sẽ dừng để tránh chạy với một phần dữ liệu không được lưu bền vững.
+`WEBAPP_URL` / `MINI_APP_URL` có thể dùng `RENDER_EXTERNAL_URL` làm mặc định; nếu dùng domain riêng, cấu hình URL HTTPS tương ứng.
+
+Production sẽ dừng nếu MongoDB, Bot Token, Admin ID, khóa mã hóa hoặc R2 không được cấu hình hợp lệ. Không commit bất kỳ secret thật nào vào GitHub.
 
 ## CI
 
-GitHub Actions `.github/workflows/ci.yml`:
-1. Cài dependencies theo Node version trong `.node-version`.
-2. Kiểm tra cú pháp.
-3. Chạy test D1 bằng mock API, migration JSON/Postgres, R2 validation và nghiệp vụ.
-4. Build Mini App vào `public/`.
-5. Kiểm tra `public/index.html`.
+GitHub Actions khởi chạy MongoDB và PostgreSQL tạm thời, kiểm tra cú pháp, chạy test adapter local/D1/PostgreSQL/MongoDB, build Mini App và xác nhận `public/index.html`.
 
-CI không cần Cloudflare token thật và không truy cập tài khoản Cloudflare của bạn.
+CI dùng credential test nội bộ của service container, không cần secret Atlas hoặc Cloudflare thật.
 
-## Bảo mật và vận hành
+## Bảo mật & vận hành
 
-- `.env` bị Git ignore; chỉ commit `.env.example` với secrets trống.
-- Bot Token từng xuất hiện trong Git history phải được thu hồi tại BotFather và thay bằng token mới.
-- D1 REST token và R2 S3 keys chỉ lưu trong Render Environment.
-- R2 bucket giữ private; URL tải ảnh là presigned URL ngắn hạn.
-- Ảnh upload được whitelist PNG/JPEG/WebP và giới hạn 2 MB.
-- Nạp tiền chỉ cộng sau khi Admin đối soát giao dịch thực tế và duyệt. Chưa có webhook ngân hàng tự động.
-- Các dịch vụ Tool/OTP/Proxy/Code muốn tự động cấp cần API nhà cung cấp thực tế.
+- `.env` bị Git ignore; chỉ commit `.env.example` với giá trị secret trống.
+- Credential đã từng lộ trong Git history phải được thu hồi và thay mới. Chỉ sửa file mới nhất không xóa lịch sử commit cũ.
+- Dùng database user riêng cho ứng dụng, giới hạn quyền đúng database.
+- Giới hạn Atlas Network Access theo outbound IP của Render.
+- R2 bucket giữ private; presigned URL có thời hạn.
+- Nạp tiền chỉ cộng sau khi Admin đối soát giao dịch thực tế và duyệt; chưa có webhook ngân hàng tự động.
+- Tool/OTP/Proxy/Code muốn tự động cấp cần API nhà cung cấp thực tế.
 
 ## Kiểm tra local
 
