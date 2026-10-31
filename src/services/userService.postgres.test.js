@@ -5,6 +5,7 @@ const os = require('node:os');
 const path = require('node:path');
 
 const databaseUrl = process.env.DATABASE_URL;
+delete process.env.MONGODB_URI;
 const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'hendy-users-postgres-'));
 process.env.DATA_DIR = dataDir;
 
