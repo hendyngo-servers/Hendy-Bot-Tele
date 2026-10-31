@@ -243,10 +243,10 @@ router.put('/admin/settings', ...admin, async (req, res, next) => {
     const instructions = String(payment.instructions || '').trim().slice(0, 500);
     const minDeposit = Number(payment.minDeposit);
     const commission = Number(body.referralCommissionPercent);
-    const botUsername = String(body.botUsername || '').replace(/^@/, '').trim();
-    const groupChatUrl = String(body.groupChatUrl || '').trim();
-    const newsChannelUrl = String(body.newsChannelUrl || '').trim();
-    const supportUsername = String(body.supportUsername || '').replace(/^@/, '').trim();
+    const botUsername = String(body.botUsername || payment.botUsername || '').replace(/^@/, '').trim();
+    const groupChatUrl = String(body.groupChatUrl || payment.groupChatUrl || '').trim();
+    const newsChannelUrl = String(body.newsChannelUrl || payment.newsChannelUrl || '').trim();
+    const supportUsername = String(body.supportUsername || payment.supportUsername || '').replace(/^@/, '').trim();
 
     if (botUsername && !/^[a-zA-Z0-9_]{5,32}$/.test(botUsername)) {
       return fail(res, 400, 'BOT_USERNAME không hợp lệ.');
@@ -289,21 +289,24 @@ router.patch('/admin/deposits/:id', ...admin, async (req, res, next) => {
     if (!current) return fail(res, 404, 'Không tìm thấy yêu cầu nạp.');
     if (current.status !== 'pending') return fail(res, 409, 'Yêu cầu này đã được xử lý.');
 
-    const user = userService.getUser(current.userId);
-    if (!user) return fail(res, 404, 'Không tìm thấy người dùng của yêu cầu nạp.');
-    if (status === 'paid') {
-      const nextBalance = Number(user.balance || 0) + Number(current.amount);
-      if (!Number.isSafeInteger(nextBalance)) return fail(res, 409, 'Không thể cập nhật số dư.');
-      user.balance = nextBalance;
-      await userService.saveDatabase();
-    }
-    const result = await appDataService.processDeposit(req.params.id, status, req.telegramUser.id);
-    if (result.error) return fail(res, 409, 'Yêu cầu đã được xử lý ở một thao tác khác.');
     let commission = 0;
-    if (status === 'paid') {
-      commission = await appDataService.addReferralCommission(result.userId, result.amount, userService.getUsers());
-      if (commission > 0) await userService.saveDatabase();
-    }
+    const result = await appDataService.processDeposit(
+      req.params.id,
+      status,
+      req.telegramUser.id,
+      async ({ userId, amount }) => {
+        if (status !== 'paid') return;
+        const user = userService.getUser(userId);
+        if (!user) throw new Error('Không tìm thấy người dùng của yêu cầu nạp.');
+        const nextBalance = Number(user.balance || 0) + Number(amount);
+        if (!Number.isSafeInteger(nextBalance)) throw new Error('Không thể cập nhật số dư.');
+        user.balance = nextBalance;
+        await userService.saveDatabase();
+        commission = await appDataService.addReferralCommission(userId, amount, userService.getUsers());
+        if (commission > 0) await userService.saveDatabase();
+      }
+    );
+    if (result.error) return fail(res, 409, 'Yêu cầu đã được xử lý ở một thao tác khác.');
     return ok(res, { ...result, commission });
   } catch (error) { return next(error); }
 });
@@ -317,17 +320,25 @@ router.patch('/admin/orders/:id', ...admin, async (req, res, next) => {
     if (!order) return fail(res, 404, 'Không tìm thấy đơn hàng.');
     if (order.status !== 'pending') return fail(res, 409, 'Đơn hàng đã được xử lý.');
 
-    const user = userService.getUser(order.userId);
-    if (!user) return fail(res, 404, 'Không tìm thấy người dùng của đơn hàng.');
-    if (status === 'approved') {
-      if (Number(user.balance || 0) < Number(order.amount)) {
-        return fail(res, 409, 'Số dư thành viên không đủ để thanh toán đơn hàng.');
+    const result = await appDataService.processOrder(
+      req.params.id,
+      status,
+      req.telegramUser.id,
+      async ({ order: currentOrder }) => {
+        if (status !== 'approved') return;
+        const user = userService.getUser(currentOrder.userId);
+        if (!user) throw new Error('Không tìm thấy người dùng của đơn hàng.');
+        if (Number(user.balance || 0) < Number(currentOrder.amount)) {
+          throw new Error('Số dư thành viên không đủ để thanh toán đơn hàng.');
+        }
+        user.balance = Number(user.balance || 0) - Number(currentOrder.amount);
+        await userService.saveDatabase();
       }
-      user.balance = Number(user.balance || 0) - Number(order.amount);
-      await userService.saveDatabase();
+    );
+    if (result.error === 'out_of_stock' || result.error === 'item_unavailable') {
+      return fail(res, 409, 'Sản phẩm không còn khả dụng hoặc đã hết tồn kho.');
     }
-    const result = await appDataService.processOrder(req.params.id, status, req.telegramUser.id);
-    if (result.error) return fail(res, 409, 'Đơn hàng hoặc tồn kho vừa thay đổi; hãy tải lại.');
+    if (result.error) return fail(res, 409, 'Đơn hàng đã được xử lý ở một thao tác khác.');
     return ok(res, result);
   } catch (error) { return next(error); }
 });
