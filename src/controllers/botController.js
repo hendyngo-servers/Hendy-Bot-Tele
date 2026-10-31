@@ -852,5 +852,6 @@ module.exports = {
   stopBot,
   sendUserMessage,
   broadcastToUsers,
+  mainMenu,
   isRunning: () => Boolean(bot && botReady)
 };
