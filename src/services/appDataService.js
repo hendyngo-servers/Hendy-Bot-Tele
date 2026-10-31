@@ -192,7 +192,7 @@ async function persistMongoState(snapshot) {
 }
 
 async function readD1LegacyState() {
-  if (!CloudflareD1Client.hasAnyEnvironmentConfig()) return null;
+  if (!process.env.CLOUDFLARE_ACCOUNT_ID || !process.env.CLOUDFLARE_D1_DATABASE_ID || !process.env.CLOUDFLARE_API_TOKEN) return null;
   const client = CloudflareD1Client.fromEnv();
   client.validateConfig();
   const [recordsResult, settingsResult] = await Promise.all([
