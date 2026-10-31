@@ -193,6 +193,48 @@ export default function App() {
     }, 'Đã lưu cấu hình QR, thanh toán và liên kết Bot.');
   }
 
+  async function uploadQrImage(event) {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+    if (!['image/png', 'image/jpeg', 'image/webp'].includes(file.type)) {
+      setNotice('Chỉ chấp nhận ảnh PNG, JPEG hoặc WebP.');
+      return;
+    }
+    if (file.size <= 0 || file.size > 2 * 1024 * 1024) {
+      setNotice('Ảnh QR phải nhỏ hơn hoặc bằng 2 MB.');
+      return;
+    }
+
+    setBusy(true);
+    try {
+      const dataUrl = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onerror = () => reject(new Error('Không đọc được tệp ảnh.'));
+        reader.onload = () => resolve(String(reader.result || ''));
+        reader.readAsDataURL(file);
+      });
+      const result = await api('/admin/assets/qr', initData, {
+        method: 'POST',
+        body: JSON.stringify({ dataUrl })
+      });
+      setAdminSettings(current => ({
+        ...current,
+        payment: {
+          ...current.payment,
+          qrImageKey: result.key,
+          qrImageUrl: ''
+        },
+        qrPreviewUrl: result.previewUrl
+      }));
+      setNotice('Đã tải ảnh QR lên Cloudflare R2.');
+    } catch (error) {
+      setNotice(error.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function saveCatalogItem(event) {
     event.preventDefault();
     const body = {
@@ -434,7 +476,9 @@ export default function App() {
                   <label>Tên ngân hàng<input value={adminSettings.payment.bankName || ''} onChange={e => setAdminSettings(v => ({ ...v, payment: { ...v.payment, bankName: e.target.value } }))} /></label>
                   <label>Số tài khoản<input value={adminSettings.payment.bankAccount || ''} onChange={e => setAdminSettings(v => ({ ...v, payment: { ...v.payment, bankAccount: e.target.value } }))} /></label>
                   <label>Chủ tài khoản<input value={adminSettings.payment.bankAccountName || ''} onChange={e => setAdminSettings(v => ({ ...v, payment: { ...v.payment, bankAccountName: e.target.value } }))} /></label>
-                  <label>URL ảnh QR tĩnh (tùy chọn, HTTPS)<input value={adminSettings.payment.qrImageUrl || ''} onChange={e => setAdminSettings(v => ({ ...v, payment: { ...v.payment, qrImageUrl: e.target.value } }))} placeholder="https://..." /></label>
+                  <label>URL ảnh QR ngoài (tùy chọn, HTTPS)<input value={adminSettings.payment.qrImageUrl || ''} onChange={e => setAdminSettings(v => ({ ...v, payment: { ...v.payment, qrImageUrl: e.target.value, qrImageKey: '' }, qrPreviewUrl: e.target.value }))} placeholder="https://..." /></label>
+                  <label>Tải ảnh QR lên Cloudflare R2 (PNG/JPEG/WebP, tối đa 2 MB)<input type="file" accept="image/png,image/jpeg,image/webp" onChange={uploadQrImage} disabled={busy} /></label>
+                  {adminSettings.payment.qrImageKey && <p className="form-hint">Ảnh QR đang được lưu trong R2: {adminSettings.payment.qrImageKey}</p>}
                   <label>Username Bot Telegram (không có @)<input value={adminSettings.payment.botUsername || adminSettings.botUsername || ''} onChange={e => setAdminSettings(v => ({ ...v, payment: { ...v.payment, botUsername: e.target.value } }))} placeholder="HendyBot" /></label>
                   <label>Liên kết nhóm chat (HTTPS)<input value={adminSettings.payment.groupChatUrl || ''} onChange={e => setAdminSettings(v => ({ ...v, payment: { ...v.payment, groupChatUrl: e.target.value } }))} placeholder="https://t.me/..." /></label>
                   <label>Liên kết kênh thông báo (HTTPS)<input value={adminSettings.payment.newsChannelUrl || ''} onChange={e => setAdminSettings(v => ({ ...v, payment: { ...v.payment, newsChannelUrl: e.target.value } }))} placeholder="https://t.me/..." /></label>
@@ -444,7 +488,7 @@ export default function App() {
                   <label>Hoa hồng REF (%)<input type="number" min="0" max="20" step="0.1" value={adminSettings.payment.referralCommissionPercent ?? adminSettings.referralCommissionPercent ?? 0} onChange={e => setAdminSettings(v => ({ ...v, payment: { ...v.payment, referralCommissionPercent: Number(e.target.value) } }))} /></label>
                   <button className="primary-button" disabled={busy}>Lưu cấu hình thanh toán</button>
                 </form>
-                {adminSettings.payment.qrImageUrl && <img className="qr-preview" src={adminSettings.payment.qrImageUrl} alt="QR cấu hình" />}
+                {(adminSettings.qrPreviewUrl || adminSettings.payment.qrImageUrl) && <img className="qr-preview" src={adminSettings.qrPreviewUrl || adminSettings.payment.qrImageUrl} alt="QR cấu hình" />}
               </section>
             )}
 
