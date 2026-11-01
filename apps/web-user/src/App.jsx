@@ -41,6 +41,15 @@ export default function App() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const [catalogItems, setCatalogItems] = useState([]);
+  const [supportTickets, setSupportTickets] = useState([]);
+  const [supportSubject, setSupportSubject] = useState("");
+  const [supportMessage, setSupportMessage] = useState("");
+  const [referralSummary, setReferralSummary] = useState(null);
+  const [referralCodeInput, setReferralCodeInput] = useState("");
+  const [vipProfile, setVipProfile] = useState(null);
+  const [giftcodeInput, setGiftcodeInput] = useState("");
+  const requestedModule = useMemo(() => new URLSearchParams(window.location.search).get("module"), []);
 
   useEffect(() => {
     telegram?.ready();
@@ -63,17 +72,124 @@ export default function App() {
     }).catch((err) => setError(err.message)).finally(() => setLoading(false));
   }, [initData, telegram]);
 
-  function openModule(item) {
+  async function loadCatalog(moduleId) {
+    try {
+      const result = await api("/api/v1/catalog?module=" + encodeURIComponent(moduleId), {}, initData);
+      setCatalogItems(result.items || []);
+    } catch (err) {
+      setCatalogItems([]);
+      setError(err.message);
+    }
+  }
+
+  async function openModule(item) {
     setError("");
     setNotice("");
+    setSelectedModule(null);
+    if (item.id === "wallet") {
+      setTab("wallet");
+      setNotice("Nạp tiền chưa được kích hoạt. Chưa có cổng thanh toán/ngân hàng được xác minh nên hệ thống không nhận tiền hoặc tự cộng số dư.");
+      return;
+    }
+    if (item.id === "support") {
+      setTab("support");
+      try {
+        const result = await api("/api/v1/support/tickets", {}, initData);
+        setSupportTickets(result.tickets || []);
+      } catch (err) { setError(err.message); }
+      return;
+    }
+    if (item.id === "referral") {
+      setTab("referral");
+      try { setReferralSummary(await api("/api/v1/referral", {}, initData)); }
+      catch (err) { setError(err.message); }
+      return;
+    }
+    if (item.id === "giftcode") {
+      setTab("giftcode");
+      return;
+    }
+    if (item.id === "vip") {
+      setTab("vip");
+      try { setVipProfile(await api("/api/v1/vip", {}, initData)); }
+      catch (err) { setError(err.message); }
+      return;
+    }
     if (!item.orderable) {
-      setSelectedModule(null);
       setNotice(item.note || "Tính năng đang được hoàn thiện.");
       return;
     }
     setSelectedModule(item);
     setOrderTitle("Yêu cầu " + item.title);
     setOrderDescription("");
+    setQuantity(1);
+    setTab("home");
+    if (["app_tool", "buy_code", "otp_proxy"].includes(item.id)) await loadCatalog(item.id);
+  }
+
+  async function submitSupport(event) {
+    event.preventDefault();
+    setBusy(true); setError(""); setNotice("");
+    try {
+      const result = await api("/api/v1/support/tickets", {
+        method: "POST",
+        headers: { "Idempotency-Key": crypto.randomUUID() },
+        body: JSON.stringify({ category: "general", subject: supportSubject, message: supportMessage })
+      }, initData);
+      setSupportTickets(current => [result.ticket || result, ...current]);
+      setSupportSubject(""); setSupportMessage("");
+      setNotice("Đã gửi yêu cầu hỗ trợ đến Trung tâm khách hàng.");
+    } catch (err) { setError(err.message); }
+    finally { setBusy(false); }
+  }
+
+  async function claimReferral(event) {
+    event.preventDefault();
+    setBusy(true); setError(""); setNotice("");
+    try {
+      await api("/api/v1/referral/claim", { method: "POST", body: JSON.stringify({ code: referralCodeInput }) }, initData);
+      setReferralCodeInput("");
+      setReferralSummary(await api("/api/v1/referral", {}, initData));
+      setNotice("Đã ghi nhận mã giới thiệu.");
+    } catch (err) { setError(err.message); }
+    finally { setBusy(false); }
+  }
+
+  async function redeemGiftcode(event) {
+    event.preventDefault();
+    setBusy(true); setError(""); setNotice("");
+    try {
+      const result = await api("/api/v1/giftcodes/redeem", {
+        method: "POST",
+        headers: { "Idempotency-Key": crypto.randomUUID() },
+        body: JSON.stringify({ code: giftcodeInput.trim().toUpperCase() })
+      }, initData);
+      setGiftcodeInput("");
+      setNotice("Đổi Giftcode thành công. Phần thưởng: " + Number(result.rewardVoucher || 0).toLocaleString("vi-VN") + " điểm.");
+    } catch (err) { setError(err.message); }
+    finally { setBusy(false); }
+  }
+
+  async function requestVipUpgrade(tier) {
+    setBusy(true); setError(""); setNotice("");
+    try {
+      const result = await api("/api/v1/orders", {
+        method: "POST",
+        headers: { "Idempotency-Key": crypto.randomUUID() },
+        body: JSON.stringify({ module: "vip", title: "Yêu cầu nâng cấp " + tier.name, description: "Mã cấp bậc: " + tier.code, quantity: 1 })
+      }, initData);
+      setOrders(current => result.duplicate ? current : [result.order, ...current]);
+      setNotice("Đã tạo yêu cầu nâng cấp VIP. Nhân viên sẽ xác nhận điều kiện và báo giá.");
+    } catch (err) { setError(err.message); }
+    finally { setBusy(false); }
+  }
+
+  function selectCatalogItem(item) {
+    const module = MODULES.find(value => value.id === item.module);
+    if (!module) return;
+    setSelectedModule(module);
+    setOrderTitle(item.title);
+    setOrderDescription([item.slug, item.description, item.duration_days ? "Thời hạn: " + item.duration_days + " ngày" : ""].filter(Boolean).join(" · "));
     setQuantity(1);
     setTab("home");
   }
@@ -140,6 +256,12 @@ export default function App() {
       setBusy(false);
     }
   }
+
+  useEffect(() => {
+    if (loading || !initData || !requestedModule) return;
+    const item = MODULES.find(value => value.id === requestedModule);
+    if (item) openModule(item);
+  }, [loading, initData, requestedModule]);
 
   const orderCount = home?.orderSummary?.total || 0;
   const totalLinks = Object.values(links).reduce((count, rows) => count + (rows?.length || 0), 0);
@@ -213,6 +335,14 @@ export default function App() {
               </div>
             </section>
 
+            {selectedModule && ["app_tool", "buy_code", "otp_proxy"].includes(selectedModule.id) && catalogItems.length > 0 && <section className="section-block">
+              <div className="section-title"><div><span className="eyebrow">SERVICE CATALOG</span><h2>Danh mục {selectedModule.title}</h2></div></div>
+              <div className="release-list">{catalogItems.map(item => <article className="release-row" key={item.id}>
+                <div className="release-icon">✦</div>
+                <div className="release-info"><strong>{item.title}</strong><span>{item.description || item.slug} · {item.duration_days ? item.duration_days + " ngày · " : ""}{item.unit_price === null ? "Chờ báo giá" : money(item.unit_price)}</span></div>
+                <button className="download-link" type="button" onClick={() => selectCatalogItem(item)}>Chọn</button>
+              </article>)}</div>
+            </section>}
             {selectedModule && <section className="request-panel">
               <div className="section-title"><div><span className="eyebrow">NEW SERVICE REQUEST</span><h2>{selectedModule.title}</h2></div><button className="close-button" onClick={() => setSelectedModule(null)} aria-label="Đóng">×</button></div>
               <p className="helper-copy">Đây là yêu cầu dịch vụ, chưa phải giao dịch thanh toán. Nhân viên sẽ kiểm tra, xác nhận thông tin và báo giá trước khi thực hiện.</p>
@@ -243,6 +373,46 @@ export default function App() {
             <div className="section-title"><div><span className="eyebrow">ORDER MANAGEMENT</span><h2>Đơn hàng của tôi</h2></div><span className="section-aside">{orders.length} HIỂN THỊ</span></div>
             <OrderList orders={orders} />
             <p className="footnote">Đơn mới được lưu trạng thái chờ tiếp nhận. Giá trị 0 ₫ không phải thanh toán miễn phí; đơn đang chờ nhân viên báo giá.</p>
+          </section>}
+
+          {tab === "wallet" && <section className="section-block">
+            <div className="section-title"><div><span className="eyebrow">HENDY WALLET</span><h2>Ví điện tử</h2></div></div>
+            <div className="balance-card"><div className="overview-label">SỐ DƯ KHẢ DỤNG</div><strong>{money(home?.user?.balance)}</strong><span>Ví nội bộ · VND</span></div>
+            <div className="empty-panel">Nạp tiền và xác nhận thanh toán đang chờ cấu hình ngân hàng/cổng thanh toán cùng quy trình đối soát. Hiện không nhận tiền hoặc tự cộng số dư.</div>
+          </section>}
+
+          {tab === "support" && <section className="section-block">
+            <div className="section-title"><div><span className="eyebrow">CUSTOMER CARE</span><h2>Trung tâm khách hàng</h2></div></div>
+            <form className="request-form" onSubmit={submitSupport}>
+              <label className="full">Tiêu đề<input value={supportSubject} onChange={e => setSupportSubject(e.target.value)} minLength={3} maxLength={120} required /></label>
+              <label className="full">Nội dung<textarea value={supportMessage} onChange={e => setSupportMessage(e.target.value)} rows="4" maxLength={4000} required /></label>
+              <div className="form-footer"><span>Trao đổi với bộ phận hỗ trợ</span><button disabled={busy}>{busy ? "Đang gửi…" : "Gửi yêu cầu"}</button></div>
+            </form>
+            <div className="section-title"><div><span className="eyebrow">SUPPORT HISTORY</span><h2>Lịch sử hỗ trợ</h2></div></div>
+            {supportTickets.length ? supportTickets.map(ticket => <article className="account-card" key={ticket.id}><strong>{ticket.ticketNumber || ticket.ticket_number || ticket.subject}</strong><p>{ticket.subject}</p><small>{ticket.status} · {ticket.updatedAt || ticket.updated_at || ""}</small></article>) : <div className="empty-panel">Chưa có yêu cầu hỗ trợ.</div>}
+          </section>}
+
+          {tab === "referral" && <section className="section-block">
+            <div className="section-title"><div><span className="eyebrow">REFERRAL PROGRAM</span><h2>Giới thiệu REF</h2></div></div>
+            {referralSummary ? <>
+              <div className="overview-grid"><article className="metric-card"><span>MÃ GIỚI THIỆU</span><strong>{referralSummary.code}</strong><small>Chia sẻ cho bạn bè</small></article><article className="metric-card"><span>ĐÃ GIỚI THIỆU</span><strong>{referralSummary.invited}</strong><small>Tài khoản đã ghi nhận</small></article></div>
+              <div className="panel"><p className="helper-copy">{referralSummary.inviteUrl}</p><button type="button" onClick={() => navigator.clipboard?.writeText(referralSummary.inviteUrl).then(() => setNotice("Đã sao chép liên kết giới thiệu.")).catch(() => setError("Không thể sao chép liên kết."))}>Sao chép liên kết</button><p className="footnote">{referralSummary.commissionNote}</p></div>
+              <form className="link-form" onSubmit={claimReferral}><label>Mã giới thiệu của người mời<input value={referralCodeInput} onChange={e => setReferralCodeInput(e.target.value)} maxLength={32} required /></label><button disabled={busy}>{busy ? "Đang ghi nhận…" : "Áp dụng mã"}</button></form>
+            </> : <div className="loading-panel">Đang tải dữ liệu giới thiệu…</div>}
+          </section>}
+
+          {tab === "giftcode" && <section className="section-block">
+            <div className="section-title"><div><span className="eyebrow">REWARD CENTER</span><h2>Nhập Giftcode</h2></div></div>
+            <form className="link-form" onSubmit={redeemGiftcode}><label>Mã Giftcode<input value={giftcodeInput} onChange={e => setGiftcodeInput(e.target.value.toUpperCase())} maxLength={40} placeholder="HENDY-XXXX-XXXX-XXXX" required /></label><button disabled={busy}>{busy ? "Đang kiểm tra…" : "Đổi thưởng"}</button></form>
+            <p className="footnote">Mã được kiểm tra thời hạn, lượt sử dụng và chống đổi lặp ở máy chủ. Phần thưởng là điểm voucher, không tự cộng tiền mặt.</p>
+          </section>}
+
+          {tab === "vip" && <section className="section-block">
+            <div className="section-title"><div><span className="eyebrow">MEMBERSHIP</span><h2>Trung tâm VIP</h2></div></div>
+            {vipProfile ? <>
+              <div className="overview-grid"><article className="metric-card"><span>HẠNG HIỆN TẠI</span><strong>{vipProfile.currentTier?.name || "Cơ bản"}</strong></article><article className="metric-card"><span>ĐIỂM VIP</span><strong>{vipProfile.points || 0}</strong></article></div>
+              <div className="account-grid">{(vipProfile.tiers || []).map(tier => <article className="account-card" key={tier.code}><strong>{tier.name}</strong><p className="muted">Từ {Number(tier.minPoints).toLocaleString("vi-VN")} điểm</p><p className="muted">{(tier.benefits || []).join(" · ")}</p><button type="button" disabled={busy || tier.code === vipProfile.currentTier?.code} onClick={() => requestVipUpgrade(tier)}>{tier.code === vipProfile.currentTier?.code ? "Đang sở hữu" : "Yêu cầu nâng cấp"}</button></article>)}</div>
+            </> : <div className="loading-panel">Đang tải cấp bậc VIP…</div>}
           </section>}
 
           {tab === "links" && <section className="section-block">
