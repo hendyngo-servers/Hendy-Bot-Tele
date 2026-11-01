@@ -21,6 +21,35 @@ const source = JSON.parse(await fs.readFile(sourcePath, "utf8"));
 const users = source.users || {};
 const app = source.appData || {};
 const now = new Date().toISOString();
+const userIds = new Set(Object.keys(users).map(String));
+const legacyCatalog = Array.isArray(app.catalog) ? app.catalog : [];
+const catalogIds = new Set(legacyCatalog.map(item => String(item.id || "")).filter(Boolean));
+const legacyDeposits = Array.isArray(app.deposits) ? app.deposits : [];
+const legacyOrders = Array.isArray(app.orders) ? app.orders : [];
+const legacyLinked = Array.isArray(app.linkedAccounts) ? app.linkedAccounts : [];
+const legacyTickets = Array.isArray(app.tickets) ? app.tickets : [];
+const legacyReferrals = Array.isArray(app.referrals) ? app.referrals : [];
+const legacyGiftcodes = Array.isArray(app.giftcodes) ? app.giftcodes : [];
+const inFlightOrders = legacyOrders.filter(item => item.status === "processing");
+const inFlightDeposits = legacyDeposits.filter(item => item.status === "processing");
+if (inFlightOrders.length || inFlightDeposits.length) {
+  throw new Error("Dừng import: phát hiện " + inFlightOrders.length + " đơn hàng và " +
+    inFlightDeposits.length + " giao dịch đang ở trạng thái processing. Hãy dừng bot Render, chụp lại database.json ổn định rồi chạy lại để tránh ghi nhận tiền hai lần.");
+}
+const referencedUsers = [
+  ...legacyDeposits.map(item => String(item.userId || "")),
+  ...legacyOrders.map(item => String(item.userId || "")),
+  ...legacyLinked.map(item => String(item.userId || "")),
+  ...legacyTickets.map(item => String(item.userId || "")),
+  ...legacyReferrals.flatMap(item => [String(item.referrerId || ""), String(item.referredId || "")]),
+  ...legacyGiftcodes.flatMap(item => Array.isArray(item.usedBy) ? item.usedBy.map(String) : [])
+].filter(Boolean);
+const missingUsers = [...new Set(referencedUsers.filter(id => !userIds.has(id)))];
+if (missingUsers.length) {
+  throw new Error("Dừng nhập dữ liệu: phát hiện tham chiếu tới " + missingUsers.length +
+    " Telegram ID không tồn tại trong users. Ví dụ: " + missingUsers.slice(0, 10).join(", ") +
+    ". Hãy khôi phục bản database.json đầy đủ trước khi import.");
+}
 const records = [];
 const add = (table, columns, rows) => {
   if (rows.length) records.push({ table, columns, rows });
@@ -36,7 +65,7 @@ add("users", ["telegram_id","username","display_name","role","balance_vnd","vip_
   safeDate(user.createdAt || user.created_at)
 ]));
 
-const catalog = Array.isArray(app.catalog) ? app.catalog : [];
+const catalog = legacyCatalog;
 add("packages", ["id","slug","name","description","category","price_vnd","duration_days","stock","vip_level","status","created_at"], catalog.map(item => {
   const id = String(item.id || crypto.randomUUID());
   const name = String(item.name || "Sản phẩm");
@@ -47,7 +76,7 @@ add("packages", ["id","slug","name","description","category","price_vnd","durati
     Math.max(0,Math.min(10,Math.trunc(Number(item.vipLevel || 0)))), item.active === false ? "hidden" : "active", safeDate(item.createdAt)];
 }));
 
-const deposits = Array.isArray(app.deposits) ? app.deposits : [];
+const deposits = legacyDeposits;
 add("deposits", ["id","telegram_id","amount_vnd","reference","status","review_id","reviewed_by","created_at","reviewed_at"], deposits.map(item => {
   const status = item.status === "paid" || item.status === "approved" ? "approved" : item.status === "rejected" ? "rejected" : "pending";
   return [String(item.id || crypto.randomUUID()),String(item.userId),Math.max(1,Math.trunc(Number(item.amount || 1))),
@@ -55,41 +84,57 @@ add("deposits", ["id","telegram_id","amount_vnd","reference","status","review_id
     item.processedBy || null,safeDate(item.createdAt),item.processedAt ? safeDate(item.processedAt) : null];
 }));
 
-const orders = Array.isArray(app.orders) ? app.orders : [];
+const orders = legacyOrders;
 add("orders", ["id","telegram_id","package_id","item_name","category","amount_vnd","vip_level","duration_days","status","processed_by","processed_at","activated_at","expires_at","created_at"], orders.map(item => {
   const status = ["approved","rejected","cancelled"].includes(item.status) ? item.status : "pending";
-  return [String(item.id || crypto.randomUUID()),String(item.userId),null,String(item.itemName || "Đơn hàng"),String(item.category || ""),
+  const legacyPackageId = String(item.itemId || "");
+  return [String(item.id || crypto.randomUUID()),String(item.userId),catalogIds.has(legacyPackageId) ? legacyPackageId : null,String(item.itemName || "Đơn hàng"),String(item.category || ""),
     Math.max(0,Math.trunc(Number(item.amount || 0))),Math.max(0,Math.min(10,Math.trunc(Number(item.vipLevel || 0)))),
     Math.max(0,Math.trunc(Number(item.durationDays || 0))),status,item.processedBy || null,
     item.processedAt ? safeDate(item.processedAt) : null,item.activatedAt ? safeDate(item.activatedAt) : null,
     item.expiresAt ? safeDate(item.expiresAt) : null,safeDate(item.createdAt)];
 }));
 
-const linked = Array.isArray(app.linkedAccounts) ? app.linkedAccounts : [];
+const linked = legacyLinked;
 add("linked_accounts", ["id","telegram_id","provider","account_name","username","mini_code","secret_ciphertext","created_at"], linked.filter(item => item.encryptedPassword).map(item => [
   String(item.id || crypto.randomUUID()),String(item.userId),String(item.brand || "other"),String(item.username || item.brand || "account"),
   String(item.username || ""),String(item.miniCode || ""),JSON.stringify(item.encryptedPassword),safeDate(item.createdAt)
 ]));
 
-const tickets = Array.isArray(app.tickets) ? app.tickets : [];
+const tickets = legacyTickets;
 add("tickets", ["id","telegram_id","message","status","reply","created_at","updated_at"], tickets.map(item => [
   String(item.id || crypto.randomUUID()),String(item.userId),String(item.message || "Yêu cầu hỗ trợ"),
   ["open","answered","closed"].includes(item.status) ? item.status : "open",String(item.reply || ""),safeDate(item.createdAt),safeDate(item.processedAt || item.createdAt)
 ]));
 
-const giftcodes = Array.isArray(app.giftcodes) ? app.giftcodes : [];
+const giftcodes = legacyGiftcodes.map(item => ({ ...item, importId: String(item.id || crypto.randomUUID()) }));
 add("giftcodes", ["id","code","reward_type","reward_value","max_uses","uses","expires_at","active","used_by_json","created_at"], giftcodes.map(item => [
-  String(item.id || crypto.randomUUID()),String(item.code || "").toUpperCase(),String(item.rewardType || "balance"),
+  item.importId,String(item.code || "").toUpperCase(),String(item.rewardType || "balance"),
   Math.max(1,Math.trunc(Number(item.rewardValue || 1))),Math.max(1,Math.trunc(Number(item.maxUses || 1))),
   Math.max(0,Math.trunc(Number(item.uses || 0))),item.expiresAt ? safeDate(item.expiresAt) : null,item.active === false ? 0 : 1,
   JSON.stringify(Array.isArray(item.usedBy) ? item.usedBy : []),safeDate(item.createdAt)
 ]));
 
-const referrals = Array.isArray(app.referrals) ? app.referrals : [];
-add("referrals", ["id","referrer_id","referred_id","commission_vnd","status","created_at"], referrals.filter(item => item.referrerId && item.userId && String(item.referrerId) !== String(item.userId)).map(item => [
-  String(item.id || crypto.randomUUID()),String(item.referrerId),String(item.userId),Math.max(0,Math.trunc(Number(item.commission || 0))),
-  String(item.status || "pending"),safeDate(item.createdAt)
+const referrals = legacyReferrals;
+add("referrals", ["id","referrer_id","referred_id","commission_vnd","status","created_at"], referrals.filter(item => item.referrerId && item.referredId && String(item.referrerId) !== String(item.referredId)).map(item => [
+  String(item.id || crypto.randomUUID()),String(item.referrerId),String(item.referredId),Math.max(0,Math.trunc(Number(item.commissionEarned || 0))),
+  "active",safeDate(item.createdAt)
 ]));
+
+const redemptionRows = [];
+for (const gift of giftcodes) {
+  const usedBy = Array.isArray(gift.usedBy) ? gift.usedBy.map(String) : [];
+  for (const userId of usedBy) {
+    redemptionRows.push([
+      "legacy:" + gift.importId + ":" + userId,
+      gift.importId,
+      userId,
+      String(gift.rewardType || "balance"),
+      Math.max(1, Math.trunc(Number(gift.rewardValue || 1)))
+    ]);
+  }
+}
+add("giftcode_redemptions", ["id","giftcode_id","telegram_id","reward_type","reward_value"], redemptionRows);
 
 if (app.paymentSettings) records.push({
   table:"app_settings",columns:["setting_key","value_json","updated_by"],
@@ -110,10 +155,15 @@ async function query(sql, params = []) {
 }
 
 if (!force && !dryRun) {
-  const response = await query("SELECT COUNT(*) AS total FROM users");
-  const count = Number(response.result?.[0]?.results?.[0]?.total || 0);
-  if (count > 0) {
-    console.error("D1 đã có " + count + " thành viên. Dừng để tránh ghi đè; sao lưu và dùng --force chỉ khi đã xác nhận.");
+  const tablesToCheck = ["users","packages","deposits","orders","linked_accounts","tickets","giftcodes","giftcode_redemptions","referrals","balance_transactions"];
+  const occupied = [];
+  for (const table of tablesToCheck) {
+    const response = await query("SELECT COUNT(*) AS total FROM " + table);
+    const count = Number(response.result?.[0]?.results?.[0]?.total || 0);
+    if (count > 0) occupied.push(table + "=" + count);
+  }
+  if (occupied.length) {
+    console.error("D1 không trống (" + occupied.join(", ") + "). Dừng import để tránh nhập dở/ghi đè. Hãy dùng database mới hoặc backup và xác nhận rõ trước khi dùng --force.");
     process.exit(2);
   }
 }

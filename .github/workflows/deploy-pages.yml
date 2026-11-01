@@ -29,6 +29,7 @@ jobs:
         run: npm run build:$PAGES_BUILD
         env:
           PAGES_BUILD: ${{ matrix.app == 'web-user' && 'user' || 'admin' }}
+          VITE_API_BASE_URL: ${{ vars.VITE_API_BASE_URL }}
       - name: Publish Pages project
         run: npx wrangler pages deploy apps/$PAGES_APP/dist --project-name hendy-$PAGES_APP
         env:

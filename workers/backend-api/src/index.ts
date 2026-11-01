@@ -105,13 +105,31 @@ async function adminFiles(request: Request, env: BackendEnv, session: Session, p
     const contentType = request.headers.get("x-file-content-type") || "application/octet-stream";
     const allowed = new Set(["application/vnd.android.package-archive", "application/zip", "application/octet-stream", "image/png", "image/jpeg", "image/webp", "application/x-msdownload", "application/x-apple-diskimage"]);
     if (!allowed.has(contentType)) return failure("Định dạng tệp không được hỗ trợ.", 415);
-    const size = Number(request.headers.get("x-file-size") || request.headers.get("content-length") || 0);
-    if (!request.body || size <= 0 || size > 100 * 1024 * 1024) return failure("Tệp phải có Content-Length từ 1 byte đến 100 MB.", 413);
+    const maxBytes = 100 * 1024 * 1024;
+    const declaredSize = Number(request.headers.get("x-file-size") || request.headers.get("content-length") || 0);
+    if (!request.body || !Number.isSafeInteger(declaredSize) || declaredSize <= 0 || declaredSize > maxBytes) {
+      return failure("Tệp phải có kích thước khai báo từ 1 byte đến 100 MB.", 413);
+    }
     const rawName = cleanText(request.headers.get("x-file-name") || "package.bin", 120).replace(/[^a-zA-Z0-9._-]/g, "_");
     const key = "applications/" + new Date().toISOString().slice(0, 10) + "/" + crypto.randomUUID() + "-" + rawName;
-    await env.FILES.put(key, request.body, { httpMetadata: { contentType }, customMetadata: { uploadedBy: session.id, originalName: rawName } });
-    await audit(env, session.id, "file.upload", "r2_object", key, { contentType, size });
-    return success({ key, name: rawName, contentType }, 201);
+    let actualSize = 0;
+    const limitedBody = request.body.pipeThrough(new TransformStream<Uint8Array, Uint8Array>({
+      transform(chunk, controller) {
+        actualSize += chunk.byteLength;
+        if (actualSize > maxBytes) {
+          controller.error(new Error("Tệp vượt quá giới hạn 100 MB."));
+          return;
+        }
+        controller.enqueue(chunk);
+      }
+    }));
+    await env.FILES.put(key, limitedBody, { httpMetadata: { contentType }, customMetadata: { uploadedBy: session.id, originalName: rawName } });
+    if (actualSize <= 0 || actualSize > maxBytes) {
+      await env.FILES.delete(key);
+      return failure("Kích thước tệp thực tế không hợp lệ.", 413);
+    }
+    await audit(env, session.id, "file.upload", "r2_object", key, { contentType, size: actualSize });
+    return success({ key, name: rawName, contentType, size: actualSize }, 201);
   }
   if (request.method === "GET" && path === "/api/v1/admin/files") {
     const cursor = new URL(request.url).searchParams.get("cursor") || undefined;
@@ -134,6 +152,7 @@ async function routeApi(request: Request, env: BackendEnv): Promise<Response> {
   if (path === "/internal/backup" && method === "POST") {
     const token = request.headers.get("x-backup-secret") || "";
     if (!env.BACKUP_SECRET || !constantTimeEqual(token, env.BACKUP_SECRET)) return failure("Forbidden", 403);
+    await env.DB.prepare("DELETE FROM api_rate_limits WHERE bucket < ?").bind(Math.floor(Date.now() / 60000) - 1440).run();
     const tables = ["users", "app_settings", "packages", "orders", "deposits", "linked_accounts", "tickets", "giftcodes", "giftcode_redemptions", "referrals", "balance_transactions", "audit_logs"];
     const backup: Record<string, unknown> = { schemaVersion: 1, createdAt: new Date().toISOString(), tables: {} };
     for (const table of tables) {
@@ -166,8 +185,18 @@ async function routeApi(request: Request, env: BackendEnv): Promise<Response> {
       return success(result.results || []);
     }
     if (path === "/api/v1/orders" && method === "GET") {
-      const rows = await getRows(env, "SELECT id, item_name, category, amount_vnd, status, created_at, processed_at, expires_at FROM orders WHERE telegram_id=? ORDER BY created_at DESC LIMIT 100", session.id);
-      return success(rows.results || []);
+      const rows = await getRows(env,
+        "SELECT o.id,o.item_name,o.category,o.amount_vnd,o.status,o.created_at,o.processed_at,o.activated_at,o.expires_at,p.metadata_json " +
+        "FROM orders o LEFT JOIN packages p ON p.id=o.package_id WHERE o.telegram_id=? ORDER BY o.created_at DESC LIMIT 100",
+        session.id
+      );
+      const data = (rows.results || []).map((row: any) => {
+        let metadata: Record<string, any> = {};
+        try { metadata = JSON.parse(row.metadata_json || "{}"); } catch { metadata = {}; }
+        const { metadata_json: _metadataJson, ...order } = row;
+        return { ...order, fileKey: metadata.fileKey || null };
+      });
+      return success(data);
     }
     if (path === "/api/v1/orders" && method === "POST") {
       const body = await bodyJson(request);
@@ -296,6 +325,11 @@ async function routeApi(request: Request, env: BackendEnv): Promise<Response> {
         for (const key of ["bankBin","bankName","bankAccount","bankAccountName","instructions","botUsername","groupChatUrl","newsChannelUrl","supportUsername","qrImageKey"]) {
           if (body[key] !== undefined) next[key] = cleanText(body[key], key === "instructions" ? 500 : 160);
         }
+        if (body.referralCommissionPercent !== undefined) {
+          const value = Number(body.referralCommissionPercent);
+          if (!Number.isFinite(value) || value < 0 || value > 20) return failure("Hoa hồng giới thiệu phải từ 0 đến 20%.");
+          next.referralCommissionPercent = value;
+        }
         if (body.minDeposit !== undefined) {
           const value = safeInteger(body.minDeposit, 10000, 100000000);
           if (!value) return failure("Mức nạp tối thiểu không hợp lệ.");
@@ -317,16 +351,57 @@ async function routeApi(request: Request, env: BackendEnv): Promise<Response> {
         const slug = cleanText(body.slug || name.toLowerCase().replace(/[^a-z0-9]+/g, "-"), 120);
         const category = cleanText(body.category, 50);
         const price = safeInteger(body.priceVnd, 0, 1000000000);
-        if (!name || !slug || !category || price === null) return failure("Thông tin sản phẩm không hợp lệ.");
+        const durationDays = safeInteger(body.durationDays || 0, 0, 36500);
+        const vipLevel = safeInteger(body.vipLevel || 0, 0, 10);
+        const stock = body.stock === null || body.stock === undefined || body.stock === "" ? null : safeInteger(body.stock, 0, 1000000);
+        if (!name || !slug || !category || price === null || durationDays === null || vipLevel === null ||
+          (body.stock !== null && body.stock !== undefined && body.stock !== "" && stock === null) ||
+          (category === "vip" && vipLevel < 1)) return failure("Thông tin sản phẩm không hợp lệ.");
+        const fileKey = cleanText(body.fileKey || "", 512);
+        if (fileKey && (!safeObjectKey(fileKey) || !fileKey.startsWith("applications/"))) return failure("R2 file key không hợp lệ.");
         const id = crypto.randomUUID();
         await env.DB.prepare(
-          "INSERT INTO packages (id,slug,name,description,category,price_vnd,duration_days,stock,vip_level) VALUES (?,?,?,?,?,?,?,?,?)"
+          "INSERT INTO packages (id,slug,name,description,category,price_vnd,duration_days,stock,vip_level,metadata_json) VALUES (?,?,?,?,?,?,?,?,?,?)"
         ).bind(id, slug, name, cleanText(body.description, 1000), category, price,
-          safeInteger(body.durationDays || 0, 0, 36500) || 0,
-          body.stock === null || body.stock === undefined || body.stock === "" ? null : safeInteger(body.stock, 0, 1000000),
-          safeInteger(body.vipLevel || 0, 0, 10) || 0).run();
+          durationDays, stock, vipLevel, JSON.stringify(fileKey ? { fileKey } : {})).run();
         await audit(env, session.id, "package.create", "package", id);
         return success({ id, slug, name }, 201);
+      }
+      const packageAction = path.match(/^\/api\/v1\/admin\/packages\/([a-zA-Z0-9-]+)$/);
+      if (packageAction && method === "PUT") {
+        const body = await bodyJson(request);
+        const name = cleanText(body.name, 120);
+        const slug = cleanText(body.slug, 120);
+        const category = cleanText(body.category, 50);
+        const price = safeInteger(body.priceVnd, 0, 1000000000);
+        const existingPackage = await env.DB.prepare("SELECT status FROM packages WHERE id=?").bind(packageAction[1]).first<{status:string}>();
+        if (!existingPackage) return failure("Không tìm thấy sản phẩm.",404);
+        const status = ["active", "hidden", "archived"].includes(body.status) ? body.status : existingPackage.status;
+        const durationDays = safeInteger(body.durationDays ?? 0, 0, 36500);
+        const vipLevel = safeInteger(body.vipLevel ?? 0, 0, 10);
+        const stock = body.stock === null || body.stock === undefined || body.stock === ""
+          ? null : safeInteger(body.stock, 0, 1000000);
+        if (!name || !slug || !category || price === null || durationDays === null || vipLevel === null ||
+          (category === "vip" && vipLevel < 1) ||
+          (body.stock !== null && body.stock !== undefined && body.stock !== "" && stock === null)) {
+          return failure("Thông tin sản phẩm không hợp lệ.");
+        }
+        const fileKey = cleanText(body.fileKey || "", 512);
+        if (fileKey && (!safeObjectKey(fileKey) || !fileKey.startsWith("applications/"))) return failure("R2 file key không hợp lệ.");
+        const result = await env.DB.prepare(
+          "UPDATE packages SET slug=?,name=?,description=?,category=?,price_vnd=?,duration_days=?,stock=?,vip_level=?,status=?,metadata_json=?,updated_at=CURRENT_TIMESTAMP WHERE id=?"
+        ).bind(slug,name,cleanText(body.description,1000),category,price,durationDays,stock,vipLevel,status,
+          JSON.stringify(fileKey ? { fileKey } : {}),packageAction[1]).run();
+        if (!Number(result.meta?.changes || 0)) return failure("Không tìm thấy sản phẩm.",404);
+        await audit(env,session.id,"package.update","package",packageAction[1]);
+        return success({ id:packageAction[1],name,status });
+      }
+      if (packageAction && method === "DELETE") {
+        const result = await env.DB.prepare("UPDATE packages SET status='archived',updated_at=CURRENT_TIMESTAMP WHERE id=? AND status!='archived'")
+          .bind(packageAction[1]).run();
+        if (!Number(result.meta?.changes || 0)) return failure("Không tìm thấy sản phẩm hoặc sản phẩm đã lưu trữ.",404);
+        await audit(env,session.id,"package.archive","package",packageAction[1]);
+        return success({ id:packageAction[1],archived:true });
       }
       if (path === "/api/v1/admin/deposits" && method === "GET") {
         const rows = await getRows(env, "SELECT d.*,u.display_name,u.username FROM deposits d JOIN users u ON u.telegram_id=d.telegram_id ORDER BY d.created_at DESC LIMIT 300");
@@ -379,7 +454,7 @@ async function routeApi(request: Request, env: BackendEnv): Promise<Response> {
       if (orderAction && method === "POST") {
         const id = orderAction[1];
         const action = orderAction[2];
-        const order = await env.DB.prepare("SELECT package_id,status,telegram_id,amount_vnd,vip_level,category,item_name FROM orders WHERE id=?").bind(id).first<any>();
+        const order = await env.DB.prepare("SELECT package_id,status,telegram_id,amount_vnd,vip_level,category,item_name,duration_days FROM orders WHERE id=?").bind(id).first<any>();
         if (!order) return failure("Không tìm thấy đơn hàng.", 404);
         if (order.status !== "pending") return failure("Đơn hàng đã được xử lý.", 409);
         const newStatus = action === "approve" ? "approved" : "rejected";
@@ -389,10 +464,12 @@ async function routeApi(request: Request, env: BackendEnv): Promise<Response> {
           const reference = "ORDER-" + id;
           const result = await env.DB.batch([
             env.DB.prepare(
-              "UPDATE orders SET status='approved',approval_id=?,processed_by=?,processed_at=CURRENT_TIMESTAMP " +
+              "UPDATE orders SET status='approved',approval_id=?,processed_by=?,processed_at=CURRENT_TIMESTAMP, " +
+              "activated_at=CASE WHEN duration_days>0 THEN CURRENT_TIMESTAMP ELSE NULL END, " +
+              "expires_at=CASE WHEN duration_days>0 THEN datetime(CURRENT_TIMESTAMP,'+' || duration_days || ' days') ELSE NULL END " +
               "WHERE id=? AND status='pending' " +
               "AND EXISTS (SELECT 1 FROM users WHERE users.telegram_id=orders.telegram_id AND users.balance_vnd>=orders.amount_vnd) " +
-              "AND (package_id IS NULL OR EXISTS (SELECT 1 FROM packages WHERE packages.id=orders.package_id AND (packages.stock IS NULL OR packages.stock>0)))"
+              "AND (package_id IS NULL OR EXISTS (SELECT 1 FROM packages WHERE packages.id=orders.package_id AND packages.status='active' AND (packages.stock IS NULL OR packages.stock>0)))"
             ).bind(approvalId, session.id, id),
             env.DB.prepare(
               "UPDATE users SET balance_vnd=balance_vnd-(SELECT amount_vnd FROM orders WHERE id=? AND approval_id=?), " +
@@ -477,7 +554,7 @@ async function routeApi(request: Request, env: BackendEnv): Promise<Response> {
         const body = await bodyJson(request);
         const message = cleanText(body.message, 3000);
         if (message.length < 3) return failure("Nội dung thông báo quá ngắn.");
-        const users = await env.DB.prepare("SELECT telegram_id FROM users ORDER BY created_at DESC LIMIT 500").all<{ telegram_id: string }>();
+        const users = await env.DB.prepare("SELECT telegram_id FROM users ORDER BY created_at DESC LIMIT 25").all<{ telegram_id: string }>();
         let sent = 0;
         for (const user of users.results || []) {
           try { await sendTelegramMessage(env, user.telegram_id, message); sent += 1; } catch { /* tiếp tục người dùng tiếp theo */ }
@@ -496,11 +573,22 @@ async function routeApi(request: Request, env: BackendEnv): Promise<Response> {
     if (!safeObjectKey(key)) return failure("Đường dẫn tệp không hợp lệ.", 400);
     const object = await env.FILES.get(key);
     if (!object) return failure("Không tìm thấy tệp.", 404);
+    if (!isAdmin(session.id, env)) {
+      const purchases = await env.DB.prepare(
+        "SELECT p.metadata_json FROM orders o JOIN packages p ON p.id=o.package_id " +
+        "WHERE o.telegram_id=? AND o.status='approved'"
+      ).bind(session.id).all<{ metadata_json: string }>();
+      const ownsFile = (purchases.results || []).some(row => {
+        try { return JSON.parse(row.metadata_json || "{}").fileKey === key; } catch { return false; }
+      });
+      if (!ownsFile) return failure("Bạn chưa có đơn hàng được duyệt cho tệp này.", 403);
+    }
     const headers = new Headers();
     object.writeHttpMetadata(headers);
     headers.set("etag", object.etag);
-    headers.set("cache-control", "private, max-age=60");
+    headers.set("cache-control", "private, no-store");
     headers.set("x-content-type-options", "nosniff");
+    headers.set("content-disposition", "attachment");
     return new Response(object.body, { headers });
   }
   return failure("Không tìm thấy API.", 404);

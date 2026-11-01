@@ -21,7 +21,7 @@ Nền tảng đích sử dụng Cloudflare Workers, Pages, D1 và R2. Đây là 
 - Webhook kiểm tra header X-Telegram-Bot-Api-Secret-Token và chống xử lý lặp update_id.
 - Admin ID nằm trong Worker Secret TELEGRAM_ADMIN_IDS (danh sách ID phân tách bằng dấu phẩy).
 - Khóa mã hóa chỉ được cấu hình dưới dạng Worker Secret APP_ENCRYPTION_KEY. Không lưu khóa trong D1, Pages hay GitHub source.
-- Mã hóa tài khoản liên kết giữ định dạng AES-256-GCM tương thích với dữ liệu version 1 cũ của hệ thống Render. Giữ nguyên khóa cũ để giải mã dữ liệu đã lưu. Web Crypto là crypto provider của Workers.
+- Mã hóa tài khoản liên kết hiện giữ định dạng AES-256-GCM version 1 để tương thích ciphertext cũ của Render; triển khai dùng Web Crypto của Workers. Đây **chưa phải libsodium**. Không đổi thuật toán/khóa trước khi giải mã và tái mã hóa dữ liệu cũ. Có thể nâng cấp sang libsodium ở phiên bản ciphertext mới sau migration có kiểm thử.
 - Không cho self-healing tự sửa source hoặc tự deploy. Mọi thay đổi mã nguồn phải qua Pull Request và CI.
 - R2 bucket không bật public write. File download cần phiên Telegram hợp lệ.
 - Cấu hình CORS phải chỉ định đúng các origin thực tế.
@@ -53,6 +53,8 @@ Cài dependencies:
     npm run typecheck
     npm test
     npm run build
+
+Trên Windows PowerShell cũng sử dụng các lệnh npm như trên. Các ví dụ dưới đây dùng cú pháp PowerShell và không ghi secret vào file mã nguồn.
 
 ## 1. Tạo tài nguyên Cloudflare
 
@@ -116,12 +118,19 @@ Trong Dashboard → Workers & Pages → từng Worker → Settings → Variables
 
 ## 4. Tạo Pages
 
-Tạo hai Pages project:
+Tạo trước hai Pages project bằng Dashboard → Workers & Pages → Create → Pages → Direct Upload, hoặc Wrangler:
 
-| Project | Thư mục source | Build command | Output |
+    npx wrangler pages project create hendy-web-user --production-branch main
+    npx wrangler pages project create hendy-web-admin --production-branch main
+
+Sau đó tạo deployments bằng Wrangler (khuyến nghị trong pipeline CI):
+
+| Project | Source | Build command | Output |
 |---|---|---|---|
-| hendy-web-user | apps/web-user | npm install && npm run build:user | apps/web-user/dist |
-| hendy-web-admin | apps/web-admin | npm install && npm run build:admin | apps/web-admin/dist |
+| hendy-web-user | apps/web-user | npm run build:user | apps/web-user/dist |
+| hendy-web-admin | apps/web-admin | npm run build:admin | apps/web-admin/dist |
+
+Direct Upload project không thể đổi sang Git integration sau khi đã tạo; nếu muốn Cloudflare tự build từ GitHub, hãy tạo project bằng Git integration ngay từ đầu.
 
 Nếu deploy bằng Wrangler:
 
@@ -129,7 +138,7 @@ Nếu deploy bằng Wrangler:
     npm run deploy:user
     npm run deploy:admin
 
-Pages cần biến build VITE_API_BASE_URL trỏ tới API origin (ví dụ https://api.example.com). Có thể dùng cùng origin app/admin và route /api qua edge-router để tránh CORS. Nếu dùng api.example.com, cập nhật ALLOWED_ORIGINS trên backend.
+Pages cần biến build `VITE_API_BASE_URL` trỏ tới API origin (ví dụ https://api.example.com). Đặt GitHub Repository Variable cùng tên `VITE_API_BASE_URL` để workflow build có thể nhúng API origin vào asset tĩnh; đây là địa chỉ công khai, không phải secret. Cũng có thể dùng cùng origin app/admin và route /api qua edge-router để tránh CORS. Nếu dùng api.example.com, cập nhật ALLOWED_ORIGINS trên backend.
 
 ## 5. Domain và Edge Router
 
@@ -146,7 +155,14 @@ Nếu muốn đơn giản hơn, có thể gắn trực tiếp custom domain riê
 
 ## 6. Thiết lập Telegram Webhook
 
-Sau khi API domain hoạt động, chạy lệnh từ máy phát triển. Không đưa token vào command history hoặc commit:
+Sau khi API domain hoạt động và đã dừng tiến trình long polling Render, chạy lệnh từ máy phát triển. Không đưa token vào Git hoặc commit. Trên Windows PowerShell:
+
+    $env:TELEGRAM_BOT_TOKEN = Read-Host "Nhập Telegram Bot Token"
+    $env:TELEGRAM_WEBHOOK_SECRET = Read-Host "Nhập Webhook Secret"
+    $env:TELEGRAM_WEBHOOK_URL = "https://api.example.com/telegram/webhook"
+    node scripts/set-telegram-webhook.mjs
+
+Trên macOS/Linux:
 
     TELEGRAM_BOT_TOKEN=... TELEGRAM_WEBHOOK_SECRET=... TELEGRAM_WEBHOOK_URL=https://api.example.com/telegram/webhook node scripts/set-telegram-webhook.mjs
 
@@ -160,7 +176,16 @@ Telegram gửi update dưới dạng HTTPS POST và kèm secret header. Không c
 
     node scripts/import-json-to-d1.mjs ./database.json --dry-run
 
-4. Chạy import vào D1 production chỉ khi D1 mới/đã backup:
+4. Chạy import vào D1 production chỉ khi D1 mới/đã backup.
+
+Windows PowerShell:
+
+    $env:CLOUDFLARE_ACCOUNT_ID = "ACCOUNT_ID"
+    $env:CLOUDFLARE_D1_DATABASE_ID = "D1_DATABASE_ID"
+    $env:CLOUDFLARE_API_TOKEN = Read-Host "Nhập Cloudflare API Token"
+    node scripts/import-json-to-d1.mjs .\database.json
+
+macOS/Linux:
 
     CLOUDFLARE_ACCOUNT_ID=... CLOUDFLARE_D1_DATABASE_ID=... CLOUDFLARE_API_TOKEN=... node scripts/import-json-to-d1.mjs ./database.json
 
@@ -202,3 +227,15 @@ Workflow CI chạy typecheck, test và build hai Pages. Workflow deploy Workers/
 ## Tình trạng triển khai
 
 Nhánh Cloudflare chứa nền tảng kiến trúc và các luồng lõi ban đầu. Cần thay D1 database_id và các domain placeholder bằng thông tin Cloudflare thực tế, cấu hình secrets, chạy migrations, import dữ liệu và kiểm thử end-to-end. Không xem deploy xanh là bằng chứng dữ liệu đã di trú hoặc toàn bộ nghiệp vụ cũ đã được thay thế.
+
+
+## 11. Quy tắc phát triển và phát hành
+
+- Mỗi Worker có thư mục, config và quy trình deploy riêng; không import mã Node.js-only (Express, Telegraf polling, fs) vào Worker.
+- Mọi route backend phải đặt dưới \`/api/v1\`, xác thực server-side, validate đầu vào và giới hạn tốc độ.
+- Không dùng \`initDataUnsafe\` làm bằng chứng đăng nhập. Gửi nguyên \`Telegram.WebApp.initData\` lên backend để xác minh chữ ký và thời gian.
+- D1 schema thay đổi bằng migration mới; không chỉnh migration đã chạy trên production.
+- R2 object keys dùng UUID, file download phải kiểm tra quyền sở hữu đơn hàng hoặc vai trò Admin.
+- Pages user/admin chỉ chứa UI và API origin; không nhúng Bot Token, webhook secret, Admin ID private list hoặc encryption key vào biến \`VITE_*\`.
+- Mọi thay đổi chạy \`npm run typecheck\`, \`npm test\`, \`npm run build\` trước Pull Request.
+- Merge vào \`main\` chỉ sau khi đã có Cloudflare secrets trong GitHub, Pages projects và Workers bindings đúng.
