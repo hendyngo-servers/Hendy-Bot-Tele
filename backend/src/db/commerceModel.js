@@ -129,8 +129,8 @@ export async function getReferralSummary(env, userId) {
   ]);
   return {
     code,
-    inviteUrl: /^https:\/\//i.test(String(env.WEBAPP_URL || "").trim())
-      ? String(env.WEBAPP_URL).trim().replace(/\/+$/, "") + "?startapp=ref_" + encodeURIComponent(code)
+    inviteUrl: /^[A-Za-z0-9_]{5,32}$/.test(String(env.BOT_USERNAME || "").replace(/^@/, "").trim())
+      ? "https://t.me/" + String(env.BOT_USERNAME).replace(/^@/, "").trim() + "?start=ref_" + encodeURIComponent(code)
       : "",
     invited: Number(counts?.total || 0),
     referredBy: claim ? { id: claim.id, name: claim.name } : null,
