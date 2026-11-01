@@ -32,6 +32,9 @@ export default function App() {
   const [stats, setStats] = useState(null);
   const [releases, setReleases] = useState([]);
   const [orders, setOrders] = useState([]);
+  const [deposits, setDeposits] = useState([]);
+  const [depositStatus, setDepositStatus] = useState("pending");
+  const [depositNote, setDepositNote] = useState("");
   const [orderStats, setOrderStats] = useState(null);
   const [queueTotal, setQueueTotal] = useState(0);
   const [queueStatus, setQueueStatus] = useState("all");
@@ -56,6 +59,27 @@ export default function App() {
     setOrderStats(result.stats || null);
   }
 
+  async function loadDeposits(currentToken = token, status = depositStatus) {
+    const result = await adminApi("/api/v1/admin/deposits?status=" + encodeURIComponent(status), currentToken);
+    setDeposits(result.deposits || []);
+  }
+
+  async function reviewDeposit(item, status) {
+    setBusy(true); setError(""); setNotice("");
+    try {
+      await adminApi("/api/v1/admin/deposits/" + encodeURIComponent(item.id) + "/review", token, {
+        method: "POST",
+        body: JSON.stringify({ status, note: depositNote.trim() })
+      });
+      await loadDeposits();
+      setDepositNote("");
+      setNotice(status === "approved"
+        ? "Đã đối soát và cộng " + money(item.amount) + " cho " + item.reference + "."
+        : "Đã từ chối yêu cầu nạp " + item.reference + ".");
+    } catch (err) { setError(err.message); }
+    finally { setBusy(false); }
+  }
+
   async function refresh(currentToken = token) {
     const [summary, published] = await Promise.all([
       adminApi("/api/v1/admin/stats", currentToken),
@@ -63,7 +87,7 @@ export default function App() {
     ]);
     setStats(summary.stats);
     setReleases(published.releases || []);
-    await loadQueue(currentToken);
+    await Promise.all([loadQueue(currentToken), loadDeposits(currentToken)]);
     setAuthorized(true);
   }
 
@@ -192,6 +216,7 @@ export default function App() {
         {[
           ["overview", "▦", "Tổng quan"],
           ["orders", "▤", "Hàng đợi đơn hàng"],
+          ["deposits", "₫", "Duyệt nạp tiền"],
           ["releases", "⇧", "Phát hành ứng dụng"],
           ["webhook", "⌁", "Telegram webhook"]
         ].map(([id, icon, label]) => <button key={id} className={"nav-item " + (section === id ? "active" : "")} onClick={() => setSection(id)}>
@@ -201,7 +226,7 @@ export default function App() {
       </aside>
       <section className="main-area">
         <header className="admin-header">
-          <div><span className="crumb">HENDY / ADMIN</span><h1>{section === "orders" ? "Hàng đợi đơn hàng" : section === "releases" ? "Phát hành ứng dụng" : section === "webhook" ? "Telegram webhook" : "Trung tâm quản trị"}</h1></div>
+          <div><span className="crumb">HENDY / ADMIN</span><h1>{section === "orders" ? "Hàng đợi đơn hàng" : section === "deposits" ? "Duyệt nạp tiền" : section === "releases" ? "Phát hành ứng dụng" : section === "webhook" ? "Telegram webhook" : "Trung tâm quản trị"}</h1></div>
           <span className="secure">● PRIVATE CONSOLE</span>
         </header>
         {error && <div className="alert error">{error}</div>}
@@ -277,6 +302,27 @@ export default function App() {
             </div>)}</div>
           </section>}
 
+          {section === "deposits" && <section className="card order-queue-card">
+            <div className="card-heading"><div><div className="section-kicker">WALLET OPERATIONS / D1</div><h2>Yêu cầu nạp tiền</h2></div><button className="secondary small" disabled={busy} onClick={() => loadDeposits()}>↻ Làm mới</button></div>
+            <div className="queue-filters">
+              <label>Trạng thái<select value={depositStatus} onChange={async e => { setDepositStatus(e.target.value); setBusy(true); try { await loadDeposits(token, e.target.value); } catch(err) { setError(err.message); } finally { setBusy(false); } }}>
+                <option value="pending">Chờ đối soát</option><option value="approved">Đã duyệt</option><option value="rejected">Đã từ chối</option><option value="all">Tất cả</option>
+              </select></label>
+              <label className="queue-search">Ghi chú xử lý<textarea rows="1" maxLength="500" value={depositNote} onChange={e => setDepositNote(e.target.value)} placeholder="Ghi chú hoặc mã giao dịch ngân hàng (không chứa dữ liệu nhạy cảm)" /></label>
+            </div>
+            <div className="queue-table-wrap"><table className="queue-table">
+              <thead><tr><th>MÃ THAM CHIẾU</th><th>THÀNH VIÊN</th><th>SỐ TIỀN</th><th>TRẠNG THÁI</th><th>THAO TÁC</th></tr></thead>
+              <tbody>{deposits.map(item => <tr key={item.id}>
+                <td><b>{item.reference}</b><small>{new Date(item.createdAt).toLocaleString("vi-VN")}</small></td>
+                <td><b>{item.userName}</b><small>Telegram ID: {item.userId}</small></td>
+                <td><b>{money(item.amount)}</b></td>
+                <td><span className={"status-pill status-" + (item.status === "approved" ? "completed" : item.status === "rejected" ? "cancelled" : "pending")}>{item.status === "approved" ? "Đã cộng tiền" : item.status === "rejected" ? "Từ chối" : "Chờ đối soát"}</span></td>
+                <td>{item.status === "pending" ? <div className="transition-actions"><button disabled={busy} className="primary-action" onClick={() => reviewDeposit(item, "approved")}>Duyệt & cộng tiền</button><button disabled={busy} className="danger-action" onClick={() => reviewDeposit(item, "rejected")}>Từ chối</button></div> : <small>{item.adminNote || "Đã xử lý"}</small>}</td>
+              </tr>)}
+              {!deposits.length && <tr><td colSpan="5" className="table-empty">Không có yêu cầu nạp tiền.</td></tr>}</tbody>
+            </table></div>
+            <p className="hint">Chỉ bấm duyệt sau khi đã xác minh tiền vào tài khoản ngân hàng. Thao tác duyệt ghi sổ cái D1 và chống cộng tiền lặp.</p>
+          </section>}
           {section === "releases" && <>
             <section className="card">
               <div className="card-heading"><div><div className="section-kicker">RELEASE MANAGEMENT</div><h2>Đăng tải ứng dụng</h2></div><span className="tag">D1 + R2</span></div>
