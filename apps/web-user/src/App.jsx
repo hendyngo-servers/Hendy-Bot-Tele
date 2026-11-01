@@ -304,24 +304,6 @@ export default function App() {
     finally { setBusy(false); }
   }
 
-  async function requestVipUpgrade(tier) {
-    setBusy(true); setError(""); setNotice("");
-    try {
-      const result = await api("/api/v1/orders", {
-        method: "POST",
-        headers: { "Idempotency-Key": idempotencyKey() },
-        body: JSON.stringify({
-          module: "vip",
-          title: "Yêu cầu nâng cấp " + tier.name,
-          description: "Mã cấp bậc: " + tier.code,
-          quantity: 1
-        })
-      }, initData);
-      await refreshOrdersAndHome();
-      setNotice("Đã tạo yêu cầu nâng cấp VIP " + tier.name + ". Admin sẽ kiểm tra điều kiện và gửi báo giá.");
-    } catch (err) { setError(err.message); }
-    finally { setBusy(false); }
-  }
 
   function selectCatalogItem(item) {
     const module = MODULES.find(value => value.catalog && (value.apiModule || value.id) === item.module);
@@ -649,7 +631,15 @@ export default function App() {
             <div className="section-title"><div><span className="eyebrow">MEMBERSHIP</span><h2>Trung tâm VIP</h2></div></div>
             {vipProfile ? <>
               <div className="overview-grid"><article className="metric-card"><span>HẠNG HIỆN TẠI</span><strong>{vipProfile.currentTier?.name || "Cơ bản"}</strong></article><article className="metric-card"><span>ĐIỂM VIP</span><strong>{vipProfile.points || 0}</strong></article></div>
-              <div className="account-grid">{(vipProfile.tiers || []).map(tier => <article className="account-card" key={tier.code}><strong>{tier.name}</strong><p className="muted">Từ {Number(tier.minPoints).toLocaleString("vi-VN")} điểm</p><p className="muted">{(tier.benefits || []).join(" · ")}</p><button type="button" disabled={busy || tier.code === vipProfile.currentTier?.code || Number(vipProfile.points || 0) < Number(tier.minPoints || 0)} onClick={() => requestVipUpgrade(tier)}>{tier.code === vipProfile.currentTier?.code ? "Đang sở hữu" : Number(vipProfile.points || 0) >= Number(tier.minPoints || 0) ? "Đủ điều kiện · yêu cầu Admin duyệt" : "Cần thêm " + Math.max(0,Number(tier.minPoints || 0)-Number(vipProfile.points || 0)).toLocaleString("vi-VN") + " điểm"}</button></article>)}</div>
+              <div className="panel"><p className="helper-copy">{Number(vipProfile.pointsPer10000Vnd || 0) > 0 ? "Mỗi 10.000 VNĐ giá trị đơn đã thanh toán và hoàn tất được cộng " + vipProfile.pointsPer10000Vnd + " điểm VIP. Hệ thống tự nâng hạng khi đạt ngưỡng." : "Chương trình tích điểm VIP đang tạm tắt. Quản trị viên cần cấu hình VIP_POINTS_PER_10000_VND trước khi tính điểm."}</p></div>
+              <div className="account-grid">{(vipProfile.tiers || []).map(tier => {
+                const current = tier.code === vipProfile.currentTier?.code;
+                const remaining = Math.max(0,Number(tier.minPoints || 0)-Number(vipProfile.points || 0));
+                return <article className="account-card" key={tier.code}>
+                  <strong>{tier.name}</strong><p className="muted">Ngưỡng: {Number(tier.minPoints).toLocaleString("vi-VN")} điểm</p><p className="muted">{(tier.benefits || []).join(" · ")}</p>
+                  <span className={"status-pill " + (current ? "status-completed" : "status-pending")}>{current ? "HẠNG HIỆN TẠI" : remaining > 0 ? "Còn " + remaining.toLocaleString("vi-VN") + " điểm" : "Đủ điều kiện nâng hạng"}</span>
+                </article>;
+              })}</div>
             </> : <div className="loading-panel">Đang tải cấp bậc VIP…</div>}
           </section>}
 
