@@ -285,6 +285,19 @@ router.get("/releases/:id/download", asyncRoute(async (req, res) => {
 
 router.use(requireTelegramAuth);
 
+// Chế độ bảo trì được áp dụng cho toàn bộ API thành viên; admin vẫn có thể vận hành dashboard.
+router.use(asyncRoute(async (req, res, next) => {
+  if (isTelegramAdmin(req.telegramUser?.id)) return next();
+  const settings = await getBotSettings();
+  if (!settings.maintenance_mode) return next();
+  res.set("Retry-After", "60");
+  return res.status(503).json({
+    error: settings.maintenance_message || "Hệ thống đang bảo trì. Vui lòng quay lại sau.",
+    code: "BOT_MAINTENANCE",
+    maintenance: true
+  });
+}));
+
 router.get("/home", asyncRoute(async (req, res) => {
   const user = await ensureUser(req.telegramUser);
   const orderCount = await d1First("SELECT COUNT(*) AS total FROM orders WHERE telegram_id=?", [String(req.telegramUser.id)]);
@@ -660,6 +673,12 @@ router.get("/admin/stats", requireAdmin, asyncRoute(async (_req, res) => {
     "(SELECT COUNT(*) FROM deposits WHERE status='pending') AS pending_deposits," +
     "(SELECT COUNT(*) FROM support_tickets WHERE status IN ('open','pending')) AS open_tickets," +
     "(SELECT COUNT(*) FROM bot_events) AS total_updates," +
+    " +
+    "(SELECT COALESCE(SUM(amount),0) FROM orders WHERE payment_status='paid' AND status<>'cancelled') AS total_revenue," +
+    "(SELECT COUNT(DISTINCT telegram_user_id) FROM bot_events WHERE telegram_user_id IS NOT NULL AND created_at>=datetime('now','-1 day')) AS active_users_24h," +
+    "(SELECT COUNT(*) FROM bot_events WHERE created_at>=datetime('now','-1 day')) AS updates_24h," +
+    "(SELECT COUNT(*) FROM orders WHERE created_at>=datetime('now','-1 day')) AS orders_24h," +
+    "(SELECT MAX(created_at) FROM bot_events) AS last_bot_event_at," +
     "(SELECT COALESCE(SUM(amount_delta),0) FROM wallet_ledger) AS ledger_net"
   );
   const settings = await getBotSettings();
@@ -677,6 +696,11 @@ router.get("/admin/stats", requireAdmin, asyncRoute(async (_req, res) => {
       }
     },
     totalUsers: Number(stats?.users || 0),
+    totalRevenue: Number(stats?.total_revenue || 0),
+    activeUsers24h: Number(stats?.active_users_24h || 0),
+    updates24h: Number(stats?.updates_24h || 0),
+    orders24h: Number(stats?.orders_24h || 0),
+    lastBotEventAt: stats?.last_bot_event_at || null,
     orderStats: {
       total: Number(stats?.total_orders || 0),
       pending: Number(stats?.pending_orders || 0),
