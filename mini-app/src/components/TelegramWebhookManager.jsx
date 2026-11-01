@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { telegramFetch } from "../services/api.js";
 import { Bot, RefreshCw, Send, CheckCircle2, AlertTriangle, ExternalLink, Globe } from "lucide-react";
 
 export function TelegramWebhookManager({ webhookInfo, onRefresh, showToast }) {
@@ -12,7 +13,7 @@ export function TelegramWebhookManager({ webhookInfo, onRefresh, showToast }) {
     setSyncing(true);
     setSyncResult(null);
     try {
-      const res = await fetch("/api/admin/telegram/set-webhook", {
+      const res = await telegramFetch("/api/admin/telegram/set-webhook", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ webhookUrl })
