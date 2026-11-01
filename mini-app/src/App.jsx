@@ -222,12 +222,12 @@ export default function App() {
         ...current,
         payment: {
           ...current.payment,
-          qrImageKey: result.key,
+          qrImagePath: result.filename,
           qrImageUrl: ''
         },
         qrPreviewUrl: result.previewUrl
       }));
-      setNotice('Đã tải ảnh QR lên Cloudflare R2.');
+      setNotice('Đã lưu ảnh QR trên bộ nhớ bền vững của máy chủ.');
     } catch (error) {
       setNotice(error.message);
     } finally {
@@ -441,14 +441,14 @@ export default function App() {
 
                 <section className="admin-integration-status">
                   <article>
-                    <span className="admin-integration-mark">D1</span>
-                    <div><strong>Cloudflare D1</strong><small>{adminData?.integrations?.database === 'cloudflare-d1' ? 'Cơ sở dữ liệu đã kết nối' : 'Chưa kết nối D1'}</small></div>
-                    <b className={adminData?.integrations?.database === 'cloudflare-d1' ? 'connected' : 'disconnected'}>{adminData?.integrations?.database === 'cloudflare-d1' ? '● CONNECTED' : '● OFFLINE'}</b>
+                    <span className="admin-integration-mark">DB</span>
+                    <div><strong>MongoDB Atlas</strong><small>Cơ sở dữ liệu trung tâm của hệ thống</small></div>
+                    <b className={adminData?.integrations?.database === 'mongodb-atlas' ? 'connected' : 'disconnected'}>{adminData?.integrations?.database === 'mongodb-atlas' ? '● CONNECTED' : '● OFFLINE'}</b>
                   </article>
                   <article>
-                    <span className="admin-integration-mark r2">R2</span>
-                    <div><strong>Cloudflare R2</strong><small>Object Storage · ảnh QR và tài liệu</small></div>
-                    <b className={adminData?.integrations?.objectStorage === 'cloudflare-r2' ? 'connected' : 'disconnected'}>{adminData?.integrations?.objectStorage === 'cloudflare-r2' ? '● CONNECTED' : '● OFFLINE'}</b>
+                    <span className="admin-integration-mark">DISK</span>
+                    <div><strong>Render Persistent Disk</strong><small>Lưu ảnh QR và tệp nội bộ của máy chủ</small></div>
+                    <b className="connected">● ENABLED</b>
                   </article>
                 </section>
 
@@ -489,9 +489,9 @@ export default function App() {
                   <label>Tên ngân hàng<input value={adminSettings.payment.bankName || ''} onChange={e => setAdminSettings(v => ({ ...v, payment: { ...v.payment, bankName: e.target.value } }))} /></label>
                   <label>Số tài khoản<input value={adminSettings.payment.bankAccount || ''} onChange={e => setAdminSettings(v => ({ ...v, payment: { ...v.payment, bankAccount: e.target.value } }))} /></label>
                   <label>Chủ tài khoản<input value={adminSettings.payment.bankAccountName || ''} onChange={e => setAdminSettings(v => ({ ...v, payment: { ...v.payment, bankAccountName: e.target.value } }))} /></label>
-                  <label>URL ảnh QR ngoài (tùy chọn, HTTPS)<input value={adminSettings.payment.qrImageUrl || ''} onChange={e => setAdminSettings(v => ({ ...v, payment: { ...v.payment, qrImageUrl: e.target.value, qrImageKey: '' }, qrPreviewUrl: e.target.value }))} placeholder="https://..." /></label>
-                  <label>Tải ảnh QR lên Cloudflare R2 (PNG/JPEG/WebP, tối đa 2 MB)<input type="file" accept="image/png,image/jpeg,image/webp" onChange={uploadQrImage} disabled={busy} /></label>
-                  {adminSettings.payment.qrImageKey && <p className="form-hint">Ảnh QR đang được lưu trong R2: {adminSettings.payment.qrImageKey}</p>}
+                  <label>URL ảnh QR ngoài (tùy chọn, HTTPS)<input value={adminSettings.payment.qrImageUrl || ''} onChange={e => setAdminSettings(v => ({ ...v, payment: { ...v.payment, qrImageUrl: e.target.value, qrImagePath: '' }, qrPreviewUrl: e.target.value }))} placeholder="https://..." /></label>
+                  <label>Lưu ảnh QR lên máy chủ (PNG/JPEG/WebP, tối đa 2 MB)<input type="file" accept="image/png,image/jpeg,image/webp" onChange={uploadQrImage} disabled={busy} /></label>
+                  {adminSettings.payment.qrImagePath && <p className="form-hint">Ảnh QR đang được lưu trên Render Disk: {adminSettings.payment.qrImagePath}</p>}
                   <label>Username Bot Telegram (không có @)<input value={adminSettings.payment.botUsername || adminSettings.botUsername || ''} onChange={e => setAdminSettings(v => ({ ...v, payment: { ...v.payment, botUsername: e.target.value } }))} placeholder="HendyBot" /></label>
                   <label>Liên kết nhóm chat (HTTPS)<input value={adminSettings.payment.groupChatUrl || ''} onChange={e => setAdminSettings(v => ({ ...v, payment: { ...v.payment, groupChatUrl: e.target.value } }))} placeholder="https://t.me/..." /></label>
                   <label>Liên kết kênh thông báo (HTTPS)<input value={adminSettings.payment.newsChannelUrl || ''} onChange={e => setAdminSettings(v => ({ ...v, payment: { ...v.payment, newsChannelUrl: e.target.value } }))} placeholder="https://t.me/..." /></label>

@@ -3,7 +3,7 @@ const rateLimit = require('express-rate-limit');
 const userService = require('../services/userService');
 const appDataService = require('../services/appDataService');
 const botController = require('../controllers/botController');
-const r2StorageService = require('../services/r2StorageService');
+const qrStorageService = require('../services/qrStorageService');
 const { requireTelegramAuth } = require('../security/telegramAuth');
 
 const router = express.Router();
@@ -69,8 +69,8 @@ router.get('/admin/overview', ...admin, (_req, res) =>
   ok(res, {
     ...appDataService.getAdminOverview(userService.getUsers()),
     integrations: {
-      database: userService.isCloudflareD1() ? 'cloudflare-d1' : userService.isPostgres() ? 'postgres' : 'local-json',
-      objectStorage: r2StorageService.hasAnyConfig() ? 'cloudflare-r2' : 'unconfigured'
+      database: userService.isMongo() ? 'mongodb-atlas' : 'local-json',
+      fileStorage: 'render-persistent-disk'
     }
   })
 );
@@ -78,15 +78,15 @@ router.get('/admin/overview', ...admin, (_req, res) =>
 router.get('/admin/settings', ...admin, async (_req, res, next) => {
   try {
     const payment = appDataService.getPaymentSettings();
-    const qrPreviewUrl = payment.qrImageKey
-      ? await r2StorageService.getReadUrl(payment.qrImageKey, 3600)
+    const qrPreviewUrl = payment.qrImagePath
+      ? qrStorageService.getReadUrl(payment.qrImagePath)
       : payment.qrImageUrl;
     return ok(res, {
       payment,
       qrPreviewUrl,
       storage: {
-        d1: userService.isCloudflareD1(),
-        r2: r2StorageService.hasAnyConfig()
+        database: userService.isMongo() ? 'mongodb-atlas' : 'local-json',
+        files: 'render-persistent-disk'
       },
       botUsername: payment.botUsername || process.env.BOT_USERNAME || '',
       referralCommissionPercent: Number(payment.referralCommissionPercent || 0)
@@ -101,34 +101,29 @@ router.post('/admin/assets/qr', ...admin, async (req, res, next) => {
     if (!match) return fail(res, 400, 'Ảnh QR phải là PNG, JPEG hoặc WebP.');
     const contentType = match[1].toLowerCase();
     const buffer = Buffer.from(match[2], 'base64');
-    if (buffer.length > r2StorageService.MAX_IMAGE_BYTES) {
+    if (buffer.length > qrStorageService.MAX_IMAGE_BYTES) {
       return fail(res, 413, 'Ảnh QR tối đa 2 MB.');
     }
-    r2StorageService.validateQrImage(buffer, contentType);
+    qrStorageService.validateQrImage(buffer, contentType);
 
-    const oldKey = appDataService.getPaymentSettings().qrImageKey;
-    const uploaded = await r2StorageService.uploadQrImage(buffer, contentType);
+    const oldFilename = appDataService.getPaymentSettings().qrImagePath;
+    const uploaded = await qrStorageService.uploadQrImage(buffer, contentType);
     await appDataService.updatePaymentSettings({
-      qrImageKey: uploaded.key,
+      qrImagePath: uploaded.filename,
       qrImageUrl: ''
     });
-    const previewUrl = await r2StorageService.getReadUrl(uploaded.key, 3600);
-
-    if (oldKey && oldKey !== uploaded.key) {
-      await r2StorageService.deleteObject(oldKey).catch(error => {
-        console.warn('[R2] Không xóa được QR cũ:', error.message);
+    if (oldFilename && oldFilename !== uploaded.filename) {
+      await qrStorageService.deleteQrImage(oldFilename).catch(error => {
+        console.warn('[Storage] Không xóa được ảnh QR cũ:', error.message);
       });
     }
     return ok(res, {
-      key: uploaded.key,
-      previewUrl,
+      filename: uploaded.filename,
+      previewUrl: uploaded.url,
       contentType: uploaded.contentType,
       size: uploaded.size
     }, 201);
   } catch (error) {
-    if (/Thiếu cấu hình Cloudflare R2/.test(error.message)) {
-      return fail(res, 503, 'Cloudflare R2 chưa được cấu hình trên Render.');
-    }
     return next(error);
   }
 });
@@ -142,7 +137,7 @@ router.put('/admin/settings', ...admin, async (req, res, next) => {
     const bankAccount = String(payment.bankAccount || '').trim().slice(0, 40);
     const bankAccountName = String(payment.bankAccountName || '').trim().slice(0, 100);
     const qrImageUrl = String(payment.qrImageUrl || '').trim();
-    const qrImageKey = String(payment.qrImageKey || '').trim();
+    const qrImagePath = String(payment.qrImagePath || '').trim();
     const instructions = String(payment.instructions || '').trim().slice(0, 500);
     const minDeposit = Number(payment.minDeposit);
     const commission = Number(body.referralCommissionPercent);
@@ -173,8 +168,8 @@ router.put('/admin/settings', ...admin, async (req, res, next) => {
     if (qrImageUrl && (!validHttpUrl(qrImageUrl) || qrImageUrl.length > 500)) {
       return fail(res, 400, 'Đường dẫn QR phải là HTTPS hợp lệ và tối đa 500 ký tự.');
     }
-    if (qrImageKey && !r2StorageService.isQrImageKey(qrImageKey)) {
-      return fail(res, 400, 'Khóa ảnh QR R2 không hợp lệ.');
+    if (qrImagePath && !qrStorageService.isQrImageFileName(qrImagePath)) {
+      return fail(res, 400, 'Tên tệp ảnh QR không hợp lệ.');
     }
     if (!Number.isSafeInteger(minDeposit) || minDeposit < 10000 || minDeposit > 100000000) {
       return fail(res, 400, 'Mức nạp tối thiểu phải từ 10.000 đến 100.000.000 VNĐ.');
@@ -184,7 +179,7 @@ router.put('/admin/settings', ...admin, async (req, res, next) => {
     }
     return ok(res, await appDataService.updatePaymentSettings({
       bankBin, bankName, bankAccount, bankAccountName,
-      qrImageUrl, qrImageKey, instructions, minDeposit,
+      qrImageUrl, qrImagePath, instructions, minDeposit,
       referralCommissionPercent: commission,
       botUsername,
       groupChatUrl,

@@ -26,19 +26,6 @@ services:
         value: hendy_bot
       - key: MONGO_MAX_POOL_SIZE
         value: "10"
-      # Legacy D1 credentials: optional, used once to import existing records into MongoDB.
-      - key: CLOUDFLARE_ACCOUNT_ID
-        value: "918ff2f016938fc978ed23b96505b21e"
-      - key: CLOUDFLARE_D1_DATABASE_ID
-        sync: false
-      - key: CLOUDFLARE_API_TOKEN
-        sync: false
-      - key: R2_BUCKET_NAME
-        value: "hendy-bot-assets"
-      - key: R2_ACCESS_KEY_ID
-        sync: false
-      - key: R2_SECRET_ACCESS_KEY
-        sync: false
       - key: BOT_TOKEN
         sync: false
       - key: ADMIN_ID

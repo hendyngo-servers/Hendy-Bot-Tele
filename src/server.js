@@ -10,8 +10,7 @@ const rateLimit = require('express-rate-limit');
 const userService = require('./services/userService');
 const appDataService = require('./services/appDataService');
 const botController = require('./controllers/botController');
-const r2StorageService = require('./services/r2StorageService');
-const { CloudflareD1Client } = require('./services/cloudflareD1Service');
+const qrStorageService = require('./services/qrStorageService');
 const mongoService = require('./services/mongoService');
 const apiRouter = require('./routes/api');
 const errorHandler = require('./middlewares/errorHandler');
@@ -34,10 +33,7 @@ function validateProductionConfig() {
     'BOT_TOKEN',
     'ADMIN_ID',
     'APP_ENCRYPTION_KEY',
-    'MONGODB_URI',
-    'R2_BUCKET_NAME',
-    'R2_ACCESS_KEY_ID',
-    'R2_SECRET_ACCESS_KEY'
+    'MONGODB_URI'
   ];
   const missing = required.filter(key => !String(process.env[key] || '').trim());
   if (!String(process.env.WEBAPP_URL || process.env.MINI_APP_URL || process.env.RENDER_EXTERNAL_URL || '').trim()) {
@@ -53,7 +49,6 @@ function validateProductionConfig() {
   if (!mongoService.hasConfig()) {
     throw new Error('MongoDB Atlas chưa được cấu hình đầy đủ.');
   }
-  r2StorageService.validateConfig();
   if (process.env.APP_ENCRYPTION_KEY.length < 32) {
     throw new Error('APP_ENCRYPTION_KEY phải có tối thiểu 32 ký tự.');
   }
@@ -90,14 +85,32 @@ app.use('/api', rateLimit({
 
 app.get('/healthz', (_req, res) => {
   const botReady = botController.isRunning();
-  res.status(botReady ? 200 : 503).json({
-    success: botReady,
+  const databaseReady = userService.isMongo() || !isProductionRuntime();
+  const ready = botReady && databaseReady;
+  res.status(ready ? 200 : 503).json({
+    success: ready,
     service: 'hendy-bot-tele',
     bot: botReady,
-    database: userService.isMongo() ? 'mongodb-atlas' : userService.isCloudflareD1() ? 'cloudflare-d1' : userService.isPostgres() ? 'postgres' : 'local-json',
-    storage: r2StorageService.hasAnyConfig() ? 'cloudflare-r2' : 'unconfigured',
+    database: userService.isMongo() ? 'mongodb-atlas' : 'local-json',
+    fileStorage: 'render-persistent-disk',
     timestamp: new Date().toISOString()
   });
+});
+
+app.get('/uploads/qr/:filename', async (req, res, next) => {
+  try {
+    const image = await qrStorageService.readQrImage(req.params.filename);
+    res.set({
+      'Cache-Control': 'private, max-age=300',
+      'X-Content-Type-Options': 'nosniff'
+    });
+    return res.type(image.contentType).send(image.buffer);
+  } catch (error) {
+    if (error.code === 'ENOENT') {
+      return res.status(404).json({ success: false, message: 'Không tìm thấy ảnh QR.' });
+    }
+    return next(error);
+  }
 });
 
 app.use('/api/mini', apiRouter);
@@ -130,7 +143,6 @@ function shutdown(signal) {
 
   if (!server.listening) {
     userService.closeDatabase().then(() => {
-      r2StorageService.close();
       process.exit(0);
     }).catch(error => {
       console.error('Lỗi khi đóng database:', error.message);
@@ -146,7 +158,6 @@ function shutdown(signal) {
       return;
     }
     userService.closeDatabase().then(() => {
-      r2StorageService.close();
       process.exit(0);
     }).catch(dbError => {
       console.error('Lỗi khi đóng database:', dbError.message);
@@ -163,8 +174,6 @@ async function start() {
   await appDataService.init();
   if (isProductionRuntime()) {
     if (!userService.isMongo()) throw new Error('MongoDB Atlas chưa sẵn sàng sau khi kết nối.');
-    await r2StorageService.checkBucket();
-    console.info('[R2] Bucket Cloudflare R2 đã sẵn sàng.');
   }
 
   const botStarted = await botController.startBot();

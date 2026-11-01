@@ -1,103 +1,61 @@
 # Hendy-Bot-Tele
 
-Hendy-Bot-Tele là Telegram Bot Telegraf + REST API Express + Admin Mini App React/Vite. Bot, API và Mini App chạy trên một Render Web Service. **MongoDB Atlas là database chính**; Cloudflare R2 tiếp tục lưu ảnh QR riêng tư. Không sử dụng WebSocket hoặc worker riêng.
+Hendy-Bot-Tele là hệ thống Telegram Bot (Telegraf), REST API (Express) và Admin Mini App (React/Vite), chạy trong **một Render Web Service**. MongoDB Atlas là cơ sở dữ liệu duy nhất; ảnh QR được lưu trên Render Persistent Disk. Ứng dụng không sử dụng WebSocket, Cloudflare D1, Cloudflare R2 hoặc PostgreSQL.
 
-## Cấu trúc repository
+## Kiến trúc triển khai
 
-```text
-Hendy-Bot-Tele/
-├── .github/workflows/ci.yml
-├── mini-app/
-│   ├── src/App.jsx
-│   ├── src/main.jsx
-│   ├── src/style.css
-│   ├── index.html
-│   └── vite.config.mjs
-├── public/                         # Vite tự sinh khi npm run build; không commit
-├── migrations/d1/                  # SQL migration cũ, dùng để đối chiếu dữ liệu legacy
-├── src/
-│   ├── controllers/
-│   ├── middlewares/
-│   ├── routes/
-│   ├── security/
-│   ├── services/
-│   │   ├── mongoService.js         # Kết nối MongoDB Atlas
-│   │   ├── userService.js          # Hồ sơ, số dư, VIP
-│   │   └── appDataService.js       # Đơn hàng, nạp tiền, giftcode, REF...
-│   ├── utils/keyboards.js
-│   └── server.js
-├── .env.example
-├── .gitignore
-├── .node-version
-├── package.json
-├── render.yaml
-└── README.md
-```
+- **Telegram Bot:** xử lý menu thành viên trực tiếp bằng Telegram inline keyboard/callback; thành viên không phải mở Mini App.
+- **Admin Mini App:** chỉ cho phép tài khoản Telegram khớp `ADMIN_ID` truy cập; máy chủ xác thực `Telegram.WebApp.initData`.
+- **REST API:** cung cấp chức năng quản trị cho Mini App, được bảo vệ bằng xác thực Telegram, kiểm tra quyền Admin và giới hạn tốc độ.
+- **MongoDB Atlas:** lưu hồ sơ thành viên, số dư, tài khoản liên kết, nạp tiền, danh mục, đơn hàng, giftcode, giới thiệu, ticket và cấu hình.
+- **Render Persistent Disk:** lưu ảnh QR trong `DATA_DIR/qr` và giữ tệp JSON cũ trong giai đoạn nhập dữ liệu.
 
-## Menu thành viên — Telegram Bot native
+## Chức năng hiện có
 
-Các nút thành viên là Telegram Inline Keyboard callback, xử lý trực tiếp trong `src/controllers/botController.js` và `src/utils/keyboards.js`. Menu thành viên không mở Mini App và không gọi REST API Mini App.
+### Menu thành viên trong Telegram
 
-- Mini Game Live: quản lý tài khoản liên kết; mật khẩu được mã hóa AES-256-GCM.
-- Thuê Tool, Mua Code, OTP & Proxy, VIP, Ghép đối đầu: danh mục và đơn hàng.
-- Ví điện tử: tạo yêu cầu nạp, QR VietQR/ảnh QR và lịch sử.
-- Trung tâm khách hàng: hồ sơ, số dư, VIP và lịch sử.
-- REF: mã/link giới thiệu và hoa hồng.
-- Giftcode: nhập mã trong Telegram.
-- Nhóm chat, kênh thông báo và CSKH.
+- Hồ sơ, số dư, cấp VIP và lịch sử hoạt động.
+- Liên kết/xóa tài khoản; thông tin nhạy cảm được mã hóa AES-256-GCM.
+- Danh mục dịch vụ và tạo đơn hàng.
+- Tạo yêu cầu nạp tiền, hiển thị QR ngân hàng và theo dõi trạng thái.
+- Giftcode, giới thiệu và hoa hồng giới thiệu.
+- Ticket hỗ trợ và thông tin nhóm/kênh.
 
-## Mini App — chỉ dành cho Admin
+### Admin Mini App
 
-Mini App React/Vite chỉ phục vụ Admin. Người không có quyền Admin không truy cập được dữ liệu quản trị. Máy chủ xác thực chữ ký `Telegram.WebApp.initData` và Telegram ID khớp `ADMIN_ID`.
+- Tổng quan thành viên, tài khoản liên kết, yêu cầu nạp, đơn hàng và ticket.
+- Cấu hình ngân hàng, ảnh QR, số tiền nạp tối thiểu, hướng dẫn chuyển khoản và liên kết Bot.
+- Duyệt/từ chối yêu cầu nạp và đơn hàng.
+- Quản lý danh mục, giftcode, thành viên và ticket hỗ trợ.
+- Quản lý cấu hình ứng dụng qua giao diện quản trị.
 
-Dashboard gồm tổng quan, QR/thanh toán, duyệt nạp, danh mục, đơn hàng, giftcode, thành viên, hỗ trợ và broadcast.
+**Không có dữ liệu demo hoặc tài khoản quản trị mặc định được tạo sẵn.** Khi triển khai lần đầu, Admin đăng nhập bằng Telegram và tự tạo danh mục, cấu hình thông tin nhận tiền và các tùy chọn vận hành. Yêu cầu nạp tiền được Admin đối soát thủ công; dự án chưa tích hợp webhook ngân hàng. Việc tự động cấp Tool/OTP/Proxy/Code từ nhà cung cấp bên ngoài cần API thật và thông tin tích hợp của nhà cung cấp tương ứng.
 
-## MongoDB Atlas — database chính
+## MongoDB Atlas
 
-Backend dùng official MongoDB Node.js driver. Khi khởi động, ứng dụng:
-1. Kết nối `MONGODB_URI`, ping database và tạo index cần thiết.
-2. Tải hồ sơ thành viên từ collection `users`.
-3. Tải dữ liệu nghiệp vụ từ các collection `linkedAccounts`, `deposits`, `tickets`, `catalog`, `orders`, `giftcodes`, `referrals` và cấu hình từ `settings`.
-4. Ghi mọi thay đổi từ Bot/Admin về MongoDB; MongoDB là nguồn dữ liệu chính trên Render.
+Tạo cluster Atlas và database user riêng cho ứng dụng. Cấp quyền `readWrite` trên database `hendy_bot`; giới hạn Network Access theo địa chỉ outbound của Render. Lấy connection string tại **Connect → Drivers → Node.js** và đặt vào `MONGODB_URI`.
 
-### Tạo MongoDB Atlas
+`MONGODB_DB_NAME` mặc định là `hendy_bot`. Ứng dụng tự tạo collection và index khi khởi động.
 
-1. Mở [MongoDB Atlas](https://cloud.mongodb.com/), tạo Project và Cluster.
-2. Chọn AWS Singapore (`ap-southeast-1`) để gần Render Singapore.
-3. Tạo **Database User** riêng cho ứng dụng, chỉ cấp quyền đọc/ghi trên database `hendy_bot`; không dùng tài khoản Atlas đăng nhập Dashboard.
-4. Vào **Network Access** và cho phép các outbound IP ranges được Render hiển thị cho Web Service. Không mở `0.0.0.0/0` lâu dài nếu có thể giới hạn theo IP.
-5. Chọn **Connect → Drivers → Node.js**, sao chép URI `mongodb+srv://...`, thay placeholder bằng mật khẩu Database User đã URL-encode nếu có ký tự đặc biệt.
-6. Đặt tên database là `hendy_bot` qua biến `MONGODB_DB_NAME`.
+### Nhập dữ liệu JSON hiện có
 
-Tài liệu chính thức:
-- [MongoDB Atlas — Connect to a cluster](https://www.mongodb.com/docs/atlas/driver-connection/)
-- [MongoDB Node.js Driver — Connection targets](https://www.mongodb.com/docs/drivers/node/current/connect/connection-targets/)
-- [Render — Connect to MongoDB Atlas](https://render.com/docs/connect-to-mongodb-atlas)
+Nếu Persistent Disk của Render có `users.json` hoặc `app-data.json`, ứng dụng nhập bản ghi vào MongoDB theo ID, không ghi đè bản ghi đã tồn tại. Chỉ đổi tên tệp JSON thành bản sao lưu sau khi ghi thành công.
 
-### Tự động di chuyển dữ liệu cũ
+Nếu dữ liệu hiện tại chỉ còn trong database hoặc kho tệp của dịch vụ cũ, hãy xuất và lưu bản sao trước khi gỡ dịch vụ đó. Bản phát hành này không kết nối hoặc tự động nhập dữ liệu từ dịch vụ bên ngoài đã bị loại bỏ. Ảnh QR cũ cần tải xuống từ kho cũ và tải lại trong Admin sau khi triển khai.
 
-Khi khởi động với MongoDB:
-- `users.json` được nhập vào collection `users`.
-- `app-data.json` được nhập vào các collection nghiệp vụ.
-- Nếu cung cấp đủ biến D1 legacy (`CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_D1_DATABASE_ID`, `CLOUDFLARE_API_TOKEN`), dữ liệu D1 được nhập theo ID và không ghi đè bản ghi đã tồn tại trong MongoDB.
-- Nếu cung cấp `DATABASE_URL` legacy, hồ sơ từ PostgreSQL `hendy_users` được nhập theo Telegram ID và không ghi đè bản ghi đã tồn tại.
-- Các file JSON chỉ được đổi tên thành bản sao lưu sau khi nhập thành công.
+## Lưu ảnh QR
 
-**Không xóa D1/PostgreSQL cũ hoặc Persistent Disk trước khi xác nhận số lượng hồ sơ, đơn hàng, số dư, giftcode và cấu hình trong MongoDB.** Nên giữ backup ít nhất một bản ngoài hệ thống.
-
-## Cloudflare R2 — lưu ảnh QR
-
-R2 vẫn được dùng để lưu ảnh QR tải lên từ Admin. Bucket giữ private; backend sử dụng S3 Access Key/Secret và presigned URL có thời hạn. Không đưa R2 credentials xuống Mini App.
-
-Tạo bucket riêng, ví dụ `hendy-bot-assets`, rồi cấp R2 Object Read & Write giới hạn đúng bucket.
+Admin tải ảnh PNG/JPEG/WebP (tối đa 2 MB) lên API. Máy chủ kiểm tra chữ ký tệp, tạo tên ngẫu nhiên và lưu vào `DATA_DIR/qr`. Ảnh được phục vụ qua endpoint `/uploads/qr/:filename`; không cần tài khoản lưu trữ bên ngoài. Trên Render, `DATA_DIR=/var/data` được gắn vào Persistent Disk nên ảnh tồn tại qua các lần deploy thông thường.
 
 ## Chạy local
 
-Yêu cầu Node.js 24.22.1.
+Yêu cầu Node.js 24.x.
+
+1. Sao chép `.env.example` thành `.env`.
+2. Điền `BOT_TOKEN`, `ADMIN_ID`, `MONGODB_URI` và `APP_ENCRYPTION_KEY`.
+3. Cài dependencies và kiểm tra:
 
 ```bash
-cp .env.example .env
-# Điền BOT_TOKEN, ADMIN_ID, APP_ENCRYPTION_KEY và MONGODB_URI.
 npm install
 npm run check
 npm test
@@ -105,61 +63,60 @@ npm run build
 npm start
 ```
 
-Ví dụ định dạng URI (không dùng nguyên văn):
-`mongodb+srv://<database-user>:<encoded-password>@<cluster-host>/hendy_bot?retryWrites=true&w=majority`
+Khi chạy local với `NODE_ENV=development`, nếu không có `MONGODB_URI`, ứng dụng dùng JSON trong `DATA_DIR` để hỗ trợ phát triển. Chế độ JSON không được phép chạy trên production.
 
-## Render Web Service
+## Render Blueprint
 
-Blueprint `render.yaml` cấu hình:
-- Một Node Web Service tại Singapore, một instance.
-- Persistent Disk tại `/var/data` để giữ backup JSON cũ trong giai đoạn migration.
-- MongoDB Atlas là database chính qua `MONGODB_URI`.
-- Cloudflare R2 tiếp tục lưu ảnh QR.
-- D1 và PostgreSQL chỉ là nguồn migration cũ nếu bạn chủ động cấu hình các biến tương ứng.
-- Build: `npm install --no-audit --no-fund && npm run check && npm test && npm run build`.
-- Start: `npm start`; health check: `/healthz`.
+`render.yaml` định nghĩa một Node Web Service ở Singapore, một instance và Persistent Disk 1 GB tại `/var/data`.
 
-### Secrets cần cấu hình trong Render Environment
+- Build: `npm install --no-audit --no-fund && npm run check && npm test && npm run build`
+- Start: `npm start`
+- Health check: `/healthz`
+- URL Mini App mặc định: `RENDER_EXTERNAL_URL` do Render cung cấp.
 
-| Biến | Cách cấu hình |
+### Biến môi trường bắt buộc trong Render
+
+| Biến | Giá trị |
 |---|---|
-| `MONGODB_URI` | Secret URI từ Atlas → Connect → Drivers |
+| `MONGODB_URI` | URI bí mật từ MongoDB Atlas |
 | `MONGODB_DB_NAME` | `hendy_bot` |
-| `BOT_TOKEN` | Token mới tạo từ BotFather |
-| `ADMIN_ID` | Telegram numeric user ID Admin |
-| `APP_ENCRYPTION_KEY` | Khóa ngẫu nhiên riêng, tối thiểu 32 ký tự |
-| `R2_BUCKET_NAME` | Tên bucket R2 |
-| `R2_ACCESS_KEY_ID` | R2 S3 Access Key ID mới |
-| `R2_SECRET_ACCESS_KEY` | R2 S3 Secret Access Key mới |
-| `CLOUDFLARE_ACCOUNT_ID` | Account ID; chỉ cần cho R2 và migration D1 |
-| `CLOUDFLARE_D1_DATABASE_ID` | Tùy chọn, chỉ khi import D1 cũ |
-| `CLOUDFLARE_API_TOKEN` | Tùy chọn, chỉ khi import D1 cũ; D1 Read + D1 Write |
-| `DATABASE_URL` | Tùy chọn tạm thời, chỉ khi import PostgreSQL cũ |
+| `BOT_TOKEN` | Token Telegram Bot từ BotFather |
+| `ADMIN_ID` | Telegram numeric user ID của Admin |
+| `APP_ENCRYPTION_KEY` | Khóa bí mật riêng tối thiểu 32 ký tự |
 
-`WEBAPP_URL` / `MINI_APP_URL` có thể dùng `RENDER_EXTERNAL_URL` làm mặc định; nếu dùng domain riêng, cấu hình URL HTTPS tương ứng.
+### Biến cấu hình tùy chọn
 
-Production sẽ dừng nếu MongoDB, Bot Token, Admin ID, khóa mã hóa hoặc R2 không được cấu hình hợp lệ. Không commit bất kỳ secret thật nào vào GitHub.
+| Biến | Ý nghĩa |
+|---|---|
+| `MONGO_MAX_POOL_SIZE` | Giới hạn kết nối MongoDB, mặc định 10 |
+| `DATA_DIR` | Thư mục lưu tệp; Blueprint Render đặt `/var/data` |
+| `BOT_USERNAME` | Username Bot, không có ký tự `@` |
+| `MINI_APP_URL` / `WEBAPP_URL` | URL HTTPS của Mini App; mặc định dùng `RENDER_EXTERNAL_URL` |
+| `BANK_BIN` | Mã BIN ngân hàng gồm 6 chữ số |
+| `BANK_ACCOUNT` | Số tài khoản nhận tiền |
+| `BANK_ACCOUNT_NAME` | Chủ tài khoản |
+| `BANK_NAME` | Tên ngân hàng |
+| `MIN_DEPOSIT_VND` | Số tiền nạp tối thiểu, mặc định 10.000 VNĐ |
+| `SUPPORT_USERNAME` | Username CSKH, không có `@` |
 
-## CI
+Nhập secret trực tiếp trong **Render → Service → Environment**. Không gửi token, URI có mật khẩu hoặc khóa mã hóa vào chat và không commit chúng vào GitHub.
 
-GitHub Actions khởi chạy MongoDB và PostgreSQL tạm thời, kiểm tra cú pháp, chạy test adapter local/D1/PostgreSQL/MongoDB, build Mini App và xác nhận `public/index.html`.
+## CI và kiểm tra
 
-CI dùng credential test nội bộ của service container, không cần secret Atlas hoặc Cloudflare thật.
+GitHub Actions chạy MongoDB tạm thời, sau đó thực hiện `npm run check`, `npm test`, `npm run build` và xác nhận Mini App đã được tạo vào `public/`. CI không cần credential MongoDB Atlas hoặc tài khoản lưu trữ bên ngoài.
 
-## Bảo mật & vận hành
+## Bảo mật và vận hành
 
-- `.env` bị Git ignore; chỉ commit `.env.example` với giá trị secret trống.
-- Credential đã từng lộ trong Git history phải được thu hồi và thay mới. Chỉ sửa file mới nhất không xóa lịch sử commit cũ.
-- Dùng database user riêng cho ứng dụng, giới hạn quyền đúng database.
-- Giới hạn Atlas Network Access theo outbound IP của Render.
-- R2 bucket giữ private; presigned URL có thời hạn.
-- Nạp tiền chỉ cộng sau khi Admin đối soát giao dịch thực tế và duyệt; chưa có webhook ngân hàng tự động.
-- Tool/OTP/Proxy/Code muốn tự động cấp cần API nhà cung cấp thực tế.
+- Giữ nguyên `APP_ENCRYPTION_KEY` khi nâng cấp để giải mã tài khoản liên kết đã lưu. Chỉ thay khóa khi đã có kế hoạch mã hóa lại dữ liệu.
+- Dùng database user riêng với quyền đúng database; giới hạn IP trong MongoDB Atlas.
+- Dùng HTTPS cho Telegram Mini App.
+- Sao lưu MongoDB định kỳ và lưu bản backup ngoài Render.
+- Persistent Disk được gắn với một instance; Blueprint giữ `numInstances: 1` để tránh nhiều tiến trình cùng ghi trạng thái.
+- Thu hồi và tạo mới credential từng bị lộ trong lịch sử Git. Chỉ sửa file mới nhất không xóa secret khỏi commit cũ.
 
-## Kiểm tra local
+## Tài liệu tham khảo
 
-```bash
-npm run check
-npm test
-npm run build
-```
+- [MongoDB Atlas — Connect to a cluster](https://www.mongodb.com/docs/atlas/driver-connection/)
+- [MongoDB Node.js Driver](https://www.mongodb.com/docs/drivers/node/current/)
+- [Render — Deploy Node.js applications](https://render.com/docs/deploy-node-express-app)
+- [Render — Persistent Disks](https://render.com/docs/disks)

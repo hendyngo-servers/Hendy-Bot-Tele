@@ -175,7 +175,6 @@ footer{display:flex;flex-direction:column;align-items:center;gap:4px;padding:22p
 .admin-integration-status{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin:0 0 14px}
 .admin-integration-status article{display:flex;align-items:center;gap:10px;min-width:0;padding:13px;border:1px solid #ffffff17;border-radius:13px;background:linear-gradient(140deg,#14283a,#102033)}
 .admin-integration-mark{display:grid;place-items:center;width:37px;height:37px;flex:0 0 auto;border-radius:10px;background:#2f8b9c25;color:#91e1e5;font-size:12px;font-weight:900;letter-spacing:.04em}
-.admin-integration-mark.r2{background:#b8793325;color:#ffd18a}
 .admin-integration-status article>div{display:flex;flex-direction:column;gap:4px;min-width:0;flex:1}
 .admin-integration-status article strong{font-size:10px;color:#e8f2f8}
 .admin-integration-status article small{font-size:8px;color:#859eb1}
