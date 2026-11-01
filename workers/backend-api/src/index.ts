@@ -78,7 +78,7 @@ function referenceCode() {
 }
 async function paymentQr(settings: Record<string, any>, amount: number, reference: string, env: BackendEnv, origin: string): Promise<string | null> {
   const qrImageKey = cleanText(settings.qrImageKey || "", 512);
-  if (qrImageKey && env.BACKUP_SECRET) {
+  if (qrImageKey && env.BACKUP_SECRET && env.BACKUP_SECRET.length >= 32) {
     const signedUrl = await createSignedQrUrl(env.BACKUP_SECRET, origin, qrImageKey, 300);
     if (signedUrl) return signedUrl;
   }

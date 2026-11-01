@@ -171,7 +171,7 @@ async function createDeposit(env: BackendEnv, chatId: string, userId: string, am
   const id = crypto.randomUUID();
   await env.DB.prepare("INSERT INTO deposits (id,telegram_id,amount_vnd,reference) VALUES (?,?,?,?)")
     .bind(id, userId, amount, reference).run();
-  const customQrUrl = settings.qrImageKey && env.API_PUBLIC_URL && env.BACKUP_SECRET
+  const customQrUrl = settings.qrImageKey && env.API_PUBLIC_URL && env.BACKUP_SECRET && env.BACKUP_SECRET.length >= 32
     ? await createSignedQrUrl(env.BACKUP_SECRET, env.API_PUBLIC_URL, cleanText(settings.qrImageKey, 512), 300)
     : null;
   const qrUrl = customQrUrl || (settings.bankBin && settings.bankAccount
