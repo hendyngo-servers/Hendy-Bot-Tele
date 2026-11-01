@@ -18,6 +18,7 @@ async function editTelegramKeyboard(row, markup, token) {
   });
   const result = await response.json().catch(() => ({}));
   if (!response.ok || result.ok !== true) {
+    if (String(result.description || "").toLowerCase().includes("message is not modified")) return;
     throw new Error(result.description || "Telegram editMessageReplyMarkup failed.");
   }
 }
@@ -28,7 +29,7 @@ async function editTelegramKeyboard(row, markup, token) {
  */
 export async function refreshTelegramMenuMessages(settings) {
   const token = String(process.env.BOT_TOKEN || "").trim();
-  if (!token) return { updated: 0, failed: 0, skipped: true };
+  if (!token) return { updated: 0, failed: 0, total: 0, skipped: true };
   const result = await executeD1Query(
     "SELECT chat_id,message_id FROM telegram_menu_messages ORDER BY updated_at DESC LIMIT 300"
   );
