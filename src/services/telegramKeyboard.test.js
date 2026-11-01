@@ -25,6 +25,20 @@ describe("Production Telegram keyboard", () => {
     assert.ok(buttons.every((button) => button.callback_data && !button.web_app && !button.url));
   });
 
+  test("uses admin labels and hides disabled menu buttons", () => {
+    const keyboard = buildMainKeyboard({
+      WEBAPP_URL: "https://mini.example.com"
+    }, {
+      menu_config: [
+        { module: "mini_game_live", label: "🎮 TRÒ CHƠI MỚI", enabled: true },
+        { module: "app_tool", label: "THUÊ TOOL", enabled: false }
+      ]
+    });
+    const buttons = keyboard.inline_keyboard.flat();
+    assert.ok(buttons.some((button) => button.text === "🎮 TRÒ CHƠI MỚI"));
+    assert.ok(!buttons.some((button) => button.text === "THUÊ TOOL"));
+  });
+
   test("rejects non-HTTPS Mini App and non-Telegram community URLs", () => {
     const keyboard = buildMainKeyboard({
       WEBAPP_URL: "http://mini.example.com",
