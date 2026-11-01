@@ -62,8 +62,14 @@ export default function App() {
   const [supportSubject, setSupportSubject] = useState("");
   const [supportMessage, setSupportMessage] = useState("");
   const [ticketReply, setTicketReply] = useState("");
+  const referralStartParam = String(
+    telegram?.initDataUnsafe?.start_param ||
+    new URLSearchParams(window.location.search).get("startapp") ||
+    ""
+  );
+  const referralStartCode = referralStartParam.replace(/^ref_/i, "").trim().toUpperCase();
   const [referralSummary, setReferralSummary] = useState(null);
-  const [referralCodeInput, setReferralCodeInput] = useState("");
+  const [referralCodeInput, setReferralCodeInput] = useState(referralStartCode);
   const [vipProfile, setVipProfile] = useState(null);
   const [giftcodeInput, setGiftcodeInput] = useState("");
   const [walletOverview, setWalletOverview] = useState(null);
@@ -620,7 +626,14 @@ export default function App() {
                 <article className="metric-card"><span>MÃ GIỚI THIỆU</span><strong>{referralSummary.code}</strong><small>Chia sẻ cho bạn bè</small></article>
                 <article className="metric-card"><span>ĐÃ GIỚI THIỆU</span><strong>{referralSummary.invited}</strong><small>Tài khoản đã ghi nhận</small></article>
               </div>
-              <div className="panel"><p className="helper-copy">{referralSummary.inviteUrl}</p><button type="button" onClick={() => navigator.clipboard?.writeText(referralSummary.inviteUrl).then(() => setNotice("Đã sao chép liên kết giới thiệu.")).catch(() => setError("Không thể sao chép liên kết."))}>Sao chép liên kết</button><p className="footnote">{referralSummary.commissionNote}</p></div>
+              <div className="panel">
+                {referralSummary.inviteUrl ? <>
+                  <p className="helper-copy">{referralSummary.inviteUrl}</p>
+                  <button type="button" onClick={() => navigator.clipboard?.writeText(referralSummary.inviteUrl).then(() => setNotice("Đã sao chép liên kết giới thiệu.")).catch(() => setError("Không thể sao chép liên kết."))}>Sao chép liên kết</button>
+                </> : <p className="footnote">Quản trị viên chưa cấu hình WEBAPP_URL chính thức. Mã giới thiệu của bạn vẫn dùng được: gửi trực tiếp mã này cho người được mời.</p>}
+                <p className="footnote">{referralSummary.commissionNote}</p>
+                {referralSummary.commissionAvailable && <p className="footnote">Tỷ lệ cấu hình: {(Number(referralSummary.commissionRateBps || 0) / 100).toFixed(2)}% trên giá trị đơn đã thanh toán và hoàn tất.</p>}
+              </div>
               <div className="account-grid">{(referralSummary.commissions || []).map(item => <article className="account-card" key={item.status}><strong>{item.status === "pending" ? "Chờ duyệt" : item.status === "approved" ? "Đã duyệt" : item.status === "paid" ? "Đã chi trả" : item.status}</strong><p>{item.total} giao dịch · {money(item.amount)}</p></article>)}</div>
               {referralSummary.referredBy ? <p className="helper-copy">Bạn được giới thiệu bởi: {referralSummary.referredBy.name} (ID {referralSummary.referredBy.id}).</p> : <form className="link-form" onSubmit={claimReferral}><label>Mã giới thiệu của người mời<input value={referralCodeInput} onChange={e => setReferralCodeInput(e.target.value.toUpperCase())} maxLength={32} required /></label><button disabled={busy}>{busy ? "Đang ghi nhận…" : "Áp dụng mã"}</button></form>}
             </> : <div className="loading-panel">Đang tải dữ liệu giới thiệu…</div>}
@@ -636,7 +649,7 @@ export default function App() {
             <div className="section-title"><div><span className="eyebrow">MEMBERSHIP</span><h2>Trung tâm VIP</h2></div></div>
             {vipProfile ? <>
               <div className="overview-grid"><article className="metric-card"><span>HẠNG HIỆN TẠI</span><strong>{vipProfile.currentTier?.name || "Cơ bản"}</strong></article><article className="metric-card"><span>ĐIỂM VIP</span><strong>{vipProfile.points || 0}</strong></article></div>
-              <div className="account-grid">{(vipProfile.tiers || []).map(tier => <article className="account-card" key={tier.code}><strong>{tier.name}</strong><p className="muted">Từ {Number(tier.minPoints).toLocaleString("vi-VN")} điểm</p><p className="muted">{(tier.benefits || []).join(" · ")}</p><button type="button" disabled={busy || tier.code === vipProfile.currentTier?.code} onClick={() => requestVipUpgrade(tier)}>{tier.code === vipProfile.currentTier?.code ? "Đang sở hữu" : "Gửi yêu cầu nâng cấp"}</button></article>)}</div>
+              <div className="account-grid">{(vipProfile.tiers || []).map(tier => <article className="account-card" key={tier.code}><strong>{tier.name}</strong><p className="muted">Từ {Number(tier.minPoints).toLocaleString("vi-VN")} điểm</p><p className="muted">{(tier.benefits || []).join(" · ")}</p><button type="button" disabled={busy || tier.code === vipProfile.currentTier?.code || Number(vipProfile.points || 0) < Number(tier.minPoints || 0)} onClick={() => requestVipUpgrade(tier)}>{tier.code === vipProfile.currentTier?.code ? "Đang sở hữu" : Number(vipProfile.points || 0) >= Number(tier.minPoints || 0) ? "Đủ điều kiện · yêu cầu Admin duyệt" : "Cần thêm " + Math.max(0,Number(tier.minPoints || 0)-Number(vipProfile.points || 0)).toLocaleString("vi-VN") + " điểm"}</button></article>)}</div>
             </> : <div className="loading-panel">Đang tải cấp bậc VIP…</div>}
           </section>}
 
