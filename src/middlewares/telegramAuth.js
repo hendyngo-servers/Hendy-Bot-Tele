@@ -1,4 +1,5 @@
 import { verifyTelegramWebAppData } from "../security/telegramAuth.js";
+import { d1First } from "../services/productionD1.js";
 
 function readInitData(req) {
   const authorization = String(req.headers.authorization || "");
@@ -7,21 +8,30 @@ function readInitData(req) {
   return String(req.headers["x-telegram-init-data"] || "").trim();
 }
 
-export function requireTelegramAuth(req, res, next) {
-  const token = process.env.BOT_TOKEN;
-  if (!token) {
-    return res.status(503).json({ error: "Xác thực Telegram chưa được cấu hình.", code: "AUTH_NOT_CONFIGURED" });
+export async function requireTelegramAuth(req, res, next) {
+  try {
+    const token = process.env.BOT_TOKEN;
+    if (!token) {
+      return res.status(503).json({ error: "Xác thực Telegram chưa được cấu hình.", code: "AUTH_NOT_CONFIGURED" });
+    }
+    const initData = readInitData(req);
+    const checked = verifyTelegramWebAppData(initData, token, {
+      maxAgeSeconds: Number(process.env.TELEGRAM_AUTH_MAX_AGE_SECONDS || 86400)
+    });
+    if (!checked.valid || !checked.user?.id) {
+      return res.status(401).json({ error: "Phiên Telegram không hợp lệ hoặc đã hết hạn.", code: "TELEGRAM_AUTH_REQUIRED" });
+    }
+    const userId = String(checked.user.id);
+    const existing = await d1First("SELECT status FROM users WHERE telegram_id=?", [userId]);
+    if (existing?.status === "blocked") {
+      return res.status(403).json({ error: "Tài khoản đã bị khóa.", code: "USER_BLOCKED" });
+    }
+    req.telegramUser = checked.user;
+    req.telegramAuthDate = checked.authDate;
+    next();
+  } catch (error) {
+    next(error);
   }
-  const initData = readInitData(req);
-  const checked = verifyTelegramWebAppData(initData, token, {
-    maxAgeSeconds: Number(process.env.TELEGRAM_AUTH_MAX_AGE_SECONDS || 86400)
-  });
-  if (!checked.valid || !checked.user?.id) {
-    return res.status(401).json({ error: "Phiên Telegram không hợp lệ hoặc đã hết hạn.", code: "TELEGRAM_AUTH_REQUIRED" });
-  }
-  req.telegramUser = checked.user;
-  req.telegramAuthDate = checked.authDate;
-  next();
 }
 
 export function requireAdmin(req, res, next) {
