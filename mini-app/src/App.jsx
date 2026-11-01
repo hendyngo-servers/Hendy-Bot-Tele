@@ -311,7 +311,6 @@ export default function App() {
 
       socket.onopen = () => {
         attempts = 0;
-        setRealtimeSocket(socket);
         socket.send(JSON.stringify({ type: "auth", initData }));
         pingTimer = window.setInterval(() => {
           if (socket?.readyState === WebSocket.OPEN) socket.send(JSON.stringify({ type: "ping" }));
@@ -323,6 +322,7 @@ export default function App() {
         try { frame = JSON.parse(event.data); } catch { return; }
         const payload = frame.payload || {};
         if (frame.type === "auth.ok") {
+          setRealtimeSocket(socket);
           setRealtimeStatus("connected");
         } else if (frame.type === "public_config" || frame.type === "public_config.updated") {
           setBotSettings((current) => ({ ...(current || {}), ...payload }));
