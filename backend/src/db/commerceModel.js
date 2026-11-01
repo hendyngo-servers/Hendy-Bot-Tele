@@ -104,6 +104,7 @@ export async function getVipProfile(env, userId) {
   const current = (tiers.results || []).find((tier) => tier.code === user.vip_tier) || (tiers.results || [])[0] || null;
   return {
     points: Number(user.vip_points || 0),
+    pointsPer10000Vnd: Math.max(0, Number(env.VIP_POINTS_PER_10000_VND || 0)),
     currentTier: current ? { code: current.code, name: current.name } : { code: "basic", name: "Cơ bản" },
     tiers: (tiers.results || []).map((tier) => ({
       code: tier.code,
