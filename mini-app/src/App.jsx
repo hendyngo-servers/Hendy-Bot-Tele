@@ -222,7 +222,7 @@ export default function App() {
         ...current,
         payment: {
           ...current.payment,
-          qrImagePath: result.key,
+          qrImagePath: result.filename,
           qrImageUrl: ''
         },
         qrPreviewUrl: result.previewUrl
