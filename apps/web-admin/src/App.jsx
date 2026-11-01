@@ -625,7 +625,7 @@ export default function App() {
             {availableTransitions.length > 0 ? <div className="transition-panel">
               <label>Ghi chú xử lý<textarea value={adminNote} onChange={event => setAdminNote(event.target.value)} rows="2" maxLength="500" placeholder="Ghi lại kết quả tiếp nhận hoặc lý do hủy…" /></label>
               <div className="transition-actions">{availableTransitions.map(next => {
-                const requiresPayment = next === "processing" && Number(currentOrder.amount) > 0 && currentOrder.paymentStatus !== "paid";
+                const requiresPayment = next === "processing" && currentOrder.paymentStatus !== "paid";
                 return <button key={next} disabled={busy || requiresPayment} title={requiresPayment ? "Chờ khách thanh toán" : ""} className={next === "cancelled" ? "danger-action" : "primary-action"} onClick={() => transitionOrder(next)}>
                   {next === "confirmed" ? "✓ Xác nhận đơn" : next === "processing" ? "▶ Bắt đầu xử lý" : next === "completed" ? "✓ Hoàn tất" : "× Hủy đơn"}
                 </button>;
