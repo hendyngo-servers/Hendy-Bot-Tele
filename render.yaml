@@ -1,7 +1,7 @@
 services:
   - type: web
     name: hendy-bot-tele
-    env: node
+    runtime: node
     plan: starter
     buildCommand: npm install && npm run build
     startCommand: npm start
@@ -9,32 +9,48 @@ services:
     autoDeploy: true
     envVars:
       - key: NODE_VERSION
-        value: 24.22.1
+        value: "24"
       - key: NODE_ENV
         value: production
+      - key: TELEGRAM_BOT_MODE
+        value: webhook
+      - key: SET_WEBHOOK_ON_START
+        value: "false"
+      - key: TELEGRAM_AUTH_MAX_AGE_SECONDS
+        value: "86400"
       - key: BOT_TOKEN
         sync: false
       - key: WEBHOOK_SECRET
-        generateValue: true
-      - key: ENCRYPTION_KEY
-        generateValue: true
+        sync: false
+      - key: ADMIN_TELEGRAM_IDS
+        sync: false
       - key: BASE_URL
-        value: https://hendy-bot-tele.onrender.com
+        sync: false
+      - key: WEBAPP_URL
+        sync: false
+      - key: ADMIN_WEBAPP_URL
+        sync: false
+      - key: ALLOWED_ORIGINS
+        sync: false
       - key: CLOUDFLARE_ACCOUNT_ID
+        sync: false
+      - key: CLOUDFLARE_D1_DATABASE_ID
         sync: false
       - key: CLOUDFLARE_API_TOKEN
         sync: false
-      - key: CLOUDFLARE_D1_DATABASE_ID
-        value: d1-hendy-bot-db
-      - key: CLOUDFLARE_R2_BUCKET
-        value: hendy-bot-assets
-      - key: CLOUDFLARE_PAGES_URL
-        value: https://hendy-web-user.pages.dev
-      - key: TELEGRAM_BOT_MODE
-        value: webhook
+      - key: BACKUP_WORKER_URL
+        sync: false
+      - key: BACKUP_TRIGGER_SECRET
+        sync: false
       - key: VIETQR_BANK_ID
-        value: MB
+        sync: false
       - key: VIETQR_ACCOUNT_NO
-        value: "0988776655"
+        sync: false
       - key: VIETQR_ACCOUNT_NAME
-        value: "HENDY STUDIO CO"
+        sync: false
+      - key: GROUP_CHAT_URL
+        sync: false
+      - key: NEWS_CHANNEL_URL
+        sync: false
+      - key: SUPPORT_URL
+        sync: false
