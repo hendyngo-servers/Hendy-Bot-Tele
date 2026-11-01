@@ -2,6 +2,7 @@ import { WebSocketServer, WebSocket } from "ws";
 import { verifyTelegramWebAppData } from "../security/telegramAuth.js";
 import { isTelegramAdmin } from "../middlewares/telegramAuth.js";
 import { getBotSettings } from "./productionD1.js";
+import { scanConfigurationLocations } from "./configScanner.js";
 
 const clients = new Set();
 const MAX_INIT_DATA_LENGTH = 16384;
@@ -95,7 +96,14 @@ export function attachAdminRealtime(server) {
           const settings = await getBotSettings();
           send(socket, "auth.ok", { userId: client.userId, isAdmin: client.isAdmin });
           send(socket, "public_config", publicConfig(settings));
-          if (client.isAdmin) send(socket, "admin.ready", { runtimeConfigAvailable: Boolean(process.env.RENDER_API_KEY && process.env.RENDER_SERVICE_ID) });
+          if (client.isAdmin) {
+            send(socket, "admin.ready", { runtimeConfigAvailable: Boolean(process.env.RENDER_API_KEY && process.env.RENDER_SERVICE_ID) });
+            try {
+              send(socket, "config.registry", await scanConfigurationLocations());
+            } catch (error) {
+              send(socket, "config.registry.error", { message: error.message });
+            }
+          }
         } catch {
           socket.close(1011, "Configuration service unavailable");
         }
@@ -103,6 +111,18 @@ export function attachAdminRealtime(server) {
       }
 
       if (message?.type === "ping") send(socket, "pong", { now: Date.now() });
+      if (message?.type === "scan_config") {
+        if (!client.isAdmin) {
+          send(socket, "error", { code: "ADMIN_FORBIDDEN", message: "Chỉ admin được quét cấu hình source." });
+          return;
+        }
+        try {
+          send(socket, "config.registry", await scanConfigurationLocations());
+        } catch (error) {
+          send(socket, "config.registry.error", { message: error.message });
+        }
+        return;
+      }
       // The socket is a push channel only. Mutations must use the authenticated HTTPS admin API.
     });
 
