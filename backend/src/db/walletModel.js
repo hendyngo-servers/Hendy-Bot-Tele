@@ -85,6 +85,7 @@ export async function reviewDepositRequest(env, requestId, admin, input) {
   const actor = safeText(admin?.id || "admin", 80);
   const ledgerId = randomId();
   const ledgerKey = "deposit:" + requestId;
+  // D1 batch is transactional: only a pending request can credit balance and append one ledger row.
   const results = await env.DB.batch([
     env.DB.prepare("UPDATE deposit_requests SET status=?,admin_note=?,reviewed_by=?,reviewed_at=CURRENT_TIMESTAMP WHERE id=? AND status='pending'").bind(status, note, actor, requestId),
     env.DB.prepare("UPDATE users SET balance=balance+(SELECT amount FROM deposit_requests WHERE id=? AND status='approved') WHERE id=(SELECT user_id FROM deposit_requests WHERE id=? AND status='approved') AND changes()=1").bind(requestId, requestId),
