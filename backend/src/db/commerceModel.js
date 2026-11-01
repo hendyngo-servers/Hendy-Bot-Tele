@@ -377,7 +377,7 @@ export async function setGiftcodeActive(env, giftcodeId, active) {
   if (!/^[0-9a-f-]{36}$/i.test(String(giftcodeId || ""))) fail("Mã Giftcode không hợp lệ.");
   const value = active ? 1 : 0;
   const result = await env.DB.prepare(
-    "UPDATE giftcodes SET is_active=?,updated_at=CURRENT_TIMESTAMP WHERE id=?"
+    "UPDATE giftcodes SET is_active=? WHERE id=?"
   ).bind(value,giftcodeId).run();
   if (!result.meta?.changes) {
     const existing = await env.DB.prepare("SELECT is_active FROM giftcodes WHERE id=?").bind(giftcodeId).first();
