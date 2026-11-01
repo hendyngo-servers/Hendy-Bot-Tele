@@ -314,11 +314,7 @@ export default function App() {
     setSelectedModule(module);
     setCatalogItemId(item.id);
     setOrderTitle(item.title);
-    setOrderDescription([
-      item.description,
-      item.duration_days ? "Thời hạn: " + item.duration_days + " ngày" : "",
-      item.stock === null || item.stock === undefined ? "" : "Tồn kho hiển thị: " + item.stock
-    ].filter(Boolean).join(" · "));
+    setOrderDescription("");
     setQuantity(1);
     setTab("home");
   }
@@ -428,6 +424,10 @@ export default function App() {
 
   const orderCount = home?.orderSummary?.total || 0;
   const totalLinks = Object.values(links).reduce((count, rows) => count + (rows?.length || 0), 0);
+  const selectedCatalogItem = catalogItems.find(item => item.id === catalogItemId) || null;
+  const selectedCatalogTotal = selectedCatalogItem && selectedCatalogItem.unit_price !== null
+    ? Number(selectedCatalogItem.unit_price) * Number(quantity || 1)
+    : null;
 
   return (
     <main className="app-shell">
@@ -514,7 +514,7 @@ export default function App() {
                 <label>Tiêu đề yêu cầu<input value={orderTitle} onChange={event => setOrderTitle(event.target.value)} minLength={3} maxLength={100} required /></label>
                 <label>Số lượng<input type="number" min="1" max="50" value={quantity} onChange={event => setQuantity(event.target.value)} required /></label>
                 <label className="full">Thông tin bổ sung<textarea value={orderDescription} onChange={event => setOrderDescription(event.target.value)} maxLength={1000} rows="3" placeholder="Ghi rõ gói dịch vụ, thời hạn hoặc yêu cầu cụ thể." /></label>
-                <div className="form-footer"><span>Giá: <b>{catalogItemId ? "Theo danh mục" : "Chờ Admin báo giá"}</b></span><button disabled={busy}>{busy ? "Đang gửi…" : "Gửi yêu cầu →"}</button></div>
+                <div className="form-footer"><span>Giá: <b>{catalogItemId ? selectedCatalogTotal === null ? "Chờ báo giá" : money(selectedCatalogTotal) : "Chờ Admin báo giá"}</b></span><button disabled={busy}>{busy ? "Đang gửi…" : "Gửi yêu cầu →"}</button></div>
               </form>
             </section>}
 
