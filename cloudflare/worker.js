@@ -44,7 +44,7 @@ function csvCell(value) {
   if (value === null || value === undefined) return '""';
   let text = String(value);
   // Prevent spreadsheet formula execution when an operator opens a CSV backup.
-  if (typeof value === "string" && /^[=+@]/.test(text)) text = "'" + text;
+  if (typeof value === "string" && /^[\s\u0000-\u001f]*[=+\-@]/.test(text)) text = "'" + text;
   return '"' + text.replace(/"/g, '""') + '"';
 }
 
@@ -243,6 +243,6 @@ export default {
   },
 
   async scheduled(_controller, env, ctx) {
-    ctx.waitUntil(createBackup(env, "scheduled-cron"));
+    ctx.waitUntil(createBackup(env, "scheduled-cron").catch((error) => { console.error("Scheduled D1-to-R2 backup failed:", error?.message || error); }));
   }
 };
