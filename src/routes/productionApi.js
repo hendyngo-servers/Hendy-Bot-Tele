@@ -971,8 +971,36 @@ router.post("/admin/support/tickets/:id/messages", requireAdmin, asyncRoute(asyn
   res.json({ ticket, messages: messages.results });
 }));
 
-router.get("/admin/referrals/commissions", requireAdmin, asyncRoute(async (_req, res) => {
-  res.json({ commissions: [], total: 0, note: "Module hoa hồng chưa có schema dữ liệu production." });
+router.get("/admin/referrals/commissions", requireAdmin, asyncRoute(async (req, res) => {
+  const status = text(req.query.status || "all", 20);
+  const rows = await executeD1Query(
+    "SELECT c.*,r.username AS referrer_username,r.first_name AS referrer_first_name," +
+    "u.username AS referred_username,u.first_name AS referred_first_name " +
+    "FROM referral_commissions c " +
+    "LEFT JOIN users r ON r.telegram_id=c.referrer_telegram_id " +
+    "LEFT JOIN users u ON u.telegram_id=c.referred_telegram_id " +
+    (status === "all" ? "" : "WHERE c.status=? ") +
+    "ORDER BY c.created_at DESC LIMIT 200",
+    status === "all" ? [] : [status]
+  );
+  const counts = await d1First(
+    "SELECT COUNT(*) AS total,COALESCE(SUM(CASE WHEN status='pending' THEN amount ELSE 0 END),0) AS pending_amount " +
+    "FROM referral_commissions"
+  );
+  res.json({ commissions: rows.results, total: Number(counts?.total || 0), pendingAmount: Number(counts?.pending_amount || 0) });
+}));
+
+router.post("/admin/referrals/commissions/:id/status", requireAdmin, asyncRoute(async (req, res) => {
+  const status = text(req.body?.status, 20);
+  if (!["approved", "paid", "voided"].includes(status)) return res.status(400).json({ error: "Trạng thái hoa hồng không hợp lệ." });
+  const updated = await d1First(
+    "UPDATE referral_commissions SET status=?,admin_note=?,updated_at=datetime('now') " +
+    "WHERE id=? AND status IN ('pending','approved') AND NOT (status='paid' AND ?<>'paid') RETURNING *",
+    [status, text(req.body?.note, 500), text(req.params.id, 100), status]
+  );
+  if (!updated) return res.status(409).json({ error: "Hoa hồng không tồn tại hoặc đã được xử lý." });
+  await writeAdminAudit(req.telegramUser.id, "referral.commission.status", "commission", updated.id, { status });
+  res.json({ success: true, commission: updated });
 }));
 
 router.post("/admin/webhook/setup", requireAdmin, asyncRoute(async (_req, res) => {
