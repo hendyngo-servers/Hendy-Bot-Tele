@@ -102,7 +102,7 @@ export async function createOrder(env, userId, input, idempotencyKey) {
       throw httpError("Sản phẩm không đủ tồn kho cho số lượng yêu cầu.", 409);
     }
     normalized.title = catalogItem.title;
-    normalized.description = [catalogItem.description, normalized.description].filter(Boolean).join("\\n").slice(0, 1000);
+    normalized.description = [catalogItem.description, normalized.description].filter(Boolean).join("\n").slice(0, 1000);
   }
   const requestHash = await hashRequest(normalized);
   const existing = await env.DB.prepare(
