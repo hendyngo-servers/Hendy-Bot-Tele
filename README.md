@@ -129,7 +129,8 @@ Build command đã cài cả devDependencies vì Vite là công cụ build, kể
 
 | Biến | Giá trị |
 |---|---|
-| `BOT_TOKEN` | Bot Token mới lấy từ BotFather |\n| `BOT_USERNAME` | Username bot Telegram thật, không có ký tự `@`; dùng để tạo link giới thiệu |
+| `BOT_TOKEN` | Bot Token mới lấy từ BotFather |
+| `BOT_USERNAME` | Username bot Telegram thật, không có ký tự `@`; dùng để tạo link giới thiệu |
 | `WEBHOOK_SECRET` | Cùng giá trị GitHub Secret `WEBHOOK_SECRET` |
 | `ADMIN_TELEGRAM_IDS` | Telegram numeric ID quản trị, nhiều ID phân cách bằng dấu phẩy |
 | `WEBAPP_URL` | URL production Cloudflare Pages |
