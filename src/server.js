@@ -1,10 +1,12 @@
 import express from "express";
+import { createServer } from "node:http";
 import cors from "cors";
 import dotenv from "dotenv";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import productionApi from "./routes/productionApi.js";
 import { errorHandler } from "./middlewares/errorHandler.js";
+import { attachAdminRealtime } from "./services/adminRealtime.js";
 
 dotenv.config();
 
@@ -95,7 +97,10 @@ if (!isProduction) {
 
 app.use(errorHandler);
 
-const server = app.listen(PORT, "0.0.0.0", async () => {
+const server = createServer(app);
+attachAdminRealtime(server);
+
+server.listen(PORT, "0.0.0.0", async () => {
   console.log("[Hendy Bot] HTTP service listening on port " + PORT);
   if (process.env.SET_WEBHOOK_ON_START === "true") {
     const baseUrl = process.env.BASE_URL || process.env.RENDER_EXTERNAL_URL;
