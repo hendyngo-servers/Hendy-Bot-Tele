@@ -44,7 +44,7 @@ function csvCell(value) {
   if (value === null || value === undefined) return '""';
   let text = String(value);
   // Prevent spreadsheet formula execution when an operator opens a CSV backup.
-  if (typeof value === "string" && /^[=+@]/.test(text)) text = "'" + text;
+  if (typeof value === "string" && /^[\\t\\r\\n ]*[=+\\-@]/.test(text)) text = "'" + text;
   return '"' + text.replace(/"/g, '""') + '"';
 }
 
