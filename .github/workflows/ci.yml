@@ -2,7 +2,7 @@ name: Production CI
 
 on:
   push:
-    branches: [main, production/render-cloudflare-hardening]
+    branches: [main, production/render-cloudflare-hardening, production/final-ops-2026-11-01]
   pull_request:
     branches: [main]
 
@@ -23,6 +23,19 @@ jobs:
 
       - name: Install dependencies
         run: npm install --no-audit --no-fund
+
+      - name: Validate D1 migrations with SQLite
+        run: |
+          python - <<'PY'
+          import pathlib, sqlite3
+          db = sqlite3.connect(":memory:")
+          db.execute("PRAGMA foreign_keys = ON")
+          for migration in sorted(pathlib.Path("migrations").glob("*.sql")):
+              db.executescript(migration.read_text(encoding="utf-8"))
+              print(f"Applied {migration}")
+          tables = db.execute("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name").fetchall()
+          print(f"Validated {len(tables)} D1 tables")
+          PY
 
       - name: Syntax checks
         run: npm run lint
