@@ -3,6 +3,7 @@ import crypto from "node:crypto";
 import multer from "multer";
 import { executeD1Query, d1First, getD1Health, getBotSettings, setBotSetting, writeAdminAudit } from "../services/productionD1.js";
 import { requireTelegramAuth, requireAdmin, isTelegramAdmin } from "../middlewares/telegramAuth.js";
+import { buildMainKeyboard } from "../services/telegramKeyboard.js";
 
 const router = express.Router();
 const releaseUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024, files: 1 } });
@@ -73,49 +74,7 @@ async function sendTelegram(method, payload) {
   return data.result;
 }
 
-function miniAppUrl(module = "home") {
-  const base = process.env.WEBAPP_URL || process.env.BASE_URL;
-  if (!base) return null;
-  const url = new URL(base);
-  url.searchParams.set("module", module);
-  return url.toString();
-}
 
-function telegramLinkButton(label, rawValue) {
-  const value = text(rawValue, 2048);
-  if (!value) return null;
-  try {
-    const url = new URL(value);
-    if (url.protocol !== "https:" || !["t.me", "telegram.me"].includes(url.hostname.toLowerCase()) || url.pathname === "/") {
-      return null;
-    }
-    return { text: label, url: url.toString() };
-  } catch {
-    return null;
-  }
-}
-
-function mainKeyboard() {
-  const web = (label, module) => {
-    const url = miniAppUrl(module);
-    return url ? { text: label, web_app: { url } } : { text: label, callback_data: "open_" + module };
-  };
-  const rows = [
-    [web("🎮 MINI GAME LIVE", "mini_game_live"), web("🧰 THUÊ TOOL", "app_tool")],
-    [web("💻 MUA CODE", "buy_code"), web("💳 NẠP TIỀN", "wallet")],
-    [web("🛡️ OTP & PROXY", "otp_proxy"), web("👑 KHO VIP", "vip_tools")],
-    [web("💎 TRUNG TÂM KHÁCH HÀNG", "support"), web("💞 GHÉP ĐÔI", "pairing")],
-    [web("🤝 GIỚI THIỆU REF", "referral"), web("🎟️ GIFTCODE", "giftcode")]
-  ];
-  const community = [
-    telegramLinkButton("👥 NHÓM CHAT", process.env.GROUP_CHAT_URL),
-    telegramLinkButton("📢 KÊNH THÔNG BÁO", process.env.NEWS_CHANNEL_URL)
-  ].filter(Boolean);
-  if (community.length) rows.push(community);
-  const support = telegramLinkButton("☎️ LIÊN HỆ CSKH", process.env.SUPPORT_URL);
-  if (support) rows.push([support]);
-  return { inline_keyboard: rows };
-}
 
 async function handleTelegramUpdate(update) {
   const message = update.message || update.edited_message;
@@ -128,7 +87,7 @@ async function handleTelegramUpdate(update) {
       await sendTelegram("sendMessage", {
         chat_id: chatId,
         text: "Vui lòng mở Mini App từ nút chức năng trong menu.",
-        reply_markup: mainKeyboard()
+        reply_markup: buildMainKeyboard()
       });
     }
     return;
@@ -179,7 +138,7 @@ async function handleTelegramUpdate(update) {
       "Chọn chức năng bạn cần ở menu bên dưới."
     ];
     if (admin) lines.push("", "Bạn có quyền quản trị. Sử dụng /admin để mở bảng điều khiển.");
-    await sendTelegram("sendMessage", { chat_id: chatId, text: lines.join("\n"), reply_markup: mainKeyboard() });
+    await sendTelegram("sendMessage", { chat_id: chatId, text: lines.join("\n"), reply_markup: buildMainKeyboard() });
   } else if (command === "/help") {
     await sendTelegram("sendMessage", {
       chat_id: chatId,
