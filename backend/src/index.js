@@ -13,7 +13,7 @@ import {
   addSupportMessage, claimReferral, createGiftcode, createSupportTicket, ensureReferralCode,
   getReferralSummary, getSupportTicket, getVipProfile, listAdminCatalog, listAdminGiftcodes,
   listAdminReferralCommissions, listCatalog, listSupportTickets, redeemGiftcode,
-  saveCatalogItem, setCatalogItemActive, settleReferralCommission, updateSupportTicketStatus
+  saveCatalogItem, setCatalogItemActive, setGiftcodeActive, settleReferralCommission, updateSupportTicketStatus
 } from "./db/commerceModel.js";
 import { errorHandler } from "./middlewares/errorHandler.js";
 import { rateLimitMiddleware } from "./middlewares/rateLimiter.js";
@@ -280,6 +280,7 @@ async function route(request, env) {
   const orderPaymentMatch = path.match(/^\/api\/v1\/orders\/([0-9a-f-]{36})\/pay$/i);
   if (orderPaymentMatch && request.method === "POST") {
     const telegramUser = await authenticateTelegramRequest(request, env);
+    await upsertUser(env, telegramUser.id, telegramUser.first_name || "Khách");
     const result = await payOrderWithWallet(
       env,
       telegramUser.id,
@@ -368,6 +369,12 @@ async function route(request, env) {
   if (path === "/api/v1/admin/giftcodes" && request.method === "POST") {
     const admin = await requireAdmin(request, env);
     return json(await createGiftcode(env, admin, await readJsonLimited(request)), 201);
+  }
+
+  const adminGiftcodeStatusMatch = path.match(/^\/api\/v1\/admin\/giftcodes\/([0-9a-f-]{36})\/(activate|deactivate)$/i);
+  if (adminGiftcodeStatusMatch && request.method === "POST") {
+    await requireAdmin(request, env);
+    return json(await setGiftcodeActive(env, adminGiftcodeStatusMatch[1], adminGiftcodeStatusMatch[2] === "activate"));
   }
 
   if (path === "/api/v1/admin/referrals/commissions" && request.method === "GET") {
