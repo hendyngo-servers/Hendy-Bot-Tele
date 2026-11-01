@@ -15,7 +15,8 @@ test("normalizes a supported service order without trusting client price fields"
     module: "app_tool",
     title: "Yêu cầu thuê công cụ",
     description: "Thuê 7 ngày",
-    quantity: 2
+    quantity: 2,
+    catalogItemId: null
   });
   assert.equal(Object.hasOwn(normalized, "amount"), false);
 });
@@ -39,4 +40,33 @@ test("allows only the defined admin order state transitions", () => {
   assert.equal(canTransitionOrder("pending", "completed"), false);
   assert.equal(canTransitionOrder("completed", "cancelled"), false);
   assert.deepEqual(ORDER_TRANSITIONS.cancelled, []);
+});
+
+test("accepts only a valid server catalog item identifier", () => {
+  const valid = normalizeOrderInput({
+    module: "buy_code",
+    title: "Mua mã",
+    catalogItemId: "123e4567-e89b-12d3-a456-426614174000",
+    quantity: 1
+  });
+  assert.equal(valid.catalogItemId, "123e4567-e89b-12d3-a456-426614174000");
+  assert.throws(() => normalizeOrderInput({
+    module: "buy_code",
+    title: "Mua mã",
+    catalogItemId: "fake-item-id"
+  }), /Mã sản phẩm danh mục không hợp lệ/i);
+});
+
+test("does not accept a price from the browser as trusted order data", () => {
+  const normalized = normalizeOrderInput({
+    module: "buy_code",
+    title: "Mua code",
+    quantity: 1,
+    amount: 1,
+    unitPrice: 1,
+    totalAmount: 1
+  });
+  assert.equal(Object.hasOwn(normalized, "amount"), false);
+  assert.equal(Object.hasOwn(normalized, "unitPrice"), false);
+  assert.equal(Object.hasOwn(normalized, "totalAmount"), false);
 });
