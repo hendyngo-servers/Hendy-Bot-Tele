@@ -35,7 +35,11 @@ export function normalizeOrderInput(input) {
   if (!Number.isInteger(quantity) || quantity < 1 || quantity > 50) {
     throw new Error("Số lượng phải nằm trong khoảng 1–50.");
   }
-  return { module, title, description, quantity };
+  const catalogItemId = String(input.catalogItemId || "").trim();
+  if (catalogItemId && !/^[0-9a-f-]{36}$/i.test(catalogItemId)) {
+    throw new Error("Mã sản phẩm danh mục không hợp lệ.");
+  }
+  return { module, title, description, quantity, catalogItemId: catalogItemId || null };
 }
 
 async function hashRequest(normalized) {
@@ -55,7 +59,11 @@ function presentOrder(row) {
     quantity: Number(row.quantity),
     amount: Number(row.total_amount || 0),
     currency: row.currency || "VND",
-    pricingStatus: "awaiting_quote",
+    pricingStatus: row.quote_id ? row.quote_status : (Number(row.total_amount || 0) > 0 ? "fixed" : "awaiting_quote"),
+    paymentStatus: row.payment_status || "unpaid",
+    paidAmount: row.paid_amount === null || row.paid_amount === undefined ? null : Number(row.paid_amount),
+    paidAt: row.paid_at || null,
+    catalogItemId: row.catalog_item_id || null,
     status: row.status,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -79,6 +87,23 @@ export async function createOrder(env, userId, input, idempotencyKey) {
   }
 
   const normalized = normalizeOrderInput(input);
+  let catalogItem = null;
+  if (normalized.catalogItemId) {
+    catalogItem = await env.DB.prepare(
+      "SELECT id,module,slug,title,description,unit_price,duration_days,stock,is_active FROM catalog_items WHERE id = ?"
+    ).bind(normalized.catalogItemId).first();
+    if (!catalogItem || Number(catalogItem.is_active) !== 1) {
+      throw httpError("Sản phẩm không còn được mở bán.", 409);
+    }
+    if (catalogItem.module !== normalized.module) {
+      throw httpError("Sản phẩm không thuộc nhóm dịch vụ đã chọn.", 400);
+    }
+    if (catalogItem.stock !== null && Number(catalogItem.stock) < normalized.quantity) {
+      throw httpError("Sản phẩm không đủ tồn kho cho số lượng yêu cầu.", 409);
+    }
+    normalized.title = catalogItem.title;
+    normalized.description = [catalogItem.description, normalized.description].filter(Boolean).join("\\n").slice(0, 1000);
+  }
   const requestHash = await hashRequest(normalized);
   const existing = await env.DB.prepare(
     "SELECT * FROM orders WHERE user_id = ? AND idempotency_key = ?"
@@ -93,12 +118,21 @@ export async function createOrder(env, userId, input, idempotencyKey) {
 
   const id = randomId();
   const orderNumber = "HD" + Date.now().toString(36).toUpperCase() + crypto.randomUUID().slice(0, 6).toUpperCase();
+  const unitPrice = catalogItem?.unit_price === null || catalogItem?.unit_price === undefined
+    ? null
+    : Number(catalogItem.unit_price);
+  const totalAmount = Number.isSafeInteger(unitPrice) && unitPrice >= 0
+    ? unitPrice * normalized.quantity
+    : 0;
+  if (!Number.isSafeInteger(totalAmount) || totalAmount > 1000000000000) {
+    throw httpError("Tổng giá trị đơn hàng vượt quá giới hạn.", 400);
+  }
   const insertOrder = env.DB.prepare(
     `INSERT INTO orders
-      (id, order_number, user_id, module, title, description, quantity, total_amount, currency, status, idempotency_key, request_hash)
-     VALUES (?, ?, ?, ?, ?, ?, ?, 0, 'VND', 'pending', ?, ?)
+      (id, order_number, user_id, module, title, description, quantity, total_amount, currency, status, idempotency_key, request_hash, catalog_item_id)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'VND', 'pending', ?, ?, ?)
      ON CONFLICT(user_id, idempotency_key) DO NOTHING`
-  ).bind(id, orderNumber, safeUserId, normalized.module, normalized.title, normalized.description, normalized.quantity, key, requestHash);
+  ).bind(id, orderNumber, safeUserId, normalized.module, normalized.title, normalized.description, normalized.quantity, totalAmount, key, requestHash, normalized.catalogItemId);
 
   const insertCreatedEvent = env.DB.prepare(
     `INSERT INTO order_events
@@ -357,7 +391,7 @@ export async function updateOrderStatus(env, orderId, actor, input, idempotencyK
     return { ...(await getAdminOrder(env, orderId)), duplicate: true };
   }
 
-  const current = await env.DB.prepare("SELECT id, status FROM orders WHERE id = ?").bind(orderId).first();
+  const current = await env.DB.prepare("SELECT id, status, payment_status FROM orders WHERE id = ?").bind(orderId).first();
   if (!current) {
     const error = new Error("Không tìm thấy đơn hàng.");
     error.status = 404;
@@ -368,10 +402,15 @@ export async function updateOrderStatus(env, orderId, actor, input, idempotencyK
     error.status = 409;
     throw error;
   }
+  if (nextStatus === "processing" && current.payment_status !== "paid") {
+    const error = new Error("Khách hàng phải thanh toán đơn hàng bằng số dư ví trước khi bắt đầu xử lý.");
+    error.status = 409;
+    throw error;
+  }
 
   // D1 batch is transactional: the event is inserted only when the guarded
   // status update changed exactly one row. The unique event key prevents replay.
-  await env.DB.batch([
+  const statements = [
     env.DB.prepare(
       "UPDATE orders SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND status = ?"
     ).bind(nextStatus, orderId, expectedStatus),
@@ -383,7 +422,22 @@ export async function updateOrderStatus(env, orderId, actor, input, idempotencyK
         WHERE id = ? AND status = ? AND changes() = 1
        ON CONFLICT(order_id, event_key) DO NOTHING`
     ).bind(randomId(), expectedStatus, nextStatus, eventKey, note, actorLabel, orderId, nextStatus)
-  ]);
+  ];
+  if (nextStatus === "completed") {
+    const commissionBps = Number(env.REFERRAL_COMMISSION_BPS || 0);
+    if (Number.isInteger(commissionBps) && commissionBps > 0 && commissionBps <= 10000) {
+      statements.push(env.DB.prepare(
+        `INSERT INTO referral_commissions
+          (id,referrer_user_id,referred_user_id,order_id,amount,currency,status)
+         SELECT ?,u.referred_by,o.user_id,o.id,CAST(o.paid_amount * ? / 10000 AS INTEGER),'VND','pending'
+           FROM orders o JOIN users u ON u.id=o.user_id
+          WHERE o.id=? AND o.status='completed' AND o.payment_status='paid'
+            AND u.referred_by IS NOT NULL AND CAST(o.paid_amount * ? / 10000 AS INTEGER) > 0
+         ON CONFLICT(order_id) DO NOTHING`
+      ).bind(randomId(), commissionBps, orderId, commissionBps));
+    }
+  }
+  await env.DB.batch(statements);
 
   const savedEvent = await env.DB.prepare(
     "SELECT id FROM order_events WHERE order_id = ? AND event_key = ?"
@@ -489,4 +543,107 @@ export async function respondToOrderQuote(env, userId, orderId, quoteId, decisio
   const updated = await env.DB.prepare("SELECT status FROM orders WHERE id = ? AND user_id = ?").bind(orderId,id).first();
   if (saved?.status !== decision || updated?.status !== nextOrderStatus) fail("Đơn hàng vừa được cập nhật. Hãy tải lại dữ liệu.",409);
   return { success:true,duplicate:false,decision,order:await getOrderForUser(env,id,orderId) };
+}
+
+
+export async function payOrderWithWallet(env, userId, orderId, idempotencyValue) {
+  const id = parseTelegramId(userId);
+  if (!id) failOrder("Telegram user ID không hợp lệ.", 400);
+  if (!/^[0-9a-f-]{36}$/i.test(String(orderId || ""))) failOrder("Mã đơn hàng không hợp lệ.", 400);
+  const key = String(idempotencyValue || "").trim();
+  if (!/^[A-Za-z0-9._:-]{8,128}$/.test(key)) {
+    failOrder("Thiếu hoặc sai Idempotency-Key cho thanh toán.", 400);
+  }
+
+  const existing = await env.DB.prepare(
+    "SELECT * FROM orders WHERE id = ? AND user_id = ?"
+  ).bind(orderId, id).first();
+  if (!existing) failOrder("Không tìm thấy đơn hàng.", 404);
+
+  if (existing.payment_status === "paid") {
+    if (existing.payment_idempotency_key === key) {
+      return {
+        success: true,
+        duplicate: true,
+        order: presentOrder(existing),
+        balance: await getUserBalance(env, id)
+      };
+    }
+    failOrder("Đơn hàng đã được thanh toán trước đó.", 409);
+  }
+  if (existing.status !== "confirmed") {
+    failOrder("Đơn hàng phải được Admin xác nhận trước khi thanh toán.", 409);
+  }
+  const amount = Number(existing.total_amount || 0);
+  if (!Number.isSafeInteger(amount) || amount < 1) {
+    failOrder("Đơn hàng chưa có báo giá hợp lệ.", 409);
+  }
+
+  const balance = await getUserBalance(env, id);
+  if (balance < amount) {
+    failOrder("Số dư ví không đủ. Vui lòng nạp thêm tiền trước khi thanh toán.", 409);
+  }
+
+  const ledgerKey = "order-payment:" + orderId;
+  await env.DB.batch([
+    env.DB.prepare(
+      `UPDATE users SET balance = balance - ?
+        WHERE id = ? AND balance >= ?
+          AND EXISTS (
+            SELECT 1 FROM orders
+             WHERE id = ? AND user_id = ? AND status = 'confirmed' AND payment_status = 'unpaid'
+          )`
+    ).bind(amount, id, amount, orderId, id),
+    env.DB.prepare(
+      `UPDATE orders SET payment_status='paid',paid_amount=?,paid_at=CURRENT_TIMESTAMP,
+          payment_idempotency_key=?,updated_at=CURRENT_TIMESTAMP
+        WHERE id=? AND user_id=? AND status='confirmed' AND payment_status='unpaid'
+          AND total_amount=? AND changes()=1`
+    ).bind(amount, key, orderId, id, amount),
+    env.DB.prepare(
+      `INSERT INTO wallet_ledger(id,user_id,source_type,source_id,amount,balance_after,idempotency_key)
+       SELECT ?,o.user_id,'order_payment',o.id,-?,u.balance,?
+         FROM orders o JOIN users u ON u.id=o.user_id
+        WHERE o.id=? AND o.user_id=? AND o.payment_status='paid'
+          AND o.payment_idempotency_key=? AND changes()=1
+       ON CONFLICT(user_id,idempotency_key) DO NOTHING`
+    ).bind(randomId(), amount, ledgerKey, orderId, id, key),
+    env.DB.prepare(
+      `INSERT INTO wallet_transactions
+        (id,user_id,order_id,provider,provider_reference,idempotency_key,amount,currency,status)
+       SELECT ?,user_id,id,'internal_wallet',order_number,?,?,'VND','paid'
+         FROM orders
+        WHERE id=? AND user_id=? AND payment_status='paid' AND payment_idempotency_key=?
+       ON CONFLICT(provider,idempotency_key) DO NOTHING`
+    ).bind(randomId(), id + ":" + key, amount, orderId, id, key)
+  ]);
+
+  const saved = await env.DB.prepare(
+    "SELECT * FROM orders WHERE id = ? AND user_id = ?"
+  ).bind(orderId, id).first();
+  if (saved?.payment_status !== "paid" || saved.payment_idempotency_key !== key) {
+    const latestBalance = await getUserBalance(env, id);
+    if (latestBalance < amount) {
+      failOrder("Số dư ví không đủ. Vui lòng nạp thêm tiền trước khi thanh toán.", 409);
+    }
+    failOrder("Thanh toán không thành công do đơn hàng vừa thay đổi. Hãy tải lại dữ liệu.", 409);
+  }
+
+  return {
+    success: true,
+    duplicate: false,
+    order: presentOrder(saved),
+    balance: await getUserBalance(env, id)
+  };
+}
+
+async function getUserBalance(env, userId) {
+  const row = await env.DB.prepare("SELECT balance FROM users WHERE id = ?").bind(userId).first();
+  return Number(row?.balance || 0);
+}
+
+function failOrder(message, status = 400) {
+  const error = new Error(message);
+  error.status = status;
+  throw error;
 }
