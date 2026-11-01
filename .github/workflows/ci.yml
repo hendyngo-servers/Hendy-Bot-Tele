@@ -2,7 +2,7 @@ name: Production CI
 
 on:
   push:
-    branches: [main, production/render-cloudflare-hardening]
+    branches: [main, 'production/**']
   pull_request:
     branches: [main]
 
