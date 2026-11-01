@@ -40,8 +40,21 @@ jobs:
         run: pnpm --filter web-user build
         env:
           VITE_API_BASE_URL: ${{ vars.VITE_API_BASE_URL }}
-      - name: Deploy user Pages
+      - name: Check user Pages deployment configuration
+        id: deploy_config
         if: github.event_name != 'pull_request'
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          VITE_API_BASE_URL: ${{ vars.VITE_API_BASE_URL }}
+        run: |
+          ready=true
+          if [ -z "$CLOUDFLARE_API_TOKEN" ] || [ -z "$CLOUDFLARE_ACCOUNT_ID" ] || [ -z "$VITE_API_BASE_URL" ]; then ready=false; fi
+          if [[ "$VITE_API_BASE_URL" == *example.com* ]]; then ready=false; fi
+          echo "ready=$ready" >> "$GITHUB_OUTPUT"
+          if [ "$ready" != "true" ]; then echo "::warning::User Pages deployment skipped: configure Cloudflare credentials and VITE_API_BASE_URL."; fi
+      - name: Deploy user Pages
+        if: github.event_name != 'pull_request' && steps.deploy_config.outputs.ready == 'true'
         run: pnpm exec wrangler pages deploy apps/web-user/dist --project-name hendy-web-user
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -62,8 +75,21 @@ jobs:
         run: pnpm --filter web-admin build
         env:
           VITE_API_BASE_URL: ${{ vars.VITE_API_BASE_URL }}
-      - name: Deploy admin Pages
+      - name: Check admin Pages deployment configuration
+        id: deploy_config
         if: github.event_name != 'pull_request'
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          VITE_API_BASE_URL: ${{ vars.VITE_API_BASE_URL }}
+        run: |
+          ready=true
+          if [ -z "$CLOUDFLARE_API_TOKEN" ] || [ -z "$CLOUDFLARE_ACCOUNT_ID" ] || [ -z "$VITE_API_BASE_URL" ]; then ready=false; fi
+          if [[ "$VITE_API_BASE_URL" == *example.com* ]]; then ready=false; fi
+          echo "ready=$ready" >> "$GITHUB_OUTPUT"
+          if [ "$ready" != "true" ]; then echo "::warning::Admin Pages deployment skipped: configure Cloudflare credentials and VITE_API_BASE_URL."; fi
+      - name: Deploy admin Pages
+        if: github.event_name != 'pull_request' && steps.deploy_config.outputs.ready == 'true'
         run: pnpm exec wrangler pages deploy apps/web-admin/dist --project-name hendy-web-admin
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
