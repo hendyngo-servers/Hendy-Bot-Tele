@@ -129,7 +129,9 @@ export async function getReferralSummary(env, userId) {
   ]);
   return {
     code,
-    inviteUrl: String(env.WEBAPP_URL || "https://hendy-web-user.pages.dev") + "?startapp=ref_" + encodeURIComponent(code),
+    inviteUrl: /^https:\/\//i.test(String(env.WEBAPP_URL || "").trim())
+      ? String(env.WEBAPP_URL).trim().replace(/\/+$/, "") + "?startapp=ref_" + encodeURIComponent(code)
+      : "",
     invited: Number(counts?.total || 0),
     referredBy: claim ? { id: claim.id, name: claim.name } : null,
     commissions: (commissions.results || []).map(row => ({
