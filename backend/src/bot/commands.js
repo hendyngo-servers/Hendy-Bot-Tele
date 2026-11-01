@@ -2,6 +2,16 @@ import { upsertUser } from "../db/userModel.js";
 import { mainMenu } from "./keyboards.js";
 import { sendMessage } from "./telegram.js";
 
+function isAdmin(userId, env) {
+  return String(env.ADMIN_IDS || "").split(",").map(value => value.trim()).filter(Boolean).includes(String(userId));
+}
+
+function adminAppUrl(env) {
+  const value = String(env.ADMIN_WEBAPP_URL || "").trim();
+  if (!/^https:\/\//i.test(value)) return null;
+  return value;
+}
+
 export async function handleCommand(update, env) {
   const message = update.message;
   const text = message?.text || "";
@@ -10,14 +20,42 @@ export async function handleCommand(update, env) {
 
   if (command === "/start") {
     const user = await upsertUser(env, message.from.id, message.from.first_name || "Khách");
+    const linkedCount = Object.values(user.linked_accounts || {}).reduce(
+      (total, rows) => total + (Array.isArray(rows) ? rows.length : 0), 0
+    );
+    const name = [message.from.first_name, message.from.last_name].filter(Boolean).join(" ") || user.name;
+    const adminNote = isAdmin(message.from.id, env) ? "\n🛡️ Bạn có quyền quản trị. Dùng /admin để mở bảng điều khiển." : "";
     await sendMessage(env, message.chat.id,
-      "HENDY BOT\nXin chào " + user.name + "!\nID Telegram: " + user.id + "\n\nMở Mini App để quản lý mã tài khoản và bản phát hành.",
+      "🤖 HENDY BOT TELEGRAM\n" +
+      "Xin chào " + name + "!\n" +
+      "🆔 Telegram ID: " + user.id + "\n" +
+      "💰 Số dư: " + Number(user.balance || 0).toLocaleString("vi-VN") + " VNĐ\n" +
+      "🔗 Tài khoản liên kết: " + linkedCount + "\n" +
+      "━━━━━━━━━━━━━━━━━━\n" +
+      "Chọn chức năng bạn cần bên dưới." + adminNote,
       mainMenu(env));
     return true;
   }
 
+  if (command === "/admin") {
+    if (!isAdmin(message.from.id, env)) {
+      await sendMessage(env, message.chat.id, "⛔ Bạn không có quyền quản trị.");
+      return true;
+    }
+    const url = adminAppUrl(env);
+    if (!url) {
+      await sendMessage(env, message.chat.id, "⚠️ Chưa cấu hình ADMIN_WEBAPP_URL cho trang quản trị.");
+      return true;
+    }
+    await sendMessage(env, message.chat.id, "🛡️ TRUNG TÂM QUẢN TRỊ HENDY\nPhiên quản trị được API xác minh độc lập.", {
+      inline_keyboard: [[{ text: "🔐 MỞ BẢNG QUẢN TRỊ", web_app: { url } }]]
+    });
+    return true;
+  }
+
   if (command === "/help") {
-    await sendMessage(env, message.chat.id, "HƯỚNG DẪN\n/start - Mở menu chính\n/id - Xem Telegram ID\n\nKhông gửi mật khẩu hoặc mã OTP cho bot.");
+    await sendMessage(env, message.chat.id,
+      "📖 HƯỚNG DẪN\n/start - Mở menu chức năng\n/admin - Mở quản trị (chỉ Admin)\n/id - Xem Telegram ID\n\nKhông gửi mật khẩu, OTP hoặc cookie tài khoản cho bot.");
     return true;
   }
 
