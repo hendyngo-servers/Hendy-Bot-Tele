@@ -1,12 +1,6 @@
-const fs = require('node:fs/promises');
-const path = require('node:path');
 const crypto = require('node:crypto');
 const qrStorageService = require('./qrStorageService');
-const mongoService = require('./mongoService');
-
-
-const dir = process.env.DATA_DIR || path.join(process.cwd(), 'data');
-const file = path.join(dir, 'app-data.json');
+const jsonDatabase = require('./jsonDatabase');
 
 const defaultPaymentSettings = () => ({
   bankBin: process.env.BANK_BIN || '',
@@ -35,8 +29,7 @@ let state = {
   paymentSettings: defaultPaymentSettings()
 };
 let queue = Promise.resolve();
-let mongoActive = false;
-let mongoCollections = null;
+
 function normalizeState(value = {}) {
   const defaults = {
     linkedAccounts: [],
@@ -59,9 +52,12 @@ function normalizeState(value = {}) {
       ? value.paymentSettings
       : {})
   };
-  // Đơn đang xử lý khi tiến trình bị dừng được mở lại để Admin xử lý lại.
-  next.deposits = next.deposits.map(item => item.status === 'processing' ? { ...item, status: 'pending' } : item);
-  next.orders = next.orders.map(item => item.status === 'processing' ? { ...item, status: 'pending' } : item);
+  next.deposits = next.deposits.map(item =>
+    item.status === 'processing' ? { ...item, status: 'pending' } : item
+  );
+  next.orders = next.orders.map(item =>
+    item.status === 'processing' ? { ...item, status: 'pending' } : item
+  );
   return next;
 }
 
@@ -69,156 +65,17 @@ function cloneState(value) {
   return JSON.parse(JSON.stringify(value));
 }
 
-function recordId(item) {
-  const id = String(item?.id || '');
-  if (!id) throw new Error('Bản ghi thiếu id.');
-  return id;
-}
-
-const MONGO_COLLECTIONS = [
-  'linkedAccounts',
-  'deposits',
-  'tickets',
-  'catalog',
-  'orders',
-  'giftcodes',
-  'referrals'
-];
-
-async function persistMongoState(snapshot) {
-  if (!mongoCollections) throw new Error('MongoDB collections chưa được khởi tạo.');
-  for (const name of MONGO_COLLECTIONS) {
-    const collection = mongoCollections[name];
-    const items = snapshot[name] || [];
-    const operations = items.map(item => ({
-      replaceOne: {
-        filter: { _id: recordId(item) },
-        replacement: { ...item, _id: recordId(item) },
-        upsert: true
-      }
-    }));
-    for (let offset = 0; offset < operations.length; offset += 500) {
-      await collection.bulkWrite(operations.slice(offset, offset + 500), { ordered: true });
-    }
-    const ids = items.map(recordId);
-    if (ids.length) await collection.deleteMany({ _id: { $nin: ids } });
-    else await collection.deleteMany({});
-  }
-  await mongoCollections.settings.replaceOne(
-    { _id: 'payment' },
-    { _id: 'payment', ...snapshot.paymentSettings, updatedAt: new Date() },
-    { upsert: true }
-  );
-}
-
-async function loadMongoState() {
-  const database = await mongoService.connectMongo();
-  mongoCollections = Object.fromEntries(
-    [...MONGO_COLLECTIONS, 'settings'].map(name => [name, database.collection(name)])
-  );
-  await Promise.all([
-    mongoCollections.linkedAccounts.createIndex({ userId: 1, createdAt: -1 }),
-    mongoCollections.deposits.createIndex({ userId: 1, createdAt: -1 }),
-    mongoCollections.tickets.createIndex({ userId: 1, createdAt: -1 }),
-    mongoCollections.catalog.createIndex({ category: 1, active: 1 }),
-    mongoCollections.orders.createIndex({ userId: 1, createdAt: -1 }),
-    mongoCollections.giftcodes.createIndex({ code: 1 }, { unique: true, sparse: true }),
-    mongoCollections.referrals.createIndex({ referredId: 1 }, { unique: true })
-  ]);
-
-  const raw = normalizeState();
-  for (const name of MONGO_COLLECTIONS) {
-    const documents = await mongoCollections[name].find({}).toArray();
-    raw[name] = documents.map(({ _id, ...item }) => item);
-  }
-  const remoteSettings = await mongoCollections.settings.findOne({ _id: 'payment' });
-  if (remoteSettings) {
-    const { _id, updatedAt, ...settings } = remoteSettings;
-    raw.paymentSettings = { ...defaultPaymentSettings(), ...settings };
-  }
-
-  // Chỉ nhập dữ liệu JSON cũ vào ID chưa có; không ghi đè dữ liệu MongoDB.
-  let legacyData = null;
-  try {
-    legacyData = JSON.parse(await fs.readFile(file, 'utf8'));
-    if (!legacyData || typeof legacyData !== 'object' || Array.isArray(legacyData)) {
-      throw new Error('Tệp app-data.json không có định dạng object.');
-    }
-  } catch (error) {
-    if (error.code !== 'ENOENT') {
-      await fs.rename(file, file + '.corrupt-' + Date.now()).catch(() => {});
-      console.error('[MongoDB] app-data.json lỗi; đã cách ly tệp:', error.message);
-    }
-  }
-
-  if (legacyData) {
-    const legacy = normalizeState(legacyData);
-    for (const name of MONGO_COLLECTIONS) {
-      const known = new Set(raw[name].map(recordId));
-      for (const item of legacy[name]) {
-        const id = recordId(item);
-        if (!known.has(id)) {
-          raw[name].push(item);
-          known.add(id);
-        }
-      }
-    }
-    if (!remoteSettings) raw.paymentSettings = legacy.paymentSettings;
-  }
-
-  state = normalizeState(raw);
-  mongoActive = true;
-  await persistMongoState(state);
-  if (legacyData) {
-    const backup = file + '.migrated-mongodb-' + Date.now();
-    await fs.rename(file, backup);
-    console.info('[MongoDB] Đã nhập app-data.json. Bản sao lưu: ' + path.basename(backup));
-  }
-  console.info('[MongoDB] Đã tải ' +
-    MONGO_COLLECTIONS.reduce((total, name) => total + state[name].length, 0) +
-    ' bản ghi nghiệp vụ từ MongoDB Atlas.');
-}
-
 function persist() {
   const snapshot = cloneState(state);
-  queue = queue.catch(() => {}).then(async () => {
-    if (mongoActive) {
-      state = snapshot;
-      await persistMongoState(snapshot);
-      return;
-    }
-    await fs.mkdir(dir, { recursive: true });
-    const tmp = file + '.tmp';
-    await fs.writeFile(tmp, JSON.stringify(snapshot, null, 2), {
-      encoding: 'utf8',
-      mode: 0o600
-    });
-    await fs.rename(tmp, file);
-  });
+  queue = queue.catch(() => {}).then(() => jsonDatabase.writeSection('appData', snapshot));
   return queue;
 }
 
 async function init() {
-  mongoActive = false;
-  mongoCollections = null;
-  if (mongoService.hasConfig()) {
-    await loadMongoState();
-    return;
-  }
-
-  await fs.mkdir(dir, { recursive: true });
-  try {
-    const data = JSON.parse(await fs.readFile(file, 'utf8'));
-    state = normalizeState(data);
-    await persist();
-  } catch (error) {
-    if (error.code !== 'ENOENT') {
-      await fs.rename(file, file + '.corrupt-' + Date.now()).catch(() => {});
-      console.error('Dữ liệu Mini App lỗi JSON; đã cách ly tệp lỗi:', error.message);
-    }
-    state = normalizeState();
-    await persist();
-  }
+  await jsonDatabase.init();
+  const savedState = jsonDatabase.getSection('appData');
+  state = normalizeState(savedState || {});
+  await persist();
 }
 
 const publicAccount = item => ({

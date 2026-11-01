@@ -69,8 +69,9 @@ router.get('/admin/overview', ...admin, (_req, res) =>
   ok(res, {
     ...appDataService.getAdminOverview(userService.getUsers()),
     integrations: {
-      database: userService.isMongo() ? 'mongodb-atlas' : 'local-json',
-      fileStorage: 'render-persistent-disk'
+      database: 'json-file',
+      fileStorage: 'render-persistent-disk',
+      databaseFile: 'database.json'
     }
   })
 );
@@ -85,7 +86,7 @@ router.get('/admin/settings', ...admin, async (_req, res, next) => {
       payment,
       qrPreviewUrl,
       storage: {
-        database: userService.isMongo() ? 'mongodb-atlas' : 'local-json',
+        database: 'json-file',
         files: 'render-persistent-disk'
       },
       botUsername: payment.botUsername || process.env.BOT_USERNAME || '',

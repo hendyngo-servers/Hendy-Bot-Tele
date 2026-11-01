@@ -10,13 +10,12 @@ process.env.NODE_ENV = 'test';
 delete process.env.RENDER;
 delete process.env.RENDER_EXTERNAL_URL;
 delete process.env.RENDER_SERVICE_ID;
-delete process.env.MONGODB_URI;
 
 const service = require('./appDataService');
-const dataFile = path.join(dataDir, 'app-data.json');
+const jsonDatabase = require('./jsonDatabase');
 
 async function resetData() {
-  fs.rmSync(dataFile, { force: true });
+  await jsonDatabase.resetForTests();
   await service.init();
 }
 
@@ -156,6 +155,7 @@ test('dịch vụ dữ liệu lưu cấu hình QR, đơn hàng, giftcode, REF v�
       assert.equal(service.listTickets('user-4')[0].status, 'answered');
     });
   } finally {
-    fs.rmSync(dataDir, { recursive: true, force: true });
+    await jsonDatabase.flush();
+  fs.rmSync(dataDir, { recursive: true, force: true });
   }
 });

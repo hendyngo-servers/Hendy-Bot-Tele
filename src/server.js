@@ -11,7 +11,6 @@ const userService = require('./services/userService');
 const appDataService = require('./services/appDataService');
 const botController = require('./controllers/botController');
 const qrStorageService = require('./services/qrStorageService');
-const mongoService = require('./services/mongoService');
 const apiRouter = require('./routes/api');
 const errorHandler = require('./middlewares/errorHandler');
 
@@ -32,8 +31,7 @@ function validateProductionConfig() {
   const required = [
     'BOT_TOKEN',
     'ADMIN_ID',
-    'APP_ENCRYPTION_KEY',
-    'MONGODB_URI'
+    'APP_ENCRYPTION_KEY'
   ];
   const missing = required.filter(key => !String(process.env[key] || '').trim());
   if (!String(process.env.WEBAPP_URL || process.env.MINI_APP_URL || process.env.RENDER_EXTERNAL_URL || '').trim()) {
@@ -45,9 +43,6 @@ function validateProductionConfig() {
   const webAppUrl = String(process.env.WEBAPP_URL || process.env.MINI_APP_URL || process.env.RENDER_EXTERNAL_URL || '');
   if (!/^https:\/\//i.test(webAppUrl)) {
     throw new Error('WEBAPP_URL hoặc MINI_APP_URL phải là địa chỉ HTTPS hợp lệ.');
-  }
-  if (!mongoService.hasConfig()) {
-    throw new Error('MongoDB Atlas chưa được cấu hình đầy đủ.');
   }
   if (process.env.APP_ENCRYPTION_KEY.length < 32) {
     throw new Error('APP_ENCRYPTION_KEY phải có tối thiểu 32 ký tự.');
@@ -83,19 +78,22 @@ app.use('/api', rateLimit({
   legacyHeaders: false
 }));
 
-app.get('/healthz', (_req, res) => {
+const healthHandler = (_req, res) => {
   const botReady = botController.isRunning();
-  const databaseReady = userService.isMongo() || !isProductionRuntime();
+  const databaseReady = userService.isJson();
   const ready = botReady && databaseReady;
   res.status(ready ? 200 : 503).json({
     success: ready,
     service: 'hendy-bot-tele',
     bot: botReady,
-    database: userService.isMongo() ? 'mongodb-atlas' : 'local-json',
+    database: 'json-file',
+    databaseFile: 'database.json',
     fileStorage: 'render-persistent-disk',
     timestamp: new Date().toISOString()
   });
-});
+};
+app.get('/healthz', healthHandler);
+app.get('/health', healthHandler);
 
 app.get('/uploads/qr/:filename', async (req, res, next) => {
   try {
@@ -172,9 +170,7 @@ async function start() {
   validateProductionConfig();
   await userService.loadDatabase();
   await appDataService.init();
-  if (isProductionRuntime()) {
-    if (!userService.isMongo()) throw new Error('MongoDB Atlas chưa sẵn sàng sau khi kết nối.');
-  }
+  if (!userService.isJson()) throw new Error('JSON database chưa sẵn sàng.');
 
   const botStarted = await botController.startBot();
   if (isProductionRuntime() && !botStarted) {

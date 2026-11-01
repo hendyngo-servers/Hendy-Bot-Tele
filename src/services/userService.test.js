@@ -10,9 +10,9 @@ process.env.NODE_ENV = 'test';
 delete process.env.RENDER;
 delete process.env.RENDER_EXTERNAL_URL;
 delete process.env.RENDER_SERVICE_ID;
-delete process.env.MONGODB_URI;
 
 const userService = require('./userService');
+const jsonDatabase = require('./jsonDatabase');
 
 test('userService local adapter persists user profiles and balances', async () => {
   await userService.loadDatabase();
@@ -36,10 +36,11 @@ test('userService local adapter persists user profiles and balances', async () =
   assert.equal(reloaded.vipLevel, 2);
   assert.equal(reloaded.username, 'hendy_test');
 
-  const file = path.join(dataDir, 'users.json');
+  const file = path.join(dataDir, 'database.json');
   assert.ok(fs.existsSync(file));
   const saved = JSON.parse(fs.readFileSync(file, 'utf8'));
-  assert.equal(saved['100200300'].balance, 250000);
+  assert.equal(saved.users['100200300'].balance, 250000);
+  assert.ok(saved.updatedAt);
 });
 
 test('userService does not accept unsafe balance or VIP values', async () => {
@@ -58,5 +59,6 @@ test('userService does not accept unsafe balance or VIP values', async () => {
 
 test.after(async () => {
   await userService.closeDatabase();
+  await jsonDatabase.flush();
   fs.rmSync(dataDir, { recursive: true, force: true });
 });

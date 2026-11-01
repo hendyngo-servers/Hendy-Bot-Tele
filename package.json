@@ -2,7 +2,7 @@
   "name": "hendy-bot-tele",
   "version": "4.2.0",
   "private": true,
-  "description": "Hendy Telegram Bot, MongoDB Atlas storage, Admin Mini App on Render",
+  "description": "Hendy Telegram Bot, JSON file database and Admin Mini App on Render",
   "main": "src/server.js",
   "engines": {
     "node": ">=22 <25"
@@ -12,15 +12,14 @@
     "start": "node src/server.js",
     "build": "vite build --config mini-app/vite.config.mjs",
     "test": "node --test",
-    "check": "node --check src/server.js && node --check src/routes/api.js && node --check src/controllers/botController.js && node --check src/controllers/botController.test.js && node --check src/middlewares/errorHandler.js && node --check src/services/qrStorageService.js && node --check src/services/qrStorageService.test.js && node --check src/services/mongoService.js && node --check src/services/userService.js && node --check src/services/userService.test.js && node --check src/services/userService.mongodb.test.js && node --check src/services/appDataService.js && node --check src/services/appDataService.test.js && node --check src/services/appDataService.mongodb.test.js && node --check src/security/telegramAuth.js && node --check src/security/cryptoService.js && node --check src/services/telegramStartup.js && node --check src/utils/keyboards.js && node --check mini-app/vite.config.mjs"
+    "check": "node --check src/server.js && node --check src/routes/api.js && node --check src/controllers/botController.js && node --check src/controllers/botController.test.js && node --check src/middlewares/errorHandler.js && node --check src/services/qrStorageService.js && node --check src/services/qrStorageService.test.js && node --check src/services/jsonDatabase.js && node --check src/services/jsonDatabase.test.js && node --check src/services/userService.js && node --check src/services/userService.test.js && node --check src/services/appDataService.js && node --check src/services/appDataService.test.js && node --check src/security/telegramAuth.js && node --check src/security/cryptoService.js && node --check src/services/telegramStartup.js && node --check src/utils/keyboards.js && node --check mini-app/vite.config.mjs"
   },
   "dependencies": {
     "dotenv": "^16.4.7",
     "express": "^4.21.2",
     "express-rate-limit": "^7.5.0",
     "helmet": "^8.0.0",
-    "telegraf": "^4.16.3",
-    "mongodb": "^6.12.0"
+    "telegraf": "^4.16.3"
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^4.3.4",
