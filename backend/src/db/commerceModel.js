@@ -132,9 +132,16 @@ export async function getReferralSummary(env, userId) {
     inviteUrl: String(env.WEBAPP_URL || "https://hendy-web-user.pages.dev") + "?startapp=ref_" + encodeURIComponent(code),
     invited: Number(counts?.total || 0),
     referredBy: claim ? { id: claim.id, name: claim.name } : null,
-    commissions: commissions.results || [],
-    commissionAvailable: false,
-    commissionNote: "Hoa hồng chỉ được ghi nhận sau khi tích hợp và đối soát thanh toán."
+    commissions: (commissions.results || []).map(row => ({
+      status: row.status,
+      total: Number(row.total || 0),
+      amount: Number(row.amount || 0)
+    })),
+    commissionAvailable: Number(env.REFERRAL_COMMISSION_BPS || 0) > 0,
+    commissionRateBps: Number(env.REFERRAL_COMMISSION_BPS || 0),
+    commissionNote: Number(env.REFERRAL_COMMISSION_BPS || 0) > 0
+      ? "Hoa hồng phát sinh ở trạng thái chờ khi đơn của người được giới thiệu đã hoàn tất và thanh toán; Admin đối soát rồi mới chi trả."
+      : "Chương trình hoa hồng đang tạm tắt. Quản trị viên cần cấu hình REFERRAL_COMMISSION_BPS trước khi bắt đầu tính hoa hồng."
   };
 }
 
@@ -341,3 +348,131 @@ export async function addSupportMessage(env, ticketId, sender, messageValue, ide
   return getSupportTicket(env,ticketId,customerId);
 }
 
+
+
+export async function listAdminGiftcodes(env) {
+  const result = await env.DB.prepare(
+    `SELECT g.id,g.reward_voucher,g.max_redemptions,g.redeemed_count,g.starts_at,g.expires_at,
+        g.is_active,g.created_by,g.created_at,
+        (SELECT COUNT(*) FROM giftcode_redemptions r WHERE r.giftcode_id=g.id) AS actual_redemptions
+       FROM giftcodes g ORDER BY g.created_at DESC LIMIT 200`
+  ).all();
+  return (result.results || []).map(row => ({
+    id: row.id,
+    rewardVoucher: Number(row.reward_voucher),
+    maxRedemptions: Number(row.max_redemptions),
+    redeemedCount: Number(row.redeemed_count),
+    actualRedemptions: Number(row.actual_redemptions),
+    startsAt: row.starts_at || null,
+    expiresAt: row.expires_at || null,
+    isActive: Number(row.is_active) === 1,
+    createdBy: row.created_by,
+    createdAt: row.created_at
+  }));
+}
+
+export async function listAdminReferralCommissions(env, status = "all") {
+  const selected = String(status || "all");
+  if (selected !== "all" && !["pending","approved","paid","void"].includes(selected)) {
+    fail("Trạng thái hoa hồng không hợp lệ.");
+  }
+  const result = selected === "all"
+    ? await env.DB.prepare(
+      `SELECT c.*,r.name AS referrer_name,u.name AS referred_name,o.order_number
+         FROM referral_commissions c
+         LEFT JOIN users r ON r.id=c.referrer_user_id
+         LEFT JOIN users u ON u.id=c.referred_user_id
+         LEFT JOIN orders o ON o.id=c.order_id
+        ORDER BY CASE c.status WHEN 'pending' THEN 0 WHEN 'approved' THEN 1 ELSE 2 END,
+          c.created_at DESC LIMIT 200`
+    ).all()
+    : await env.DB.prepare(
+      `SELECT c.*,r.name AS referrer_name,u.name AS referred_name,o.order_number
+         FROM referral_commissions c
+         LEFT JOIN users r ON r.id=c.referrer_user_id
+         LEFT JOIN users u ON u.id=c.referred_user_id
+         LEFT JOIN orders o ON o.id=c.order_id
+        WHERE c.status=? ORDER BY c.created_at DESC LIMIT 200`
+    ).bind(selected).all();
+  return (result.results || []).map(row => ({
+    id: row.id,
+    referrerUserId: row.referrer_user_id,
+    referrerName: row.referrer_name || "Người giới thiệu",
+    referredUserId: row.referred_user_id,
+    referredName: row.referred_name || "Thành viên",
+    orderNumber: row.order_number || "",
+    amount: Number(row.amount),
+    currency: row.currency || "VND",
+    status: row.status,
+    createdAt: row.created_at
+  }));
+}
+
+export async function settleReferralCommission(env, commissionId, admin, input) {
+  if (!/^[0-9a-f-]{36}$/i.test(String(commissionId || ""))) fail("Mã hoa hồng không hợp lệ.");
+  const action = String(input?.action || "");
+  if (!["approve","pay","void"].includes(action)) fail("Thao tác hoa hồng không hợp lệ.");
+  const note = safeText(input?.note || "", 300);
+  const current = await env.DB.prepare(
+    "SELECT id,status,referrer_user_id,amount FROM referral_commissions WHERE id=?"
+  ).bind(commissionId).first();
+  if (!current) fail("Không tìm thấy khoản hoa hồng.",404);
+
+  if (action === "approve") {
+    if (current.status === "approved") return { success:true,duplicate:true,status:"approved" };
+    if (current.status !== "pending") fail("Chỉ hoa hồng đang chờ mới được duyệt.",409);
+    await env.DB.prepare(
+      "UPDATE referral_commissions SET status='approved',updated_at=CURRENT_TIMESTAMP WHERE id=? AND status='pending'"
+    ).bind(commissionId).run();
+  } else if (action === "void") {
+    if (current.status === "void") return { success:true,duplicate:true,status:"void" };
+    if (!["pending","approved"].includes(current.status)) fail("Không thể hủy hoa hồng đã chi trả.",409);
+    await env.DB.prepare(
+      "UPDATE referral_commissions SET status='void',updated_at=CURRENT_TIMESTAMP WHERE id=? AND status IN ('pending','approved')"
+    ).bind(commissionId).run();
+  } else {
+    if (current.status === "paid") return { success:true,duplicate:true,status:"paid" };
+    if (current.status !== "approved") fail("Phải duyệt hoa hồng trước khi chi trả.",409);
+    const actor = safeText(admin?.id || "admin",80);
+    await env.DB.batch([
+      env.DB.prepare(
+        "UPDATE referral_commissions SET status='paid',updated_at=CURRENT_TIMESTAMP WHERE id=? AND status='approved'"
+      ).bind(commissionId),
+      env.DB.prepare(
+        `UPDATE users SET balance=balance+(SELECT amount FROM referral_commissions WHERE id=? AND status='paid')
+          WHERE id=(SELECT referrer_user_id FROM referral_commissions WHERE id=? AND status='paid')
+            AND changes()=1`
+      ).bind(commissionId,commissionId),
+      env.DB.prepare(
+        `INSERT INTO wallet_ledger(id,user_id,source_type,source_id,amount,balance_after,idempotency_key)
+         SELECT ?,c.referrer_user_id,'referral_commission',c.id,c.amount,u.balance,?
+           FROM referral_commissions c JOIN users u ON u.id=c.referrer_user_id
+          WHERE c.id=? AND c.status='paid' AND changes()=1
+         ON CONFLICT(user_id,idempotency_key) DO NOTHING`
+      ).bind(randomId(), "referral-commission:"+commissionId, commissionId)
+    ]);
+  }
+
+  const saved = await env.DB.prepare("SELECT status FROM referral_commissions WHERE id=?").bind(commissionId).first();
+  const expected = action === "approve" ? "approved" : action === "pay" ? "paid" : "void";
+  if (saved?.status !== expected) fail("Khoản hoa hồng đã được xử lý bởi thao tác khác.",409);
+  return { success:true,duplicate:false,status:expected,note };
+}
+
+export async function updateSupportTicketStatus(env, ticketId, statusValue) {
+  if (!/^[0-9a-f-]{36}$/i.test(String(ticketId || ""))) fail("Mã ticket không hợp lệ.");
+  const status = String(statusValue || "");
+  if (!["in_progress","awaiting_user","resolved","closed","open"].includes(status)) {
+    fail("Trạng thái hỗ trợ không hợp lệ.");
+  }
+  const result = await env.DB.prepare(
+    "UPDATE support_tickets SET status=?,updated_at=CURRENT_TIMESTAMP WHERE id=? AND status NOT IN ('resolved','closed')"
+  ).bind(status,ticketId).run();
+  if (!result.meta?.changes) {
+    const existing = await env.DB.prepare("SELECT status FROM support_tickets WHERE id=?").bind(ticketId).first();
+    if (!existing) fail("Không tìm thấy ticket hỗ trợ.",404);
+    if (existing.status === status) return { success:true,duplicate:true,status };
+    fail("Ticket đã đóng hoặc được xử lý bởi thao tác khác.",409);
+  }
+  return { success:true,duplicate:false,status };
+}
