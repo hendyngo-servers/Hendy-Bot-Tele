@@ -489,7 +489,7 @@ export async function updateOrderStatus(env, orderId, actor, input, idempotencyK
     ).bind(randomId(), refundKey, orderId));
   }
 
-  if (nextStatus === "completed") {
+  if (nextStatus === "completed" && current.payment_status === "paid") {
     const commissionBps = Number(env.REFERRAL_COMMISSION_BPS || 0);
     if (Number.isInteger(commissionBps) && commissionBps > 0 && commissionBps <= 10000) {
       statements.push(env.DB.prepare(
@@ -501,6 +501,34 @@ export async function updateOrderStatus(env, orderId, actor, input, idempotencyK
             AND u.referred_by IS NOT NULL AND CAST(o.paid_amount * ? / 10000 AS INTEGER) > 0
          ON CONFLICT(order_id) DO NOTHING`
       ).bind(randomId(), commissionBps, orderId, commissionBps));
+    }
+
+    const vipPointsPerUnit = Number(env.VIP_POINTS_PER_10000_VND || 0);
+    if (Number.isInteger(vipPointsPerUnit) && vipPointsPerUnit > 0 && vipPointsPerUnit <= 100000) {
+      statements.push(env.DB.prepare(
+        `INSERT INTO vip_point_awards(id,user_id,order_id,points,vnd_per_unit)
+         SELECT ?,o.user_id,o.id,CAST(o.paid_amount / 10000 AS INTEGER) * ?,10000
+           FROM orders o
+          WHERE o.id=? AND o.status='completed' AND o.payment_status='paid'
+            AND CAST(o.paid_amount / 10000 AS INTEGER) * ? > 0
+         ON CONFLICT(order_id) DO NOTHING`
+      ).bind(randomId(), vipPointsPerUnit, orderId, vipPointsPerUnit));
+      statements.push(env.DB.prepare(
+        `UPDATE users
+            SET vip_points = vip_points + (
+                  SELECT points FROM vip_point_awards WHERE order_id=? AND user_id=users.id
+                ),
+                vip_tier = COALESCE((
+                  SELECT code FROM vip_tiers
+                   WHERE is_active=1
+                     AND min_points <= users.vip_points + (
+                       SELECT points FROM vip_point_awards WHERE order_id=? AND user_id=users.id
+                     )
+                   ORDER BY min_points DESC LIMIT 1
+                ),vip_tier)
+          WHERE id=(SELECT user_id FROM vip_point_awards WHERE order_id=?)
+            AND changes()=1`
+      ).bind(orderId, orderId, orderId));
     }
   }
   await env.DB.batch(statements);
