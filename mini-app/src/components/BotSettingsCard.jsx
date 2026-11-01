@@ -4,11 +4,10 @@ import { Settings, Save, CheckCircle2, QrCode, MessageSquare, ShieldCheck } from
 export function BotSettingsCard({ settings, onSaveSettings, showToast }) {
   const [formData, setFormData] = useState({
     welcome_message: "",
-    vietqr_bank: "MB",
-    vietqr_account_no: "0988776655",
-    vietqr_account_name: "HENDY STUDIO CO",
-    support_telegram: "@hendy_support",
-    render_service_url: "https://hendy-bot-tele.onrender.com"
+    vietqr_bank: "",
+    vietqr_account_no: "",
+    vietqr_account_name: "",
+    support_telegram: ""
   });
   const [saving, setSaving] = useState(false);
 
@@ -16,11 +15,10 @@ export function BotSettingsCard({ settings, onSaveSettings, showToast }) {
     if (settings) {
       setFormData({
         welcome_message: settings.welcome_message || "",
-        vietqr_bank: settings.vietqr_bank || "MB",
-        vietqr_account_no: settings.vietqr_account_no || "0988776655",
-        vietqr_account_name: settings.vietqr_account_name || "HENDY STUDIO CO",
-        support_telegram: settings.support_telegram || "@hendy_support",
-        render_service_url: settings.render_service_url || "https://hendy-bot-tele.onrender.com"
+        vietqr_bank: settings.vietqr_bank || "",
+        vietqr_account_no: settings.vietqr_account_no || "",
+        vietqr_account_name: settings.vietqr_account_name || "",
+        support_telegram: settings.support_telegram || ""
       });
     }
   }, [settings]);
@@ -77,7 +75,7 @@ export function BotSettingsCard({ settings, onSaveSettings, showToast }) {
             required
             value={formData.vietqr_bank}
             onChange={(e) => setFormData({ ...formData, vietqr_bank: e.target.value.toUpperCase() })}
-            placeholder="MB, VCB, ACB, TPB..."
+            placeholder="Nhập mã ngân hàng đã xác minh"
             className="w-full px-3.5 py-2 rounded-xl bg-white/5 border border-white/10 text-xs font-mono uppercase text-white focus:outline-none focus:border-purple-500"
           />
         </div>
@@ -91,7 +89,7 @@ export function BotSettingsCard({ settings, onSaveSettings, showToast }) {
             required
             value={formData.vietqr_account_no}
             onChange={(e) => setFormData({ ...formData, vietqr_account_no: e.target.value })}
-            placeholder="0988776655"
+            placeholder="Nhập số tài khoản nhận tiền"
             className="w-full px-3.5 py-2 rounded-xl bg-white/5 border border-white/10 text-xs font-mono text-white focus:outline-none focus:border-purple-500"
           />
         </div>
@@ -105,7 +103,7 @@ export function BotSettingsCard({ settings, onSaveSettings, showToast }) {
             required
             value={formData.vietqr_account_name}
             onChange={(e) => setFormData({ ...formData, vietqr_account_name: e.target.value.toUpperCase() })}
-            placeholder="HENDY STUDIO CO"
+            placeholder="Nhập tên chủ tài khoản"
             className="w-full px-3.5 py-2 rounded-xl bg-white/5 border border-white/10 text-xs font-mono uppercase text-white focus:outline-none focus:border-purple-500"
           />
         </div>
@@ -118,7 +116,7 @@ export function BotSettingsCard({ settings, onSaveSettings, showToast }) {
             type="text"
             value={formData.support_telegram}
             onChange={(e) => setFormData({ ...formData, support_telegram: e.target.value })}
-            placeholder="@hendy_support"
+            placeholder="@ten_kenh_ho_tro"
             className="w-full px-3.5 py-2 rounded-xl bg-white/5 border border-white/10 text-xs text-white focus:outline-none focus:border-purple-500"
           />
         </div>
