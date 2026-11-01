@@ -124,6 +124,19 @@ Mã nguồn không thu thập/lưu mật khẩu, OTP, cookie hoặc secret tài 
 
 Rate limit KV hiện là best-effort vì KV không có phép tăng nguyên tử. Với lưu lượng lớn, chuyển sang Durable Object rate limiter.
 
+
+## Menu Telegram và ví nạp thủ công
+
+Lệnh `/start` hiển thị menu nút nhiều hàng theo bố cục ảnh tham chiếu: Mini Game Live, Thuê Tool, Mua Code, Nạp tiền, OTP & Proxy, Kho VIP, Trung tâm khách hàng, Ghép đôi, REF, VIP, Nhóm chat, Kênh thông báo, Giftcode và CSKH. Các nút mở Mini App theo module. Lệnh `/admin` chỉ hiển thị trang quản trị khi Telegram ID thuộc `ADMIN_IDS`.
+
+Migration `0007_manual_deposits.sql` bổ sung yêu cầu nạp thủ công. Người dùng tạo yêu cầu với số tiền và mã tham chiếu; Admin kiểm tra giao dịch ngân hàng rồi duyệt hoặc từ chối. Duyệt dùng D1 batch để cập nhật số dư và ghi `wallet_ledger` một lần. Không có webhook ngân hàng tự động nên không được bật tự cộng tiền dựa trên nội dung người dùng gửi.
+
+Sau khi deploy Worker, cấu hình thông tin nhận tiền bằng Wrangler variables (không commit thông tin riêng tư vào mã nguồn):
+```sh
+npx wrangler secret? # Không dùng secret cho thông tin tài khoản ngân hàng công khai
+```
+Thiết lập `BANK_NAME`, `BANK_BIN`, `BANK_ACCOUNT`, `BANK_ACCOUNT_NAME` trong `backend/wrangler.toml` hoặc Worker Variables trên Cloudflare Dashboard, sau đó deploy lại Worker.
+
 ## Backup và TLS
     node scripts/db-backup.js
 
@@ -137,7 +150,7 @@ Migration 0003 phải được áp dụng trước khi sử dụng API đơn hà
 
     pnpm exec wrangler d1 migrations apply DB --remote --config backend/wrangler.toml
 
-Ví điện tử, xác nhận thanh toán, nạp/rút, OTP/proxy thực tế, Giftcode và hoa hồng REF chưa được bật. Các bảng giao dịch trong migration chỉ là nền dữ liệu; cần xác minh chữ ký webhook, đối soát và idempotency của nhà cung cấp trước khi xử lý tiền thật.
+Ví đã có luồng tạo yêu cầu nạp bằng chuyển khoản thủ công, lịch sử yêu cầu và Admin duyệt/từ chối. Tiền chỉ được cộng vào số dư khi Admin xác minh tiền vào ngân hàng; chưa có bank webhook tự động, nạp tự động hoặc rút tiền. Giftcode đã có API đổi voucher và giới hạn lượt dùng; REF đã có mã mời/ghi nhận người giới thiệu nhưng hoa hồng chưa được tính và chi trả. OTP/Proxy và Mini Game Live hiện tạo yêu cầu dịch vụ/đơn hàng; chưa kết nối nhà cung cấp để tự động cấp OTP, proxy hoặc điều khiển game.
 
 
 ## Hàng đợi đơn hàng trong Admin
