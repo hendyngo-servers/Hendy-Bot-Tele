@@ -1,214 +1,101 @@
 /**
- * Telegram Bot API Network Dispatcher Service
- * 
- * Interacts directly with the official Telegram Bot API:
- * https://api.telegram.org/bot<BOT_TOKEN>/...
+ * Telegram Bot API network client.
+ * Missing credentials are an explicit configuration error; production never fabricates Telegram responses.
  */
 
 const TELEGRAM_API_BASE = "https://api.telegram.org";
 
 export function getBotToken() {
-  return process.env.BOT_TOKEN || "";
+  return String(process.env.BOT_TOKEN || "").trim();
 }
 
-/**
- * Send a message via Telegram Bot API
- */
-export async function sendMessage(chatId, text, options = {}) {
-  const token = getBotToken();
-  if (!token) {
-    return {
-      ok: true,
-      simulated: true,
-      result: {
-        message_id: Math.floor(Math.random() * 100000),
-        chat: { id: chatId },
-        text,
-        date: Math.floor(Date.now() / 1000)
-      }
-    };
-  }
+function missingTokenResult() {
+  return {
+    ok: false,
+    error: "BOT_TOKEN environment variable is not configured.",
+    description: "BOT_TOKEN environment variable is not configured."
+  };
+}
 
-  const payload = {
+async function requestTelegram(method, payload) {
+  const token = getBotToken();
+  if (!token) return missingTokenResult();
+
+  const options = payload === undefined
+    ? { method: "GET" }
+    : {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      };
+
+  try {
+    const response = await fetch(`${TELEGRAM_API_BASE}/bot${token}/${method}`, {
+      ...options,
+      signal: AbortSignal.timeout(15000)
+    });
+    const result = await response.json();
+    if (!response.ok && result?.ok !== false) {
+      return { ok: false, error: `Telegram API returned HTTP ${response.status}.` };
+    }
+    return result;
+  } catch (error) {
+    return { ok: false, error: error.message || "Telegram API request failed." };
+  }
+}
+
+/** Send a message through Telegram Bot API. */
+export async function sendMessage(chatId, text, options = {}) {
+  return requestTelegram("sendMessage", {
     chat_id: chatId,
     text,
     parse_mode: options.parseMode || "Markdown",
     disable_web_page_preview: options.disablePreview || false,
     ...(options.replyMarkup ? { reply_markup: options.replyMarkup } : {})
-  };
-
-  try {
-    const res = await fetch(`${TELEGRAM_API_BASE}/bot${token}/sendMessage`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload)
-    });
-    return await res.json();
-  } catch (err) {
-    console.warn(`[Telegram API] sendMessage failed: ${err.message}`);
-    return { ok: false, error: err.message };
-  }
+  });
 }
 
-/**
- * Send a photo with caption
- */
+/** Send a photo with caption through Telegram Bot API. */
 export async function sendPhoto(chatId, photoUrl, caption = "", options = {}) {
-  const token = getBotToken();
-  if (!token) {
-    return { ok: true, simulated: true };
-  }
-
-  const payload = {
+  return requestTelegram("sendPhoto", {
     chat_id: chatId,
     photo: photoUrl,
     caption,
     parse_mode: options.parseMode || "Markdown",
     ...(options.replyMarkup ? { reply_markup: options.replyMarkup } : {})
-  };
-
-  try {
-    const res = await fetch(`${TELEGRAM_API_BASE}/bot${token}/sendPhoto`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload)
-    });
-    return await res.json();
-  } catch (err) {
-    return { ok: false, error: err.message };
-  }
+  });
 }
 
-/**
- * Answer an inline callback query
- */
+/** Answer an inline callback query through Telegram Bot API. */
 export async function answerCallbackQuery(callbackQueryId, text = "", showAlert = false) {
-  const token = getBotToken();
-  if (!token) {
-    return { ok: true, simulated: true };
-  }
-
-  try {
-    const res = await fetch(`${TELEGRAM_API_BASE}/bot${token}/answerCallbackQuery`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        callback_query_id: callbackQueryId,
-        text,
-        show_alert: showAlert
-      })
-    });
-    return await res.json();
-  } catch (err) {
-    return { ok: false, error: err.message };
-  }
+  return requestTelegram("answerCallbackQuery", {
+    callback_query_id: callbackQueryId,
+    text,
+    show_alert: showAlert
+  });
 }
 
-/**
- * Configure Telegram Webhook URL
- */
+/** Configure the Telegram webhook. */
 export async function setWebhook(webhookUrl, secretToken = null) {
-  const token = getBotToken();
-  if (!token) {
-    return {
-      ok: false,
-      description: "BOT_TOKEN environment variable is not configured."
-    };
-  }
-
   const payload = {
     url: webhookUrl,
     allowed_updates: ["message", "callback_query", "inline_query"]
   };
-
-  if (secretToken) {
-    payload.secret_token = secretToken;
-  }
-
-  try {
-    const res = await fetch(`${TELEGRAM_API_BASE}/bot${token}/setWebhook`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload)
-    });
-    return await res.json();
-  } catch (err) {
-    return { ok: false, error: err.message };
-  }
+  if (secretToken) payload.secret_token = secretToken;
+  return requestTelegram("setWebhook", payload);
 }
 
-/**
- * Get current Telegram Webhook info
- */
+/** Get the current Telegram webhook information. */
 export async function getWebhookInfo() {
-  const token = getBotToken();
-  if (!token) {
-    return {
-      ok: true,
-      result: {
-        url: "https://hendy-bot-tele.onrender.com/api/telegram/webhook",
-        has_custom_certificate: false,
-        pending_update_count: 0,
-        last_error_date: null,
-        last_error_message: null,
-        max_connections: 40,
-        ip_address: "render-edge-lb"
-      },
-      note: "Emulated response: Configure BOT_TOKEN for live Telegram API sync"
-    };
-  }
-
-  try {
-    const res = await fetch(`${TELEGRAM_API_BASE}/bot${token}/getWebhookInfo`);
-    return await res.json();
-  } catch (err) {
-    return { ok: false, error: err.message };
-  }
+  return requestTelegram("getWebhookInfo");
 }
 
-/**
- * Delete current Webhook
- */
+/** Delete the current Telegram webhook. */
 export async function deleteWebhook(dropPendingUpdates = false) {
-  const token = getBotToken();
-  if (!token) return { ok: true, simulated: true };
-
-  try {
-    const res = await fetch(`${TELEGRAM_API_BASE}/bot${token}/deleteWebhook`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ drop_pending_updates: dropPendingUpdates })
-    });
-    return await res.json();
-  } catch (err) {
-    return { ok: false, error: err.message };
-  }
+  return requestTelegram("deleteWebhook", { drop_pending_updates: dropPendingUpdates });
 }
 
-/**
- * Get Bot Info from Telegram API
- */
+/** Get the actual bot identity from Telegram. */
 export async function getMe() {
-  const token = getBotToken();
-  if (!token) {
-    return {
-      ok: true,
-      result: {
-        id: 9144036314,
-        is_bot: true,
-        first_name: "Hendy Bot Tele",
-        username: "hendy_tele_bot",
-        can_join_groups: true,
-        can_read_all_group_messages: false,
-        supports_inline_queries: true
-      }
-    };
-  }
-
-  try {
-    const res = await fetch(`${TELEGRAM_API_BASE}/bot${token}/getMe`);
-    return await res.json();
-  } catch (err) {
-    return { ok: false, error: err.message };
-  }
+  return requestTelegram("getMe");
 }
