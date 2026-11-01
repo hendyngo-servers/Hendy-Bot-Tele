@@ -42,7 +42,7 @@ export async function refreshTelegramMenuMessages(settings) {
     const batch = rows.slice(offset, offset + 20);
     const results = await Promise.all(batch.map(async (row) => {
       try { await editTelegramKeyboard(row, markup, token); return true; }
-      catch { return false; }
+      catch (error) { console.warn("Telegram menu update failed for chat", row.chat_id, error.message); return false; }
     }));
     updated += results.filter(Boolean).length;
     failed += results.filter((value) => !value).length;
