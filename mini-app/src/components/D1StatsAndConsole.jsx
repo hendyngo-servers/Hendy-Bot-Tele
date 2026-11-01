@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { telegramFetch } from "../services/api.js";
 import { Database, Play, Clock, CheckCircle2, Terminal, Code2, Server } from "lucide-react";
 
 const SAMPLE_QUERIES = [
@@ -19,7 +20,7 @@ export function D1StatsAndConsole({ adminStats, showToast }) {
     setLoading(true);
     setQueryOutput(null);
     try {
-      const res = await fetch("/api/admin/d1/query", {
+      const res = await telegramFetch("/api/admin/d1/query", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ sql: sqlInput.trim() })
