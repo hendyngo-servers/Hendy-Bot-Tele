@@ -119,11 +119,13 @@ async function route(request, env) {
 
   if (path === "/api/v1/public-config" && request.method === "GET") {
     const safeUrl = value => /^https:\/\//i.test(String(value || "").trim()) ? String(value).trim() : "";
+    const supportUsername = String(env.SUPPORT_USERNAME || "").replace(/^@/, "").trim();
+    const safeUsername = /^[A-Za-z0-9_]{5,32}$/.test(supportUsername) ? supportUsername : "";
     return json({
       groupChatUrl: safeUrl(env.GROUP_CHAT_URL),
       newsChannelUrl: safeUrl(env.NEWS_CHANNEL_URL),
-      supportUrl: safeUrl(env.SUPPORT_URL),
-      supportUsername: String(env.SUPPORT_USERNAME || "").replace(/^@/, "")
+      supportUrl: safeUrl(env.SUPPORT_URL) || (safeUsername ? "https://t.me/" + safeUsername : ""),
+      supportUsername: safeUsername
     });
   }
 
