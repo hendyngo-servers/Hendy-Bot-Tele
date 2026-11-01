@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from "react";
-import { telegramFetch } from "./services/api.js";
+import { telegramFetch, getRealtimeUrl } from "./services/api.js";
 import {
   ShoppingBag,
   Wallet,
@@ -44,6 +44,8 @@ import { MaintenanceBanner } from "./components/MaintenanceBanner.jsx";
 import { TelegramWebhookManager } from "./components/TelegramWebhookManager.jsx";
 import { D1StatsAndConsole } from "./components/D1StatsAndConsole.jsx";
 import { BotSettingsCard } from "./components/BotSettingsCard.jsx";
+import { MenuAppearanceCard } from "./components/MenuAppearanceCard.jsx";
+import { RuntimeConfigManager } from "./components/RuntimeConfigManager.jsx";
 
 // Safe numeric and currency formatting helpers
 export const formatVnd = (value) => {
@@ -92,6 +94,7 @@ export default function App() {
   const [adminStats, setAdminStats] = useState(null);
   const [botSettings, setBotSettings] = useState(null);
   const [webhookInfo, setWebhookInfo] = useState(null);
+  const [realtimeStatus, setRealtimeStatus] = useState("connecting");
   const [loading, setLoading] = useState(true);
   const [notice, setNotice] = useState(null);
 
@@ -143,6 +146,12 @@ export default function App() {
   const fetchData = async () => {
     setLoading(true);
     try {
+      const publicConfigResponse = await telegramFetch("/api/public-config").catch(() => null);
+      if (publicConfigResponse?.ok) {
+        const publicConfig = await publicConfigResponse.json();
+        setBotSettings((current) => ({ ...(current || {}), ...publicConfig }));
+      }
+
       // Catalog
       const catRes = await telegramFetch("/api/catalog").catch(() => null);
       if (catRes && catRes.ok) {
@@ -258,6 +267,88 @@ export default function App() {
     };
     const timer = window.setInterval(refreshStats, 15000);
     return () => { disposed = true; window.clearInterval(timer); };
+  }, []);
+
+  // Apply admin-selected colors to the Mini App without changing Telegram's native button palette.
+  useEffect(() => {
+    const theme = botSettings?.ui_theme || {};
+    const root = document.documentElement;
+    const values = {
+      "--hendy-primary": theme.primary || "#2563eb",
+      "--hendy-accent": theme.accent || "#22d3ee",
+      "--hendy-background": theme.background || "#0a0e17",
+      "--hendy-panel": theme.panel || "#111827"
+    };
+    for (const [key, value] of Object.entries(values)) root.style.setProperty(key, value);
+  }, [botSettings?.ui_theme]);
+
+  // Telegram initData authenticates the WebSocket handshake; the socket only pushes configuration events.
+  useEffect(() => {
+    const initData = window.Telegram?.WebApp?.initData || "";
+    if (!initData || typeof WebSocket === "undefined") {
+      setRealtimeStatus("disconnected");
+      return undefined;
+    }
+
+    let disposed = false;
+    let socket = null;
+    let reconnectTimer = null;
+    let pingTimer = null;
+    let attempts = 0;
+
+    const connect = () => {
+      if (disposed) return;
+      setRealtimeStatus(attempts === 0 ? "connecting" : "reconnecting");
+      try {
+        socket = new WebSocket(getRealtimeUrl());
+      } catch {
+        setRealtimeStatus("disconnected");
+        reconnectTimer = window.setTimeout(connect, Math.min(30000, 1000 * (2 ** attempts++)));
+        return;
+      }
+
+      socket.onopen = () => {
+        attempts = 0;
+        socket.send(JSON.stringify({ type: "auth", initData }));
+        pingTimer = window.setInterval(() => {
+          if (socket?.readyState === WebSocket.OPEN) socket.send(JSON.stringify({ type: "ping" }));
+        }, 25000);
+      };
+
+      socket.onmessage = (event) => {
+        let frame;
+        try { frame = JSON.parse(event.data); } catch { return; }
+        const payload = frame.payload || {};
+        if (frame.type === "auth.ok") {
+          setRealtimeStatus("connected");
+        } else if (frame.type === "public_config" || frame.type === "public_config.updated") {
+          setBotSettings((current) => ({ ...(current || {}), ...payload }));
+          setRealtimeStatus("connected");
+        } else if (frame.type === "admin.settings.updated") {
+          setNotice({ message: "Cấu hình bot vừa được cập nhật từ một phiên quản trị khác.", type: "success" });
+        } else if (frame.type === "runtime_config.updated") {
+          setNotice({ message: "Đã gửi yêu cầu triển khai cấu hình runtime.", type: "success" });
+        }
+      };
+
+      socket.onerror = () => socket?.close();
+      socket.onclose = () => {
+        if (pingTimer) window.clearInterval(pingTimer);
+        pingTimer = null;
+        if (disposed) return;
+        setRealtimeStatus("disconnected");
+        const wait = Math.min(30000, 1000 * (2 ** Math.min(attempts++, 5)));
+        reconnectTimer = window.setTimeout(connect, wait);
+      };
+    };
+
+    connect();
+    return () => {
+      disposed = true;
+      if (reconnectTimer) window.clearTimeout(reconnectTimer);
+      if (pingTimer) window.clearInterval(pingTimer);
+      socket?.close(1000, "Mini App closed");
+    };
   }, []);
 
   // Filtered Catalog
@@ -1240,6 +1331,8 @@ export default function App() {
               showToast={showToast}
             />
 
+            <RuntimeConfigManager showToast={showToast} realtimeStatus={realtimeStatus} />
+
             {/* Telegram Webhook & Render Service Manager */}
             <TelegramWebhookManager
               webhookInfo={webhookInfo}
@@ -1560,6 +1653,11 @@ export default function App() {
 
             {/* Bot System Settings & VietQR Configuration (Stored in Cloudflare D1) */}
             <BotSettingsCard
+              settings={botSettings}
+              onSaveSettings={handleSaveBotSettings}
+              showToast={showToast}
+            />
+            <MenuAppearanceCard
               settings={botSettings}
               onSaveSettings={handleSaveBotSettings}
               showToast={showToast}
