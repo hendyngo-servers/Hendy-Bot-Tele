@@ -1,24 +1,20 @@
 {
-  "name": "hendy-bot-tele-cloudflare",
+  "name": "hendy-bot",
   "private": true,
   "version": "2.0.0",
-  "packageManager": "pnpm@9.15.5",
-  "engines": {
-    "node": ">=20.0.0"
-  },
+  "type": "module",
   "scripts": {
-    "dev": "pnpm --parallel --filter web-user --filter web-admin --filter backend run dev",
-    "build": "pnpm --filter web-user build && pnpm --filter web-admin build",
-    "test": "node --test && python3 scripts/test_schema.py",
-    "deploy:web-user": "pnpm --filter web-user deploy",
-    "deploy:web-admin": "pnpm --filter web-admin deploy",
-    "deploy:backend": "wrangler deploy --config backend/wrangler.toml",
-    "db:migrate:local": "wrangler d1 migrations apply DB --local --config backend/wrangler.toml",
-    "db:migrate:remote": "wrangler d1 migrations apply DB --remote --config backend/wrangler.toml",
-    "check": "pnpm build && pnpm test"
+    "dev": "vite --host 0.0.0.0 --port 3000",
+    "build": "vite build",
+    "lint": "vite build",
+    "preview": "vite preview --host 0.0.0.0 --port 3000"
+  },
+  "dependencies": {
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
   },
   "devDependencies": {
-    "wrangler": "^4.40.0"
-  },
-  "type": "module"
+    "@vitejs/plugin-react": "^4.3.4",
+    "vite": "^5.4.14"
+  }
 }
