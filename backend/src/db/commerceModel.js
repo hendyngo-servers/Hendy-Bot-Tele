@@ -373,6 +373,20 @@ export async function listAdminGiftcodes(env) {
   }));
 }
 
+export async function setGiftcodeActive(env, giftcodeId, active) {
+  if (!/^[0-9a-f-]{36}$/i.test(String(giftcodeId || ""))) fail("Mã Giftcode không hợp lệ.");
+  const value = active ? 1 : 0;
+  const result = await env.DB.prepare(
+    "UPDATE giftcodes SET is_active=?,updated_at=CURRENT_TIMESTAMP WHERE id=?"
+  ).bind(value,giftcodeId).run();
+  if (!result.meta?.changes) {
+    const existing = await env.DB.prepare("SELECT is_active FROM giftcodes WHERE id=?").bind(giftcodeId).first();
+    if (!existing) fail("Không tìm thấy Giftcode.",404);
+    if (Number(existing.is_active) === value) return { success:true,duplicate:true,isActive:Boolean(value) };
+  }
+  return { success:true,duplicate:false,isActive:Boolean(value) };
+}
+
 export async function listAdminReferralCommissions(env, status = "all") {
   const selected = String(status || "all");
   if (selected !== "all" && !["pending","approved","paid","void"].includes(selected)) {
@@ -406,6 +420,9 @@ export async function listAdminReferralCommissions(env, status = "all") {
     amount: Number(row.amount),
     currency: row.currency || "VND",
     status: row.status,
+    reviewedBy: row.reviewed_by || null,
+    paidBy: row.paid_by || null,
+    adminNote: row.admin_note || "",
     createdAt: row.created_at
   }));
 }
@@ -420,26 +437,26 @@ export async function settleReferralCommission(env, commissionId, admin, input) 
   ).bind(commissionId).first();
   if (!current) fail("Không tìm thấy khoản hoa hồng.",404);
 
+  const actor = safeText(admin?.id || "admin",80);
   if (action === "approve") {
     if (current.status === "approved") return { success:true,duplicate:true,status:"approved" };
     if (current.status !== "pending") fail("Chỉ hoa hồng đang chờ mới được duyệt.",409);
     await env.DB.prepare(
-      "UPDATE referral_commissions SET status='approved',updated_at=CURRENT_TIMESTAMP WHERE id=? AND status='pending'"
-    ).bind(commissionId).run();
+      "UPDATE referral_commissions SET status='approved',reviewed_by=?,admin_note=?,updated_at=CURRENT_TIMESTAMP WHERE id=? AND status='pending'"
+    ).bind(actor,note,commissionId).run();
   } else if (action === "void") {
     if (current.status === "void") return { success:true,duplicate:true,status:"void" };
     if (!["pending","approved"].includes(current.status)) fail("Không thể hủy hoa hồng đã chi trả.",409);
     await env.DB.prepare(
-      "UPDATE referral_commissions SET status='void',updated_at=CURRENT_TIMESTAMP WHERE id=? AND status IN ('pending','approved')"
-    ).bind(commissionId).run();
+      "UPDATE referral_commissions SET status='void',reviewed_by=?,admin_note=?,updated_at=CURRENT_TIMESTAMP WHERE id=? AND status IN ('pending','approved')"
+    ).bind(actor,note,commissionId).run();
   } else {
     if (current.status === "paid") return { success:true,duplicate:true,status:"paid" };
     if (current.status !== "approved") fail("Phải duyệt hoa hồng trước khi chi trả.",409);
-    const actor = safeText(admin?.id || "admin",80);
     await env.DB.batch([
       env.DB.prepare(
-        "UPDATE referral_commissions SET status='paid',updated_at=CURRENT_TIMESTAMP WHERE id=? AND status='approved'"
-      ).bind(commissionId),
+        "UPDATE referral_commissions SET status='paid',paid_by=?,admin_note=?,updated_at=CURRENT_TIMESTAMP WHERE id=? AND status='approved'"
+      ).bind(actor,note,commissionId),
       env.DB.prepare(
         `UPDATE users SET balance=balance+(SELECT amount FROM referral_commissions WHERE id=? AND status='paid')
           WHERE id=(SELECT referrer_user_id FROM referral_commissions WHERE id=? AND status='paid')
