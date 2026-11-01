@@ -7,6 +7,14 @@ minify = true
 [vars]
 ENVIRONMENT = "production"
 WEBAPP_URL = "https://hendy-web-user.pages.dev"
+ADMIN_WEBAPP_URL = "https://hendy-web-admin.pages.dev"
+GROUP_CHAT_URL = ""
+NEWS_CHANNEL_URL = ""
+BANK_NAME = ""
+BANK_BIN = ""
+BANK_ACCOUNT = ""
+BANK_ACCOUNT_NAME = ""
+ADMIN_IDS = ""
 ALLOWED_ORIGINS = "https://hendy-web-user.pages.dev,https://hendy-web-admin.pages.dev"
 
 [[d1_databases]]
