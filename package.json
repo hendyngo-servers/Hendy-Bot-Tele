@@ -9,7 +9,7 @@
   "scripts": {
     "dev": "pnpm --parallel --filter web-user --filter web-admin --filter backend run dev",
     "build": "pnpm --filter web-user build && pnpm --filter web-admin build",
-    "test": "node --test",
+    "test": "node --test && python3 scripts/test_schema.py",
     "deploy:web-user": "pnpm --filter web-user deploy",
     "deploy:web-admin": "pnpm --filter web-admin deploy",
     "deploy:backend": "wrangler deploy --config backend/wrangler.toml",
