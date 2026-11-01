@@ -1,10 +1,10 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const fs = require('node:fs/promises');
+const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 
-const dataDir = fs.mkdtemp(path.join(os.tmpdir(), 'hendy-qr-'));
+const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'hendy-qr-'));
 process.env.DATA_DIR = dataDir;
 const storage = require('./qrStorageService');
 
@@ -33,5 +33,5 @@ test('QR storage writes, reads and deletes private files using opaque filenames'
 });
 
 test.after(async () => {
-  await fs.rm(dataDir, { recursive: true, force: true });
+  fs.rmSync(dataDir, { recursive: true, force: true });
 });
