@@ -7,7 +7,7 @@ let queryCount = 0;
 function config() {
   const accountId = process.env.CLOUDFLARE_ACCOUNT_ID;
   const databaseId = process.env.CLOUDFLARE_D1_DATABASE_ID;
-  const apiToken = process.env.CLOUDFLARE_API_TOKEN;
+  const apiToken = process.env.CLOUDFLARE_D1_API_TOKEN || process.env.CLOUDFLARE_API_TOKEN;
   if (!accountId || !databaseId || !apiToken) {
     const error = new Error("Cloudflare D1 chưa được cấu hình đầy đủ.");
     error.status = 503;
