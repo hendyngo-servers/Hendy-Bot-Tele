@@ -70,7 +70,7 @@ async function exportTable(env, tableName, prefix) {
   let count = 0;
 
   while (true) {
-    const result = await env.DB.prepare('SELECT * FROM "' + tableName + '" LIMIT ? OFFSET ?')
+    const result = await env.DB.prepare('SELECT * FROM "' + tableName + '" ORDER BY rowid LIMIT ? OFFSET ?')
       .bind(pageSize, offset).all();
     const rows = result.results || [];
     if (!rows.length) break;
