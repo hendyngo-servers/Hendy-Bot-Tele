@@ -1,6 +1,9 @@
-function decodeBase64(value: string): Uint8Array {
+function decodeBase64(value: string): ArrayBuffer {
   try {
-    return Uint8Array.from(atob(value), character => character.charCodeAt(0));
+    const binary = atob(value);
+    const bytes = new Uint8Array(new ArrayBuffer(binary.length));
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+    return bytes.buffer;
   } catch {
     throw new Error("Dữ liệu mã hóa base64 không hợp lệ.");
   }
@@ -19,16 +22,17 @@ async function importEncryptionKey(secret: string): Promise<CryptoKey> {
 }
 export async function encryptSecret(value: string, secret: string): Promise<string> {
   if (!value || value.length > 10000) throw new Error("Dữ liệu cần mã hóa không hợp lệ.");
-  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const ivBuffer = new ArrayBuffer(12);
+  crypto.getRandomValues(new Uint8Array(ivBuffer));
   const encrypted = await crypto.subtle.encrypt(
-    { name: "AES-GCM", iv },
+    { name: "AES-GCM", iv: ivBuffer },
     await importEncryptionKey(secret),
     new TextEncoder().encode(value)
   );
   return JSON.stringify({
     v: 1,
     alg: "A256GCM",
-    iv: encodeBase64(iv),
+    iv: encodeBase64(new Uint8Array(ivBuffer)),
     data: encodeBase64(new Uint8Array(encrypted))
   });
 }
