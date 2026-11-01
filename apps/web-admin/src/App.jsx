@@ -56,8 +56,8 @@ const emptyCatalogForm = {
 };
 
 export default function App() {
-  const [token, setToken] = useState("");
-  const [setupKey, setSetupKey] = useState("");
+  const [token, setToken] = useState(() => window.Telegram?.WebApp?.initData || "");
+  
   const [authorized, setAuthorized] = useState(false);
   const [section, setSection] = useState("orders");
   const [stats, setStats] = useState(null);
@@ -172,8 +172,9 @@ export default function App() {
     setError("");
     setBusy(true);
     try {
+      if (!token) throw new Error("Vui lòng mở bảng quản trị từ Telegram Mini App để xác thực phiên.");
       await refresh(token);
-      setNotice("Đã xác thực quản trị. Mọi thao tác được kiểm tra quyền tại Worker.");
+      setNotice("Đã xác thực quyền quản trị từ Telegram. Quyền được kiểm tra ở máy chủ.");
     } catch (err) {
       setAuthorized(false);
       setError(err.message);
@@ -525,10 +526,7 @@ export default function App() {
     setError("");
     setNotice("");
     try {
-      const result = await adminApi("/api/v1/admin/webhook/setup", token, {
-        method: "POST",
-        headers: { "X-Webhook-Setup-Key": setupKey }
-      });
+      const result = await adminApi("/api/v1/admin/telegram/set-webhook", token, { method: "POST" });
       setNotice(result.message || "Đã gửi yêu cầu đăng ký webhook.");
     } catch (err) {
       setError(err.message);
@@ -600,11 +598,11 @@ export default function App() {
 
         {!authorized ? <section className="card login-card">
           <div className="section-kicker">SECURE ACCESS</div><h2>Xác thực quản trị</h2>
-          <p>Nhập ADMIN_API_TOKEN đã cấu hình bằng Wrangler Secret. Quyền truy cập được Worker xác minh ở từng yêu cầu; mở URL không tự cấp quyền.</p>
+          <p>Mở bảng quản trị từ Telegram Mini App bằng tài khoản đã được cấp quyền quản trị.</p>
           <form onSubmit={login}>
-            <label>Admin API token<input type="password" value={token} onChange={event => setToken(event.target.value)} autoComplete="off" placeholder="Nhập token hoặc bấm đăng nhập nhanh bên dưới" required /></label>
+            <label>Phiên Telegram<input type="password" value={token} readOnly autoComplete="off" placeholder="Mở trang này từ Telegram Mini App" required /></label>
             <button disabled={busy}>{busy ? "Đang xác thực…" : "Mở bảng điều khiển"}</button>
-            <button type="button" className="secondary" style={{ width: "100%", marginTop: 8 }} onClick={() => { const devTok = "dev-admin-secret-token"; setToken(devTok); refresh(devTok); }}>⚡ Đăng nhập nhanh chế độ Dev / Quản trị viên</button>
+            
           </form>
         </section> : <>
           {section === "overview" && <>
@@ -857,12 +855,11 @@ export default function App() {
 
           {section === "webhook" && <section className="card">
             <div className="card-heading"><div><div className="section-kicker">BOT OPERATIONS</div><h2>Telegram webhook</h2></div><span className="tag">SECRET HEADER</span></div>
-            <label className="key-field">Webhook setup key<input type="password" value={setupKey} onChange={event => setSetupKey(event.target.value)} autoComplete="off" placeholder="WEBHOOK_SETUP_KEY" /></label>
-            <p className="description">Đăng ký webhook cho Worker bằng WEBHOOK_SECRET_TOKEN đã cài đặt ở Cloudflare.</p>
-            <button className="secondary" onClick={setupWebhook} disabled={busy || !setupKey}>↻ Đăng ký / đồng bộ webhook</button>
+            <p className="description">Đăng ký webhook với secret đã cấu hình ở Render. Giá trị secret không được gửi xuống trình duyệt.</p>
+            <button className="secondary" onClick={setupWebhook} disabled={busy}>↻ Đăng ký / đồng bộ webhook</button>
           </section>}
 
-          <button className="logout" onClick={() => { setAuthorized(false); setToken(""); setSetupKey(""); setStats(null); setOrders([]); setSelectedOrder(null); setSelectedTicket(null); }}>Đăng xuất khỏi bảng điều khiển</button>
+          <button className="logout" onClick={() => { setAuthorized(false); setToken(""); setStats(null); setOrders([]); setSelectedOrder(null); setSelectedTicket(null); }}>Đăng xuất khỏi bảng điều khiển</button>
         </>}
         <footer>HENDY BOT ADMIN · Cloudflare Workers / Pages / D1 / R2</footer>
       </section>
