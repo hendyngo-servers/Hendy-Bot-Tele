@@ -6,13 +6,14 @@ import { handleWebAppData } from "./bot/handlers.js";
 import { telegramCall } from "./bot/telegram.js";
 import { envValidator, getAllowedOrigins, getRequiredSecret } from "./config/env.js";
 import { getRelease, getReleaseStats, listReleases } from "./db/appModel.js";
-import { createOrder, createOrderQuote, getAdminOrder, getAdminOrderStats, getOrderForUser, getOrderStats, listAdminOrders, listOrders, respondToOrderQuote, updateOrderStatus } from "./db/orderModel.js";
+import { createOrder, createOrderQuote, getAdminOrder, getAdminOrderStats, getOrderForUser, getOrderStats, listAdminOrders, listOrders, payOrderWithWallet, respondToOrderQuote, updateOrderStatus } from "./db/orderModel.js";
 import { upsertUser } from "./db/userModel.js";
 import { createDepositRequest, getWalletOverview, listAdminDeposits, reviewDepositRequest } from "./db/walletModel.js";
 import {
   addSupportMessage, claimReferral, createGiftcode, createSupportTicket, ensureReferralCode,
-  getReferralSummary, getSupportTicket, getVipProfile, listAdminCatalog, listCatalog,
-  listSupportTickets, redeemGiftcode, saveCatalogItem, setCatalogItemActive
+  getReferralSummary, getSupportTicket, getVipProfile, listAdminCatalog, listAdminGiftcodes,
+  listAdminReferralCommissions, listCatalog, listSupportTickets, redeemGiftcode,
+  saveCatalogItem, setCatalogItemActive, settleReferralCommission, updateSupportTicketStatus
 } from "./db/commerceModel.js";
 import { errorHandler } from "./middlewares/errorHandler.js";
 import { rateLimitMiddleware } from "./middlewares/rateLimiter.js";
@@ -114,6 +115,16 @@ async function route(request, env) {
 
   if (path === "/" || path === "/healthz" || path === "/api/v1/health") {
     return json({ ok: true, service: "hendy-bot-backend", platform: "cloudflare-workers", timestamp: new Date().toISOString() });
+  }
+
+  if (path === "/api/v1/public-config" && request.method === "GET") {
+    const safeUrl = value => /^https:\/\//i.test(String(value || "").trim()) ? String(value).trim() : "";
+    return json({
+      groupChatUrl: safeUrl(env.GROUP_CHAT_URL),
+      newsChannelUrl: safeUrl(env.NEWS_CHANNEL_URL),
+      supportUrl: safeUrl(env.SUPPORT_URL),
+      supportUsername: String(env.SUPPORT_USERNAME || "").replace(/^@/, "")
+    });
   }
 
   if (path === "/telegram/webhook" && request.method === "POST") {
@@ -256,6 +267,18 @@ async function route(request, env) {
     return json(result, result.duplicate ? 200 : 201);
   }
 
+  const orderPaymentMatch = path.match(/^\/api\/v1\/orders\/([0-9a-f-]{36})\/pay$/i);
+  if (orderPaymentMatch && request.method === "POST") {
+    const telegramUser = await authenticateTelegramRequest(request, env);
+    const result = await payOrderWithWallet(
+      env,
+      telegramUser.id,
+      orderPaymentMatch[1],
+      request.headers.get("Idempotency-Key")
+    );
+    return json(result, 200);
+  }
+
   const orderMatch = path.match(/^\/api\/v1\/orders\/([0-9a-f-]{36})$/i);
   if (orderMatch && request.method === "GET") {
     const telegramUser = await authenticateTelegramRequest(request, env);
@@ -327,9 +350,27 @@ async function route(request, env) {
     return json(await setCatalogItemActive(env, catalogStatusMatch[1], catalogStatusMatch[2] === "activate"));
   }
 
+  if (path === "/api/v1/admin/giftcodes" && request.method === "GET") {
+    await requireAdmin(request, env);
+    return json({ giftcodes: await listAdminGiftcodes(env) });
+  }
+
   if (path === "/api/v1/admin/giftcodes" && request.method === "POST") {
     const admin = await requireAdmin(request, env);
     return json(await createGiftcode(env, admin, await readJsonLimited(request)), 201);
+  }
+
+  if (path === "/api/v1/admin/referrals/commissions" && request.method === "GET") {
+    await requireAdmin(request, env);
+    return json({
+      commissions: await listAdminReferralCommissions(env, url.searchParams.get("status") || "all")
+    });
+  }
+
+  const adminCommissionMatch = path.match(/^\/api\/v1\/admin\/referrals\/commissions\/([0-9a-f-]{36})\/settle$/i);
+  if (adminCommissionMatch && request.method === "POST") {
+    const admin = await requireAdmin(request, env);
+    return json(await settleReferralCommission(env, adminCommissionMatch[1], admin, await readJsonLimited(request)));
   }
 
   if (path === "/api/v1/admin/support/tickets" && request.method === "GET") {
@@ -350,6 +391,13 @@ async function route(request, env) {
     const body = await readJsonLimited(request);
     const ticket = await addSupportMessage(env, adminTicketMatch[1], { type: "admin", id: admin.id }, body.message, request.headers.get("Idempotency-Key"));
     return json(ticket);
+  }
+
+  const adminTicketStatusMatch = path.match(/^\/api\/v1\/admin\/support\/tickets\/([0-9a-f-]{36})\/status$/i);
+  if (adminTicketStatusMatch && request.method === "POST") {
+    await requireAdmin(request, env);
+    const body = await readJsonLimited(request);
+    return json(await updateSupportTicketStatus(env, adminTicketStatusMatch[1], body.status));
   }
 
   if (path === "/api/v1/admin/releases" && request.method === "POST") {
