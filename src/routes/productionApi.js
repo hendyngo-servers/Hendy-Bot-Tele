@@ -663,7 +663,7 @@ router.post("/admin/telegram/set-webhook", requireAdmin, asyncRoute(async (req, 
 }));
 
 router.post("/admin/d1/query", requireAdmin, asyncRoute(async (req, res) => {
-  const sql = text(req.body?.sql, 2048);
+  const sql = text(req.body?.sql, 2048).replace(/;\s*$/, "");
   if (!/^select\b/i.test(sql) || sql.includes(";") || /--|\/\*|\b(insert|update|delete|drop|alter|pragma|attach|detach|replace|create|vacuum)\b/i.test(sql)) {
     return res.status(400).json({ error: "Console chỉ cho phép một câu lệnh SELECT chỉ đọc, không có dấu chấm phẩy hay comment." });
   }
