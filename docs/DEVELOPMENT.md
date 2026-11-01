@@ -62,7 +62,7 @@ Chạy local:
 npm run dev:api
 ~~~
 
-Secrets runtime cấu hình bằng wrangler secret put; không lưu trong source.
+Secrets runtime cấu hình bằng wrangler secret put; không lưu trong source. API_PUBLIC_URL là origin công khai (ví dụ https://api.example.com), đặt trong vars của wrangler.jsonc, không phải secret.
 
 ## 4. Edge Router Worker
 

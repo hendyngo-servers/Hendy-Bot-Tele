@@ -151,7 +151,7 @@ Trong Cloudflare Dashboard, thêm custom domains/routes cho Worker hendy-edge-ro
 
 Thay example.com bằng domain thật. Router gửi các path /api/, /telegram/, /internal/ và /healthz tới backend qua Service Binding; các path giao diện được proxy sang hai Pages origins trong workers/edge-router/wrangler.jsonc.
 
-Cập nhật USER_PAGES_ORIGIN, ADMIN_PAGES_ORIGIN trong config sau khi tạo Pages projects. DNS/TLS phải Active trước khi kiểm thử.
+Cập nhật USER_PAGES_ORIGIN, ADMIN_PAGES_ORIGIN trong config sau khi tạo Pages projects. Cập nhật API_PUBLIC_URL trong workers/backend-api/wrangler.jsonc về chính xác https://api.<domain-thật>; Worker dùng origin này để ký liên kết QR riêng. DNS/TLS phải Active trước khi kiểm thử.
 
 Nếu muốn đơn giản hơn, có thể gắn trực tiếp custom domain riêng cho hai Pages projects và domain API cho backend; khi đó router là tùy chọn. Sơ đồ hiện tại giữ edge-router để gom định tuyến.
 

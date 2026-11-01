@@ -175,6 +175,7 @@ async function routeApi(request: Request, env: BackendEnv): Promise<Response> {
     if (!["image/png", "image/jpeg", "image/webp"].includes(contentType.toLowerCase())) {
       return failure("Tài nguyên không phải ảnh QR hợp lệ.", 415);
     }
+    if (object.size > 5 * 1024 * 1024) return failure("Ảnh QR vượt quá giới hạn 5 MB.", 413);
     headers.set("content-type", contentType);
     headers.set("cache-control", "private, max-age=60");
     headers.set("x-content-type-options", "nosniff");
