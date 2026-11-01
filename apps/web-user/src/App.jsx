@@ -428,9 +428,11 @@ export default function App() {
 
   useEffect(() => {
     if (loading || !initData || !requestedModule) return;
-    const item = MODULES.find(value => value.id === requestedModule);
+    const item = requestedSection === "pairing"
+      ? MODULES.find(value => value.id === "pairing")
+      : MODULES.find(value => value.id === requestedModule);
     if (item) openModule(item);
-  }, [loading, initData, requestedModule]);
+  }, [loading, initData, requestedModule, requestedSection]);
 
   const orderCount = home?.orderSummary?.total || 0;
   const totalLinks = Object.values(links).reduce((count, rows) => count + (rows?.length || 0), 0);
