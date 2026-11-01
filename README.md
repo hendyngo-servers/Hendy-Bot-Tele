@@ -80,7 +80,6 @@ Tạo các **Repository Secrets**:
 | `CLOUDFLARE_ACCOUNT_ID` | Account ID Cloudflare |
 | `BACKUP_TRIGGER_SECRET` | Bảo vệ endpoint chạy backup |
 | `R2_UPLOAD_SECRET` | Bảo vệ endpoint tải release lên R2 |
-| `WEBHOOK_SECRET` | Bí mật Telegram webhook; phải trùng với Render |
 
 Tạo các **Repository Variables**:
 
@@ -106,7 +105,7 @@ Workflow triển khai sẽ:
 2. Gắn Database ID vào `wrangler.toml`.
 3. Đảm bảo hai R2 bucket tồn tại.
 4. Áp dụng các migration D1.
-5. Đồng bộ secrets vào Worker.
+5. Đồng bộ `BACKUP_TRIGGER_SECRET` và `R2_UPLOAD_SECRET` vào Worker.
 6. Deploy Worker và build/deploy Mini App lên Pages.
 
 Sau lần deploy đầu tiên, lấy URL thực tế của Worker và Pages để hoàn thiện các biến Render ở phần kế tiếp.
@@ -131,7 +130,7 @@ Build command đã cài cả devDependencies vì Vite là công cụ build, kể
 |---|---|
 | `BOT_TOKEN` | Bot Token mới lấy từ BotFather |
 | `BOT_USERNAME` | Username bot Telegram thật, không có ký tự `@`; dùng để tạo link giới thiệu |
-| `WEBHOOK_SECRET` | Cùng giá trị GitHub Secret `WEBHOOK_SECRET` |
+| `WEBHOOK_SECRET` | Secret Telegram độc lập, chỉ lưu ở Render; không đồng bộ lên Worker/GitHub |
 | `ADMIN_TELEGRAM_IDS` | Telegram numeric ID quản trị, nhiều ID phân cách bằng dấu phẩy |
 | `WEBAPP_URL` | URL production Cloudflare Pages |
 | `ADMIN_WEBAPP_URL` | URL dashboard/Mini App production |
@@ -145,7 +144,14 @@ Build command đã cài cả devDependencies vì Vite là công cụ build, kể
 | `R2_UPLOAD_SECRET` | Cùng giá trị GitHub Secret `R2_UPLOAD_SECRET` |
 | `VIETQR_BANK_ID`, `VIETQR_ACCOUNT_NO`, `VIETQR_ACCOUNT_NAME` | Thông tin tài khoản nhận tiền đã xác minh |
 | `GROUP_CHAT_URL`, `NEWS_CHANNEL_URL`, `SUPPORT_URL` | Link Telegram/chăm sóc khách hàng chính thức |
+| `RENDER_API_KEY` | Render API key có quyền cập nhật environment variable trực tiếp của Web Service và tạo deploy |
+| `RENDER_SERVICE_ID` | ID Web Service `hendy-bot-tele` trên Render |
+| `GITHUB_CONFIG_TOKEN` | Fine-grained GitHub token: Repository Variables (write) và Actions (write) cho repo này |
+| `GITHUB_REPOSITORY_OWNER`, `GITHUB_REPOSITORY_NAME` | Owner/repository được khai báo sẵn trong Blueprint |
 
+Khi đã merge tính năng trung tâm cấu hình, admin có thể cập nhật `WEBHOOK_SECRET`, `ADMIN_WEBAPP_URL`, `ALLOWED_ORIGINS` và `VITE_API_BASE_URL` trong Admin → Trung tâm cấu hình. Các biến Render được cập nhật theo từng key rồi kích hoạt deploy; `VITE_API_BASE_URL` được lưu thành GitHub Actions Repository Variable rồi dispatch workflow Cloudflare để build lại Pages. Những biến này không được ghi vào D1; secret không bao giờ được gửi qua WebSocket.
+
+**Lưu ý với Blueprint đã tồn tại:** `sync: false` trong `render.yaml` chỉ yêu cầu nhập secret khi tạo Blueprint lần đầu. Với Web Service cũ, hãy thêm `RENDER_API_KEY`, `RENDER_SERVICE_ID` và `GITHUB_CONFIG_TOKEN` trong Render Dashboard trước khi dùng tính năng đồng bộ từ giao diện admin. API hiện cập nhật biến trực tiếp trên service, không cập nhật biến trong Environment Group.
 `BASE_URL` có thể đặt thành URL Render, nhưng nếu bỏ trống ứng dụng sẽ dùng `RENDER_EXTERNAL_URL` do Render cung cấp. Blueprint đặt `SET_WEBHOOK_ON_START=true`; khi service khởi động, ứng dụng tự đăng ký webhook tại `/api/telegram/webhook`.
 
 **Không điền giá trị giả cho thông tin ngân hàng hoặc URL cộng đồng.** Nếu chưa cấu hình thanh toán, API tạo yêu cầu nạp tiền sẽ trả trạng thái chưa sẵn sàng thay vì tạo giao dịch giả.
@@ -174,6 +180,16 @@ Các endpoint health chỉ xác nhận dịch vụ và D1; chúng không thay th
 - Cấu hình công khai như lời chào, kênh hỗ trợ và thông tin VietQR được lưu trong `bot_settings`; secrets vận hành vẫn đặt trong Render/GitHub/Worker secrets, không lưu vào D1.
 - Bật/tắt bảo trì trong dashboard. Khi bật, người dùng thường bị chặn các API thành viên và bot trả thông báo bảo trì; quản trị viên vẫn truy cập được dashboard.
 - SQL console chỉ cho phép câu lệnh `SELECT` đơn, chỉ đọc và yêu cầu quyền admin. Không chia sẻ tài khoản quản trị.
+
+### Trung tâm cấu hình thời gian thực
+
+- WebSocket endpoint `/ws` được proxy từ Cloudflare Worker về Render. Client gửi Telegram Web App `initData` sau handshake; server xác minh chữ ký và thời hạn trước khi cho nhận sự kiện. WebSocket chỉ là kênh push; thay đổi cấu hình đi qua API admin HTTPS có allowlist.
+- `GET /api/admin/config/registry` quét mã nguồn và trả về file/dòng đang tham chiếu tới các biến runtime, VietQR và URL cộng đồng. `npm run config:audit` chạy cùng kiểm tra trong CI.
+- Admin → Trung tâm cấu hình cho phép nhập secret mới (không đọc ngược secret cũ), URL Pages, allowed origins và API Worker. Thay đổi cập nhật Render/GitHub theo đúng nơi sở hữu; secret không lưu D1 và không phát qua WebSocket.
+- Admin → Cấu hình Bot cập nhật `VIETQR_BANK_ID`, `VIETQR_ACCOUNT_NO`, `VIETQR_ACCOUNT_NAME`, `GROUP_CHAT_URL`, `NEWS_CHANNEL_URL`, `SUPPORT_URL` trong `bot_settings`.
+- Admin → Màu giao diện và nút menu lưu màu Mini App, nhãn và trạng thái bật/tắt của 10 nút. Bot cập nhật inline keyboard của các chat có menu `/start` được ghi nhận trong D1.
+- Telegram Bot API không hỗ trợ tùy chỉnh màu inline keyboard native; màu chỉ áp dụng cho Mini App, còn nhãn/trạng thái nút được áp dụng cho menu Telegram.
+
 
 ## 7. Sao lưu D1 → CSV → R2
 
@@ -232,6 +248,9 @@ Không dùng D1/R2 production cho kiểm thử phá huỷ. Nên tạo database/b
 - [ ] Pages build dùng đúng `VITE_API_BASE_URL`.
 - [ ] Render `ALLOWED_ORIGINS` chứa đúng Pages production origin.
 - [ ] `ADMIN_TELEGRAM_IDS` đã xác minh; tài khoản admin bật 2FA cho Telegram.
+- [ ] Đã cấu hình `RENDER_API_KEY`, `RENDER_SERVICE_ID`, `GITHUB_CONFIG_TOKEN` với quyền tối thiểu.
+- [ ] Đã chạy `npm run config:audit`; CI báo đủ các vị trí cấu hình.
+- [ ] WebSocket `/ws` kết nối qua Worker với Telegram `initData` hợp lệ và menu đã được kiểm tra trên bot thật.
 - [ ] Webhook được Telegram xác nhận, health check D1 thành công.
 - [ ] Backup thủ công thành công và các CSV/manifest xuất hiện trong R2.
 - [ ] Đã kiểm thử bảo trì, phân quyền, thanh toán và quy trình xử lý giao dịch trên staging.
