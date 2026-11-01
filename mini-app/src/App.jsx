@@ -95,6 +95,8 @@ export default function App() {
   const [botSettings, setBotSettings] = useState(null);
   const [webhookInfo, setWebhookInfo] = useState(null);
   const [realtimeStatus, setRealtimeStatus] = useState("connecting");
+  const [realtimeSocket, setRealtimeSocket] = useState(null);
+  const [configRegistry, setConfigRegistry] = useState(null);
   const [loading, setLoading] = useState(true);
   const [notice, setNotice] = useState(null);
 
@@ -309,6 +311,7 @@ export default function App() {
 
       socket.onopen = () => {
         attempts = 0;
+        setRealtimeSocket(socket);
         socket.send(JSON.stringify({ type: "auth", initData }));
         pingTimer = window.setInterval(() => {
           if (socket?.readyState === WebSocket.OPEN) socket.send(JSON.stringify({ type: "ping" }));
@@ -324,6 +327,10 @@ export default function App() {
         } else if (frame.type === "public_config" || frame.type === "public_config.updated") {
           setBotSettings((current) => ({ ...(current || {}), ...payload }));
           setRealtimeStatus("connected");
+        } else if (frame.type === "config.registry") {
+          setConfigRegistry(payload);
+        } else if (frame.type === "config.registry.error") {
+          setNotice({ message: payload.message || "Không quét được vị trí cấu hình.", type: "error" });
         } else if (frame.type === "admin.settings.updated") {
           setNotice({ message: "Cấu hình bot vừa được cập nhật từ một phiên quản trị khác.", type: "success" });
         } else if (frame.type === "runtime_config.updated") {
@@ -333,6 +340,7 @@ export default function App() {
 
       socket.onerror = () => socket?.close();
       socket.onclose = () => {
+        setRealtimeSocket((current) => current === socket ? null : current);
         if (pingTimer) window.clearInterval(pingTimer);
         pingTimer = null;
         if (disposed) return;
@@ -1331,7 +1339,18 @@ export default function App() {
               showToast={showToast}
             />
 
-            <RuntimeConfigManager showToast={showToast} realtimeStatus={realtimeStatus} />
+            <RuntimeConfigManager
+              showToast={showToast}
+              realtimeStatus={realtimeStatus}
+              registry={configRegistry}
+              onRescan={() => {
+                if (realtimeSocket?.readyState === WebSocket.OPEN) {
+                  realtimeSocket.send(JSON.stringify({ type: "scan_config" }));
+                  return true;
+                }
+                return false;
+              }}
+            />
 
             {/* Telegram Webhook & Render Service Manager */}
             <TelegramWebhookManager
