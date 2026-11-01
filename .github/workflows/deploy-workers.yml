@@ -2,33 +2,77 @@ name: Deploy Cloudflare Workers
 
 on:
   workflow_dispatch:
-  push:
+  workflow_run:
+    workflows: ["Cloudflare CI"]
+    types: [completed]
     branches: [main]
-    paths:
-      - "workers/**"
-      - "packages/**"
-      - "package.json"
-      - "package-lock.json"
 
 permissions:
   contents: read
 
 jobs:
-  deploy:
+  migrations:
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        worker: [backend-api, edge-router, self-healing]
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: \${{ github.event.workflow_run.head_sha || github.sha }}
       - uses: actions/setup-node@v4
         with:
           node-version: 22
       - run: npm install --no-audit --no-fund
-      - name: Deploy selected Worker
-        run: npx wrangler deploy --config workers/$WORKER/wrangler.jsonc
+      - name: Apply production D1 migrations
+        run: npx wrangler d1 migrations apply hendy-production --remote --config workers/backend-api/wrangler.jsonc
         env:
-          WORKER: ${{ matrix.worker }}
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: \${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: \${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+  deploy-backend:
+    needs: migrations
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: \${{ github.event.workflow_run.head_sha || github.sha }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm install --no-audit --no-fund
+      - name: Deploy backend API first
+        run: npx wrangler deploy --config workers/backend-api/wrangler.jsonc
+        env:
+          CLOUDFLARE_API_TOKEN: \${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: \${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+  deploy-router:
+    needs: deploy-backend
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: \${{ github.event.workflow_run.head_sha || github.sha }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm install --no-audit --no-fund
+      - run: npx wrangler deploy --config workers/edge-router/wrangler.jsonc
+        env:
+          CLOUDFLARE_API_TOKEN: \${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: \${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+  deploy-self-healing:
+    needs: deploy-backend
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: \${{ github.event.workflow_run.head_sha || github.sha }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm install --no-audit --no-fund
+      - run: npx wrangler deploy --config workers/self-healing/wrangler.jsonc
+        env:
+          CLOUDFLARE_API_TOKEN: \${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: \${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
