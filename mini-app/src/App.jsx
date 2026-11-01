@@ -1277,30 +1277,30 @@ export default function App() {
               showToast={showToast}
             />
 
-            {/* Admin Stats Strip */}
+            {/* Admin Stats Strip — dữ liệu truy xuất trực tiếp từ Cloudflare D1 */}
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
               <div className="glass-panel p-4">
-                <span className="text-xs text-slate-400">Doanh Thu Đã Thu</span>
+                <span className="text-xs text-slate-400">Doanh Thu Đã Thanh Toán</span>
                 <span className="text-xl font-bold text-emerald-400 block mt-1">
-                  {formatVnd(adminStats?.totalRevenue || 0)} đ
+                  {formatVnd(adminStats?.totalRevenue ?? 0)} đ
                 </span>
               </div>
               <div className="glass-panel p-4">
-                <span className="text-xs text-slate-400">Sản Phẩm Đang Bán</span>
+                <span className="text-xs text-slate-400">Tổng Thành Viên</span>
                 <span className="text-xl font-bold text-white block mt-1">
-                  {catalog.length} ứng dụng
+                  {formatVnd(adminStats?.totalUsers ?? 0)}
                 </span>
               </div>
               <div className="glass-panel p-4">
-                <span className="text-xs text-slate-400">Lưu Trữ Cloudflare R2</span>
+                <span className="text-xs text-slate-400">Người Dùng Hoạt Động 24 Giờ</span>
                 <span className="text-xl font-bold text-cyan-400 block mt-1">
-                  {adminStats?.r2Storage || "24.5 GB"}
+                  {formatVnd(adminStats?.activeUsers24h ?? 0)}
                 </span>
               </div>
               <div className="glass-panel p-4">
-                <span className="text-xs text-slate-400">Truy Vấn Cloudflare D1</span>
+                <span className="text-xs text-slate-400">Yêu Cầu Nạp Đang Chờ</span>
                 <span className="text-xl font-bold text-indigo-400 block mt-1">
-                  {adminStats?.d1Queries || "14.2K req/d"}
+                  {formatVnd(adminStats?.pending_deposits ?? 0)}
                 </span>
               </div>
             </div>
