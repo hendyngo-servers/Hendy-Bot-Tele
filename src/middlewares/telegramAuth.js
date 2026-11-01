@@ -26,6 +26,16 @@ export async function requireTelegramAuth(req, res, next) {
     if (existing?.status === "blocked") {
       return res.status(403).json({ error: "Tài khoản đã bị khóa.", code: "USER_BLOCKED" });
     }
+    if (!isTelegramAdmin(userId)) {
+      const maintenance = await d1First("SELECT value FROM bot_settings WHERE key='maintenance_mode'");
+      if (maintenance?.value === "1") {
+        const message = await d1First("SELECT value FROM bot_settings WHERE key='maintenance_message'");
+        return res.status(503).json({
+          error: message?.value || "Hệ thống đang bảo trì.",
+          code: "MAINTENANCE_MODE"
+        });
+      }
+    }
     req.telegramUser = checked.user;
     req.telegramAuthDate = checked.authDate;
     next();
