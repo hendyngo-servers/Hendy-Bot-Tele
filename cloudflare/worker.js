@@ -214,7 +214,7 @@ export default {
     if (url.pathname === "/api/backups/run" && request.method === "POST") {
       const expected = env.BACKUP_TRIGGER_SECRET;
       const supplied = request.headers.get("Authorization") || "";
-      if (!expected || !constantTimeEqual(expected, supplied.replace(/^Bearer\\s+/i, ""))) return json({ error: "Unauthorized" }, 401);
+      if (!expected || !constantTimeEqual(expected, supplied.replace(/^Bearer\s+/i, ""))) return json({ error: "Unauthorized" }, 401);
       try {
         const body = await request.json().catch(() => ({}));
         const result = await createBackup(env, String(body.requestedBy || "admin"));
