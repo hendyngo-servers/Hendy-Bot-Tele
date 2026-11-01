@@ -1,4 +1,5 @@
 import { upsertUser } from "../db/userModel.js";
+import { claimReferral } from "../db/commerceModel.js";
 import { mainMenu } from "./keyboards.js";
 import { sendMessage } from "./telegram.js";
 
@@ -20,6 +21,17 @@ export async function handleCommand(update, env) {
 
   if (command === "/start") {
     const user = await upsertUser(env, message.from.id, message.from.first_name || "Khách");
+    let referralNote = "";
+    const startPayload = text.trim().split(/\s+/)[1] || "";
+    const referralMatch = startPayload.match(/^ref_([A-Z0-9]{4,32})$/i);
+    if (referralMatch) {
+      try {
+        await claimReferral(env, message.from.id, { code: referralMatch[1] });
+        referralNote = "\\n🎉 Đã ghi nhận mã giới thiệu " + referralMatch[1].toUpperCase() + ".";
+      } catch (error) {
+        referralNote = "\\nℹ️ Mã giới thiệu không được áp dụng: " + String(error.message || "Không hợp lệ").slice(0, 180);
+      }
+    }
     const linkedCount = Object.values(user.linked_accounts || {}).reduce(
       (total, rows) => total + (Array.isArray(rows) ? rows.length : 0), 0
     );
@@ -32,7 +44,7 @@ export async function handleCommand(update, env) {
       "💰 Số dư: " + Number(user.balance || 0).toLocaleString("vi-VN") + " VNĐ\n" +
       "🔗 Tài khoản liên kết: " + linkedCount + "\n" +
       "━━━━━━━━━━━━━━━━━━\n" +
-      "Chọn chức năng bạn cần bên dưới." + adminNote,
+      "Chọn chức năng bạn cần bên dưới." + adminNote + referralNote,
       mainMenu(env));
     return true;
   }
