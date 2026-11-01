@@ -4,6 +4,7 @@ import { decryptSecret, encryptSecret, parseCiphertext, serializeCiphertext } fr
 import { constantTimeEqual, getTelegramUser, isAdmin } from "./auth";
 import { audit, clientIp, consumeRateLimit, upsertTelegramUser } from "./db";
 import { handleTelegramWebhook, sendTelegramMessage } from "./telegram";
+import { createSignedQrUrl, verifySignedQrUrl } from "./signedAssets";
 
 type Session = { id: string; username: string; first_name: string; last_name: string };
 const json = (data: unknown, status = 200, headers: HeadersInit = {}) =>
@@ -75,7 +76,12 @@ function referenceCode() {
   const random = crypto.randomUUID().replace(/-/g, "").slice(0, 8).toUpperCase();
   return "HND" + Date.now().toString(36).toUpperCase() + random;
 }
-function paymentQr(settings: Record<string, any>, amount: number, reference: string): string | null {
+async function paymentQr(settings: Record<string, any>, amount: number, reference: string, env: BackendEnv, origin: string): Promise<string | null> {
+  const qrImageKey = cleanText(settings.qrImageKey || "", 512);
+  if (qrImageKey && env.BACKUP_SECRET) {
+    const signedUrl = await createSignedQrUrl(env.BACKUP_SECRET, origin, qrImageKey, 300);
+    if (signedUrl) return signedUrl;
+  }
   if (!settings.bankBin || !settings.bankAccount) return null;
   return "https://img.vietqr.io/image/" + encodeURIComponent(settings.bankBin) + "-" +
     encodeURIComponent(settings.bankAccount) + "-compact2.png?amount=" + amount +
@@ -147,6 +153,33 @@ async function routeApi(request: Request, env: BackendEnv): Promise<Response> {
   if (path === "/healthz" && method === "GET") {
     const row = await env.DB.prepare("SELECT 1 AS ok").first<{ ok: number }>();
     return json({ success: row?.ok === 1, service: "hendy-backend-api", database: row?.ok === 1, timestamp: new Date().toISOString() }, row?.ok === 1 ? 200 : 503);
+  }
+  if (path.startsWith("/public/qr/") && method === "GET") {
+    let key = "";
+    try {
+      key = path.slice("/public/qr/".length).split("/").map(segment => decodeURIComponent(segment)).join("/");
+    } catch {
+      return failure("Đường dẫn QR không hợp lệ.", 400);
+    }
+    const expires = Number(url.searchParams.get("exp") || 0);
+    const signature = url.searchParams.get("sig") || "";
+    if (!safeObjectKey(key) || !key.startsWith("applications/") ||
+      !await verifySignedQrUrl(env.BACKUP_SECRET || "", key, expires, signature)) {
+      return failure("Liên kết QR không hợp lệ hoặc đã hết hạn.", 403);
+    }
+    const object = await env.FILES.get(key);
+    if (!object) return failure("Không tìm thấy ảnh QR.", 404);
+    const headers = new Headers();
+    object.writeHttpMetadata(headers);
+    const contentType = object.httpMetadata?.contentType || headers.get("content-type") || "";
+    if (!["image/png", "image/jpeg", "image/webp"].includes(contentType.toLowerCase())) {
+      return failure("Tài nguyên không phải ảnh QR hợp lệ.", 415);
+    }
+    headers.set("content-type", contentType);
+    headers.set("cache-control", "private, max-age=60");
+    headers.set("x-content-type-options", "nosniff");
+    headers.set("content-security-policy", "default-src 'none'; sandbox");
+    return new Response(object.body, { status: 200, headers });
   }
   if (path === "/telegram/webhook" && method === "POST") return handleTelegramWebhook(request, env);
   if (path === "/internal/backup" && method === "POST") {
@@ -229,7 +262,7 @@ async function routeApi(request: Request, env: BackendEnv): Promise<Response> {
         payment: {
           bankName: settings.bankName, bankAccount: settings.bankAccount,
           bankAccountName: settings.bankAccountName, instructions: settings.instructions,
-          qrUrl: paymentQr(settings, amount, reference)
+          qrUrl: await paymentQr(settings, amount, reference, env, url.origin)
         }
       }, 201);
     }

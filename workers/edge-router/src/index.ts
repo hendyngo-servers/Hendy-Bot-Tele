@@ -21,7 +21,7 @@ export default {
     const pathname = incoming.pathname;
 
     if (pathname.startsWith("/api/") || pathname.startsWith("/telegram/") ||
-        pathname.startsWith("/internal/") || pathname === "/healthz") {
+        pathname.startsWith("/internal/") || pathname.startsWith("/public/qr/") || pathname === "/healthz") {
       return env.BACKEND.fetch(request);
     }
 
