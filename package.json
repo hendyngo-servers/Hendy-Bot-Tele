@@ -3,7 +3,9 @@
   "private": true,
   "version": "2.0.0",
   "packageManager": "pnpm@9.15.5",
-  "engines": { "node": ">=20.0.0" },
+  "engines": {
+    "node": ">=20.0.0"
+  },
   "scripts": {
     "dev": "pnpm --parallel --filter web-user --filter web-admin --filter backend run dev",
     "build": "pnpm --filter web-user build && pnpm --filter web-admin build",
@@ -15,5 +17,8 @@
     "db:migrate:remote": "wrangler d1 migrations apply DB --remote --config backend/wrangler.toml",
     "check": "pnpm build && pnpm test"
   },
-  "devDependencies": { "wrangler": "^4.40.0" }
+  "devDependencies": {
+    "wrangler": "^4.40.0"
+  },
+  "type": "module"
 }
