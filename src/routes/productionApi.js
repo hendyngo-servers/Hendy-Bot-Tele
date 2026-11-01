@@ -414,7 +414,32 @@ router.post("/support/tickets", asyncRoute(async (req, res) => {
     "INSERT INTO support_messages(id,ticket_id,sender_telegram_id,sender_type,message) VALUES(?,?,?,'user',?)",
     [crypto.randomUUID(), ticketId, userId, message]
   );
-  res.status(201).json({ success: true, ticket: await d1First("SELECT * FROM support_tickets WHERE id=?", [ticketId]) });
+  const ticket = await d1First("SELECT * FROM support_tickets WHERE id=?", [ticketId]);
+  const messages = await executeD1Query("SELECT * FROM support_messages WHERE ticket_id=? ORDER BY created_at", [ticketId]);
+  res.status(201).json({ success: true, ticket: { ticket, messages: messages.results } });
+}));
+
+router.get("/support/tickets/:id", asyncRoute(async (req, res) => {
+  const ticket = await d1First("SELECT * FROM support_tickets WHERE id=? AND telegram_id=?", [text(req.params.id, 100), String(req.telegramUser.id)]);
+  if (!ticket) return res.status(404).json({ error: "Không tìm thấy yêu cầu hỗ trợ." });
+  const messages = await executeD1Query("SELECT * FROM support_messages WHERE ticket_id=? ORDER BY created_at", [ticket.id]);
+  res.json({ ticket, messages: messages.results });
+}));
+
+router.post("/support/tickets/:id/messages", asyncRoute(async (req, res) => {
+  const userId = String(req.telegramUser.id);
+  const ticketId = text(req.params.id, 100);
+  const message = text(req.body?.message, 4000);
+  if (!message) return res.status(400).json({ error: "Nội dung phản hồi không được để trống." });
+  const ticket = await d1First("SELECT id,telegram_id,status FROM support_tickets WHERE id=?", [ticketId]);
+  if (!ticket) return res.status(404).json({ error: "Không tìm thấy yêu cầu hỗ trợ." });
+  const admin = isTelegramAdmin(userId);
+  if (!admin && ticket.telegram_id !== userId) return res.status(403).json({ error: "Không có quyền truy cập yêu cầu này." });
+  await executeD1Query("INSERT INTO support_messages(id,ticket_id,sender_telegram_id,sender_type,message) VALUES(?,?,?,?,?)", [crypto.randomUUID(), ticketId, userId, admin ? "admin" : "user", message]);
+  await executeD1Query("UPDATE support_tickets SET last_message=?,updated_at=datetime('now') WHERE id=?", [message, ticketId]);
+  const currentTicket = await d1First("SELECT * FROM support_tickets WHERE id=?", [ticketId]);
+  const messages = await executeD1Query("SELECT * FROM support_messages WHERE ticket_id=? ORDER BY created_at", [ticketId]);
+  res.json({ ticket: currentTicket, messages: messages.results });
 }));
 
 router.post("/support/tickets/:id/reply", asyncRoute(async (req, res) => {
@@ -459,8 +484,9 @@ router.post("/deposits", asyncRoute(async (req, res) => {
   res.status(201).json({
     success: true,
     deposit: { id: depositId, amount, transferContent, status: "pending" },
+    request: { id: depositId, amount, reference: transferContent, status: "pending" },
     vietQrUrl,
-    transfer: { amount, reference: transferContent, qrUrl }
+    transfer: { amount, reference: transferContent, qrUrl, bankId, accountNo, accountName }
   });
 }));
 
@@ -478,7 +504,7 @@ router.post("/giftcodes/redeem", asyncRoute(async (req, res) => {
   );
   if (!inserted) return res.status(400).json({ error: "Giftcode không hợp lệ, đã hết lượt hoặc bạn đã sử dụng." });
   const gift = await d1First("SELECT amount FROM giftcodes WHERE code=?", [code]);
-  res.json({ success: true, code, amount: Number(gift?.amount || 0) });
+  res.json({ success: true, code, amount: Number(gift?.amount || 0), rewardVoucher: Number(gift?.amount || 0) });
 }));
 
 router.get("/deposits", requireAdmin, asyncRoute(async (req, res) => {
@@ -676,7 +702,7 @@ router.post("/admin/support/tickets/:id/status", requireAdmin, asyncRoute(async 
   const updated = await d1First("UPDATE support_tickets SET status=?,updated_at=datetime('now') WHERE id=? RETURNING id,status", [status, text(req.params.id, 100)]);
   if (!updated) return res.status(404).json({ error: "Không tìm thấy ticket." });
   await writeAdminAudit(req.telegramUser.id, "support.ticket.status", "ticket", updated.id, { status });
-  res.json({ success: true, ticket: updated });
+  res.json({ success: true, status: updated.status, ticket: updated });
 }));
 
 router.get("/admin/telegram/webhook-info", requireAdmin, asyncRoute(async (_req, res) => {
