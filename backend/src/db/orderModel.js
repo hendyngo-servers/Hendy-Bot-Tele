@@ -92,14 +92,11 @@ export async function createOrder(env, userId, input, idempotencyKey) {
     catalogItem = await env.DB.prepare(
       "SELECT id,module,slug,title,description,unit_price,duration_days,stock,is_active FROM catalog_items WHERE id = ?"
     ).bind(normalized.catalogItemId).first();
-    if (!catalogItem || Number(catalogItem.is_active) !== 1) {
-      throw httpError("Sản phẩm không còn được mở bán.", 409);
+    if (!catalogItem) {
+      throw httpError("Không tìm thấy sản phẩm trong danh mục.", 404);
     }
     if (catalogItem.module !== normalized.module) {
       throw httpError("Sản phẩm không thuộc nhóm dịch vụ đã chọn.", 400);
-    }
-    if (catalogItem.stock !== null && Number(catalogItem.stock) < normalized.quantity) {
-      throw httpError("Sản phẩm không đủ tồn kho cho số lượng yêu cầu.", 409);
     }
     normalized.title = catalogItem.title;
     normalized.description = [catalogItem.description, normalized.description].filter(Boolean).join("\n").slice(0, 1000);
@@ -114,6 +111,9 @@ export async function createOrder(env, userId, input, idempotencyKey) {
       throw httpError("Idempotency-Key đã được dùng cho nội dung đơn hàng khác.", 409);
     }
     return { order: presentOrder(existing), duplicate: true };
+  }
+  if (catalogItem && Number(catalogItem.is_active) !== 1) {
+    throw httpError("Sản phẩm không còn được mở bán.", 409);
   }
 
   const id = randomId();
