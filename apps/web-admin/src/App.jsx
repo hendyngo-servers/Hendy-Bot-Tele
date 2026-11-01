@@ -701,7 +701,7 @@ export default function App() {
               <form className="management-form" onSubmit={createGiftcode}>
                 <label>Điểm voucher thưởng<input type="number" min="1" max="100000000" value={giftcodeForm.rewardVoucher} onChange={event => setGiftcodeForm({ ...giftcodeForm, rewardVoucher: event.target.value })} required /></label>
                 <label>Giới hạn lượt đổi<input type="number" min="1" max="100000" value={giftcodeForm.maxRedemptions} onChange={event => setGiftcodeForm({ ...giftcodeForm, maxRedemptions: event.target.value })} required /></label>
-                <label>Hết hạn (UTC)<input type="datetime-local" value={giftcodeForm.expiresAt} onChange={event => setGiftcodeForm({ ...giftcodeForm, expiresAt: event.target.value ? new Date(event.target.value).toISOString() : "" })} /></label>
+                <label>Hết hạn (UTC)<input type="datetime-local" value={giftcodeForm.expiresAt} onChange={event => setGiftcodeForm({ ...giftcodeForm, expiresAt: event.target.value ? new Date(event.target.value).toISOString().replace(/\.\d{3}Z$/, "Z") : "" })} /></label>
                 <button disabled={busy}>{busy ? "Đang tạo…" : "Tạo mã Giftcode bảo mật"}</button>
               </form>
               {generatedGiftcode && <div className="one-time-secret">
