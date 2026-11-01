@@ -27,9 +27,9 @@ export async function handleCommand(update, env) {
     if (referralMatch) {
       try {
         await claimReferral(env, message.from.id, { code: referralMatch[1] });
-        referralNote = "\\n🎉 Đã ghi nhận mã giới thiệu " + referralMatch[1].toUpperCase() + ".";
+        referralNote = "\n🎉 Đã ghi nhận mã giới thiệu " + referralMatch[1].toUpperCase() + ".";
       } catch (error) {
-        referralNote = "\\nℹ️ Mã giới thiệu không được áp dụng: " + String(error.message || "Không hợp lệ").slice(0, 180);
+        referralNote = "\nℹ️ Mã giới thiệu không được áp dụng: " + String(error.message || "Không hợp lệ").slice(0, 180);
       }
     }
     const linkedCount = Object.values(user.linked_accounts || {}).reduce(
