@@ -106,30 +106,6 @@ export default function App() {
   const [newTicketMessage, setNewTicketMessage] = useState("");
   const [newTicketCategory, setNewTicketCategory] = useState("order");
 
-  // Admin Packaging Studio Form State
-  const [packageForm, setPackageForm] = useState({
-    title: "",
-    category: "tools",
-    price: 150000,
-    version: "1.0.0",
-    packageId: "",
-    tagline: "",
-    r2Bucket: "hendy-bot-assets",
-    r2ObjectKey: "",
-    pagesDeployUrl: "",
-    description: "",
-    tags: "cloudflare,r2,production"
-  });
-
-  // Bot Simulator State
-  const [botChatMessages, setBotChatMessages] = useState([
-    {
-      sender: "bot",
-      text: "👋 Chào mừng bạn đến với Hendy Bot Telegram — Cloudflare Edition! Bạn muốn khám phá kho ứng dụng hay quản lý ví tiền?"
-    }
-  ]);
-  const [botChatInput, setBotChatInput] = useState("");
-
   // Helper toast notice
   const showToast = (message, type = "success") => {
     setNotice({ message, type });
@@ -351,52 +327,6 @@ export default function App() {
       showToast(`🎁 Chúc mừng! Bạn nhận được ${formatVnd(data.amount)} đ vào ví.`);
       setRedeemCodeInput("");
       fetchData();
-    } catch (err) {
-      showToast(err.message, "error");
-    }
-  };
-
-  // Handle Packaging & Deploy Product to Store
-  const handlePackageAndDeploy = async (e) => {
-    e.preventDefault();
-    try {
-      const payload = {
-        title: packageForm.title,
-        category: packageForm.category,
-        price: Number(packageForm.price),
-        version: packageForm.version,
-        packageId: packageForm.packageId || `com.hendy.${Date.now()}`,
-        tagline: packageForm.tagline,
-        r2Bucket: packageForm.r2Bucket,
-        r2ObjectKey: packageForm.r2ObjectKey || `packages/${packageForm.version}/${packageForm.title.toLowerCase().replace(/\s+/g, "-")}.zip`,
-        pagesDeployUrl: packageForm.pagesDeployUrl || "https://hendy-web-user.pages.dev",
-        description: packageForm.description,
-        tags: packageForm.tags.split(",").map((s) => s.trim()).filter(Boolean)
-      };
-
-      const res = await telegramFetch("/api/admin/catalog/package-deploy", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload)
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Không thể phát hành ứng dụng.");
-      showToast(`🚀 Đã đóng gói và phát hành "${payload.title}" thành công lên App Store & Cloudflare R2!`);
-      setPackageForm({
-        title: "",
-        category: "tools",
-        price: 150000,
-        version: "1.0.0",
-        packageId: "",
-        tagline: "",
-        r2Bucket: "hendy-bot-assets",
-        r2ObjectKey: "",
-        pagesDeployUrl: "",
-        description: "",
-        tags: "cloudflare,r2,production"
-      });
-      fetchData();
-      setActiveTab("store");
     } catch (err) {
       showToast(err.message, "error");
     }
@@ -680,7 +610,7 @@ export default function App() {
               }`}
             >
               <Layers className="w-4 h-4" />
-              <span>Admin Panel & Đóng Gói R2</span>
+              <span>Quản Trị & Vận Hành</span>
             </button>
 
             <button
@@ -695,17 +625,6 @@ export default function App() {
               <span>Hỗ Trợ (Tickets Hub)</span>
             </button>
 
-            <button
-              onClick={() => setActiveTab("bot")}
-              className={`px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold flex items-center gap-2 transition-all whitespace-nowrap ${
-                activeTab === "bot"
-                  ? "bg-blue-600 text-white shadow-lg shadow-blue-500/25"
-                  : "text-slate-400 hover:text-slate-200 hover:bg-white/5"
-              }`}
-            >
-              <Bot className="w-4 h-4" />
-              <span>Giả Lập Bot Telegram</span>
-            </button>
           </nav>
 
           <button
@@ -1292,116 +1211,17 @@ export default function App() {
                 </span>
               </div>
               <div className="glass-panel p-4">
-                <span className="text-xs text-slate-400">Lưu Trữ Cloudflare R2</span>
+                <span className="text-xs text-slate-400">Lần sao lưu R2 gần nhất</span>
                 <span className="text-xl font-bold text-cyan-400 block mt-1">
-                  {adminStats?.r2Storage || "24.5 GB"}
+                  {adminStats?.lastBackupAt || "Chưa có bản sao lưu"}
                 </span>
               </div>
               <div className="glass-panel p-4">
                 <span className="text-xs text-slate-400">Truy Vấn Cloudflare D1</span>
                 <span className="text-xl font-bold text-indigo-400 block mt-1">
-                  {adminStats?.d1Queries || "14.2K req/d"}
+                  {adminStats?.d1Queries ?? "—"}
                 </span>
               </div>
-            </div>
-
-            {/* Packaging & Deploying Studio (Feature requested by user) */}
-            <div className="glass-panel p-6 border-blue-500/30">
-              <div className="flex items-center justify-between mb-4">
-                <div>
-                  <h3 className="text-lg font-bold text-white flex items-center gap-2">
-                    <Package className="w-5 h-5 text-blue-400" />
-                    <span>Studio Đóng Gói Sản Phẩm & Deploy Cloudflare R2</span>
-                  </h3>
-                  <p className="text-xs text-slate-400">
-                    Phát hành trực tiếp ứng dụng mới lên kho Hendy App Store và triển khai tới hạ tầng Pages / R2.
-                  </p>
-                </div>
-                <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-400">
-                  R2 + D1 Sync
-                </span>
-              </div>
-
-              <form onSubmit={handlePackageAndDeploy} className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="text-xs font-semibold text-slate-300 block mb-1">Tên Ứng Dụng / Tool</label>
-                  <input
-                    type="text"
-                    required
-                    value={packageForm.title}
-                    onChange={(e) => setPackageForm({ ...packageForm, title: e.target.value })}
-                    placeholder="VD: Telegram Multi-Session Sender"
-                    className="w-full px-3.5 py-2 rounded-xl bg-white/5 border border-white/10 text-sm text-white focus:outline-none focus:border-blue-500"
-                  />
-                </div>
-
-                <div>
-                  <label className="text-xs font-semibold text-slate-300 block mb-1">Danh Mục</label>
-                  <select
-                    value={packageForm.category}
-                    onChange={(e) => setPackageForm({ ...packageForm, category: e.target.value })}
-                    className="w-full px-3.5 py-2 rounded-xl bg-[#111827] border border-white/10 text-sm text-white focus:outline-none focus:border-blue-500"
-                  >
-                    <option value="tools">Công cụ & Tiện ích</option>
-                    <option value="gaming">Dịch vụ Game</option>
-                    <option value="source_code">Mã nguồn Dev</option>
-                    <option value="proxy">Proxy & Mạng</option>
-                    <option value="vip_accounts">Tài khoản VIP</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="text-xs font-semibold text-slate-300 block mb-1">Giá Bán (VNĐ, 0 = Miễn Phí)</label>
-                  <input
-                    type="number"
-                    min="0"
-                    step="10000"
-                    value={packageForm.price}
-                    onChange={(e) => setPackageForm({ ...packageForm, price: e.target.value })}
-                    className="w-full px-3.5 py-2 rounded-xl bg-white/5 border border-white/10 text-sm font-mono text-white focus:outline-none focus:border-blue-500"
-                  />
-                </div>
-
-                <div>
-                  <label className="text-xs font-semibold text-slate-300 block mb-1">Phiên Bản (SemVer)</label>
-                  <input
-                    type="text"
-                    value={packageForm.version}
-                    onChange={(e) => setPackageForm({ ...packageForm, version: e.target.value })}
-                    placeholder="1.0.0"
-                    className="w-full px-3.5 py-2 rounded-xl bg-white/5 border border-white/10 text-sm text-white focus:outline-none focus:border-blue-500"
-                  />
-                </div>
-
-                <div className="md:col-span-2">
-                  <label className="text-xs font-semibold text-slate-300 block mb-1">Khẩu Hiệu / Tagline</label>
-                  <input
-                    type="text"
-                    value={packageForm.tagline}
-                    onChange={(e) => setPackageForm({ ...packageForm, tagline: e.target.value })}
-                    placeholder="Tóm tắt ngắn gọn tính năng của gói..."
-                    className="w-full px-3.5 py-2 rounded-xl bg-white/5 border border-white/10 text-sm text-white focus:outline-none focus:border-blue-500"
-                  />
-                </div>
-
-                <div className="md:col-span-2">
-                  <label className="text-xs font-semibold text-slate-300 block mb-1">Mô Tả Chi Tiết Gói</label>
-                  <textarea
-                    rows={2}
-                    value={packageForm.description}
-                    onChange={(e) => setPackageForm({ ...packageForm, description: e.target.value })}
-                    placeholder="Mô tả kỹ thuật, hướng dẫn cài đặt trên Render hoặc Cloudflare..."
-                    className="w-full px-3.5 py-2 rounded-xl bg-white/5 border border-white/10 text-sm text-white focus:outline-none focus:border-blue-500"
-                  />
-                </div>
-
-                <div className="md:col-span-2 flex justify-end pt-2">
-                  <button type="submit" className="btn-primary">
-                    <Cloud className="w-4 h-4" />
-                    <span>Đóng Gói & Xuất Bản Lên App Store</span>
-                  </button>
-                </div>
-              </form>
             </div>
 
             {/* Dual Column: Orders Queue & Deposit Approvals */}
@@ -1734,81 +1554,6 @@ export default function App() {
           </div>
         )}
 
-        {/* ========================================================= */}
-        {/* TAB 5: TELEGRAM BOT SIMULATOR */}
-        {/* ========================================================= */}
-        {activeTab === "bot" && (
-          <div className="max-w-2xl mx-auto glass-panel p-6 space-y-4 animate-fade-in border-blue-500/30">
-            <div className="flex items-center justify-between pb-3 border-b border-white/10">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-full bg-blue-600 flex items-center justify-center text-white">
-                  <Bot className="w-5 h-5" />
-                </div>
-                <div>
-                  <h3 className="font-bold text-white text-base">Hendy Bot Telegram (Giả Lập)</h3>
-                  <p className="text-xs text-emerald-400">● Hoạt động 24/7 trên Render</p>
-                </div>
-              </div>
-              <span className="text-[11px] font-mono px-2 py-0.5 rounded bg-white/10 text-slate-300">
-                Webhook Mode
-              </span>
-            </div>
-
-            {/* Quick Command Suggestions */}
-            <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-none pb-1">
-              {["/start", "/store", "/wallet", "/admin", "/id"].map((cmd) => (
-                <button
-                  key={cmd}
-                  onClick={() => handleSendBotMessage(cmd)}
-                  className="px-3 py-1 rounded-lg bg-white/5 hover:bg-white/10 text-blue-400 text-xs font-mono font-semibold border border-white/5"
-                >
-                  {cmd}
-                </button>
-              ))}
-            </div>
-
-            {/* Chat Messages */}
-            <div className="space-y-3 min-h-[300px] max-h-[400px] overflow-y-auto p-3 rounded-xl bg-black/30 border border-white/5">
-              {botChatMessages.map((msg, i) => (
-                <div
-                  key={i}
-                  className={`flex ${msg.sender === "user" ? "justify-end" : "justify-start"}`}
-                >
-                  <div
-                    className={`max-w-[85%] p-3 rounded-2xl text-xs sm:text-sm whitespace-pre-wrap ${
-                      msg.sender === "user"
-                        ? "bg-blue-600 text-white rounded-br-none"
-                        : "bg-[#1f293d] text-slate-200 border border-white/10 rounded-bl-none"
-                    }`}
-                  >
-                    {msg.text}
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            {/* Input Bar */}
-            <form
-              onSubmit={(e) => {
-                e.preventDefault();
-                handleSendBotMessage();
-              }}
-              className="flex items-center gap-2"
-            >
-              <input
-                type="text"
-                value={botChatInput}
-                onChange={(e) => setBotChatInput(e.target.value)}
-                placeholder="Nhập lệnh hoặc tin nhắn gửi tới bot..."
-                className="flex-1 px-4 py-2.5 rounded-xl bg-white/5 border border-white/10 text-sm text-white focus:outline-none focus:border-blue-500"
-              />
-              <button type="submit" className="btn-primary">
-                <Send className="w-4 h-4" />
-                <span>Gửi</span>
-              </button>
-            </form>
-          </div>
-        )}
       </main>
 
       {/* ========================================================= */}
