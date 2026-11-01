@@ -235,6 +235,11 @@ export default {
     }
 
     if (!env.RENDER_BACKEND_URL) return json({ error: "Render backend chưa được cấu hình." }, 503);
+    if (url.pathname === "/ws") {
+      const target = new URL("/ws", env.RENDER_BACKEND_URL);
+      // Preserve the WebSocket upgrade while proxying the authenticated socket to Render.
+      return fetch(new Request(target, request));
+    }
     const target = new URL(url.pathname + url.search, env.RENDER_BACKEND_URL);
     return fetch(new Request(target, request));
   },
