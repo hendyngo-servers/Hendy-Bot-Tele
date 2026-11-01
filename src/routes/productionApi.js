@@ -363,6 +363,30 @@ router.post("/orders/:id/pay", asyncRoute(async (req, res) => {
   res.json({ success: true, order: formatOrder(updated), balance: Number(balance?.balance || 0) });
 }));
 
+
+router.post("/orders/:id/quotes/:quoteId/respond", asyncRoute(async (req, res) => {
+  const userId = String(req.telegramUser.id);
+  const order = await d1First("SELECT * FROM orders WHERE id=? AND telegram_id=?", [text(req.params.id, 100), userId]);
+  if (!order) return res.status(404).json({ error: "Không tìm thấy đơn hàng." });
+  let details = {};
+  try { details = JSON.parse(order.details_json || "{}"); } catch {}
+  const quote = details.quote;
+  if (!quote || quote.id !== text(req.params.quoteId, 100) || quote.status !== "sent") {
+    return res.status(409).json({ error: "Báo giá không tồn tại hoặc đã được xử lý." });
+  }
+  const decision = text(req.body?.decision, 20);
+  if (!["accepted", "rejected"].includes(decision)) return res.status(400).json({ error: "Phản hồi báo giá không hợp lệ." });
+  quote.status = decision;
+  quote.respondedAt = new Date().toISOString();
+  if (decision === "accepted") {
+    await executeD1Query("UPDATE orders SET amount=?,status='confirmed',details_json=?,updated_at=datetime('now') WHERE id=? AND payment_status='unpaid'", [Number(quote.amount), JSON.stringify(details), order.id]);
+  } else {
+    await executeD1Query("UPDATE orders SET details_json=?,updated_at=datetime('now') WHERE id=?", [JSON.stringify(details), order.id]);
+  }
+  const updated = await d1First("SELECT * FROM orders WHERE id=?", [order.id]);
+  res.json({ success: true, order: formatOrder(updated) });
+}));
+
 router.post("/orders/:id/status", requireAdmin, asyncRoute(async (req, res) => {
   const allowed = ["pending", "confirmed", "processing", "completed", "cancelled"];
   const status = text(req.body?.status, 30);
@@ -388,6 +412,57 @@ router.get("/vip", asyncRoute(async (req, res) => {
   const currentTier = [...tiers].reverse().find((tier) => points >= tier.minPoints) || tiers[0];
   const nextTier = tiers.find((tier) => tier.minPoints > points) || null;
   res.json({ points, currentTier, nextTier, tiers });
+}));
+
+router.get("/referral", asyncRoute(async (req, res) => {
+  await ensureUser(req.telegramUser);
+  const userId = String(req.telegramUser.id);
+  const profile = await d1First(
+    "SELECT p.referral_code,p.referred_by,p.claimed_at,u.username,u.first_name FROM referral_profiles p " +
+    "LEFT JOIN users u ON u.telegram_id=p.referred_by WHERE p.telegram_id=?",
+    [userId]
+  );
+  const counts = await d1First(
+    "SELECT (SELECT COUNT(*) FROM referral_profiles WHERE referred_by=?) AS invited_count," +
+    "(SELECT COALESCE(SUM(amount),0) FROM referral_commissions WHERE referrer_telegram_id=? AND status IN ('pending','approved','paid')) AS total_commission," +
+    "(SELECT COALESCE(SUM(amount),0) FROM referral_commissions WHERE referrer_telegram_id=? AND status='paid') AS paid_commission",
+    [userId, userId, userId]
+  );
+  const rows = await executeD1Query(
+    "SELECT id,amount,commission_rate_bps AS commissionRateBps,status,order_id AS orderId,created_at AS createdAt " +
+    "FROM referral_commissions WHERE referrer_telegram_id=? ORDER BY created_at DESC LIMIT 100",
+    [userId]
+  );
+  const botUsername = text(process.env.BOT_USERNAME, 80).replace(/^@/, "");
+  res.json({
+    code: profile?.referral_code || null,
+    inviteUrl: botUsername && profile?.referral_code ? "https://t.me/" + botUsername + "?start=ref_" + profile.referral_code : null,
+    referredBy: profile?.referred_by ? { telegramId: profile.referred_by, username: profile.username, firstName: profile.first_name } : null,
+    claimedAt: profile?.claimed_at || null,
+    invitedCount: Number(counts?.invited_count || 0),
+    totalCommission: Number(counts?.total_commission || 0),
+    paidCommission: Number(counts?.paid_commission || 0),
+    commissions: rows.results
+  });
+}));
+
+router.post("/referral/claim", asyncRoute(async (req, res) => {
+  const userId = String(req.telegramUser.id);
+  await ensureUser(req.telegramUser);
+  const code = text(req.body?.code, 80).toUpperCase();
+  if (!code) return res.status(400).json({ error: "Vui lòng nhập mã giới thiệu." });
+  const inviter = await d1First("SELECT telegram_id FROM referral_profiles WHERE referral_code=?", [code]);
+  if (!inviter) return res.status(404).json({ error: "Mã giới thiệu không tồn tại." });
+  if (String(inviter.telegram_id) === userId) return res.status(400).json({ error: "Bạn không thể tự sử dụng mã giới thiệu của mình." });
+  const inviterIsChild = await d1First("SELECT telegram_id FROM referral_profiles WHERE telegram_id=? AND referred_by=?", [String(inviter.telegram_id), userId]);
+  if (inviterIsChild) return res.status(409).json({ error: "Không thể tạo liên kết giới thiệu vòng." });
+  const updated = await d1First(
+    "UPDATE referral_profiles SET referred_by=?,claimed_at=datetime('now') WHERE telegram_id=? AND referred_by IS NULL RETURNING telegram_id",
+    [String(inviter.telegram_id), userId]
+  );
+  if (!updated) return res.status(409).json({ error: "Tài khoản đã được gắn mã giới thiệu hoặc không thể thay đổi." });
+  await writeAdminAudit(userId, "referral.claim", "referral", userId, { inviter: String(inviter.telegram_id) });
+  res.json({ success: true, message: "Đã ghi nhận mã giới thiệu." });
 }));
 
 router.get("/support/tickets", asyncRoute(async (req, res) => {
