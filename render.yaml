@@ -46,6 +46,16 @@ services:
         sync: false
       - key: R2_UPLOAD_SECRET
         sync: false
+      - key: RENDER_API_KEY
+        sync: false
+      - key: RENDER_SERVICE_ID
+        sync: false
+      - key: GITHUB_CONFIG_TOKEN
+        sync: false
+      - key: GITHUB_REPOSITORY_OWNER
+        value: hendyngo-servers
+      - key: GITHUB_REPOSITORY_NAME
+        value: Hendy-Bot-Tele
       - key: VIETQR_BANK_ID
         sync: false
       - key: VIETQR_ACCOUNT_NO
