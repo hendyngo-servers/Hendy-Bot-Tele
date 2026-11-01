@@ -340,7 +340,7 @@ export default function App() {
 
       socket.onerror = () => socket?.close();
       socket.onclose = () => {
-        setRealtimeSocket((current) => current === socket ? null : current);
+        if (!disposed) setRealtimeSocket((current) => current === socket ? null : current);
         if (pingTimer) window.clearInterval(pingTimer);
         pingTimer = null;
         if (disposed) return;
