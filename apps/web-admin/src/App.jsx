@@ -77,6 +77,7 @@ export default function App() {
   const [quoteNote, setQuoteNote] = useState("");
   const [catalog, setCatalog] = useState([]);
   const [catalogForm, setCatalogForm] = useState(emptyCatalogForm);
+  const [editingCatalogId, setEditingCatalogId] = useState(null);
   const [giftcodes, setGiftcodes] = useState([]);
   const [giftcodeForm, setGiftcodeForm] = useState({
     rewardVoucher: "100",
@@ -306,24 +307,54 @@ export default function App() {
     setError("");
     setNotice("");
     try {
-      await adminApi("/api/v1/admin/catalog", token, {
-        method: "POST",
-        body: JSON.stringify({
-          ...catalogForm,
-          unitPrice: catalogForm.unitPrice === "" ? null : Number(catalogForm.unitPrice),
-          durationDays: catalogForm.durationDays === "" ? null : Number(catalogForm.durationDays),
-          stock: catalogForm.stock === "" ? null : Number(catalogForm.stock),
-          sortOrder: Number(catalogForm.sortOrder) || 100
-        })
-      });
+      await adminApi(
+        editingCatalogId
+          ? "/api/v1/admin/catalog/" + encodeURIComponent(editingCatalogId)
+          : "/api/v1/admin/catalog",
+        token,
+        {
+          method: editingCatalogId ? "PUT" : "POST",
+          body: JSON.stringify({
+            ...catalogForm,
+            unitPrice: catalogForm.unitPrice === "" ? null : Number(catalogForm.unitPrice),
+            durationDays: catalogForm.durationDays === "" ? null : Number(catalogForm.durationDays),
+            stock: catalogForm.stock === "" ? null : Number(catalogForm.stock),
+            sortOrder: Number(catalogForm.sortOrder)
+          })
+        }
+      );
       setCatalogForm(emptyCatalogForm);
+      const wasEditing = Boolean(editingCatalogId);
+      setEditingCatalogId(null);
       await loadCatalog();
-      setNotice("Đã tạo sản phẩm/dịch vụ mới trong danh mục D1.");
+      setNotice(wasEditing ? "Đã cập nhật giá, thời hạn, mô tả và tồn kho." : "Đã tạo sản phẩm/dịch vụ mới trong danh mục D1.");
     } catch (err) {
       setError(err.message);
     } finally {
       setBusy(false);
     }
+  }
+
+  function editCatalogItem(item) {
+    setEditingCatalogId(item.id);
+    setCatalogForm({
+      module: item.module,
+      slug: item.slug,
+      title: item.title,
+      description: item.description || "",
+      unitPrice: item.unit_price === null || item.unit_price === undefined ? "" : String(item.unit_price),
+      durationDays: item.duration_days === null || item.duration_days === undefined ? "" : String(item.duration_days),
+      stock: item.stock === null || item.stock === undefined ? "" : String(item.stock),
+      sortOrder: String(item.sort_order ?? 100)
+    });
+    setError("");
+    setNotice("Đang chỉnh sửa " + item.title + ". Lưu biểu mẫu để cập nhật danh mục.");
+    document.querySelector(".catalog-editor")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
+  function cancelCatalogEdit() {
+    setEditingCatalogId(null);
+    setCatalogForm(emptyCatalogForm);
   }
 
   async function setCatalogStatus(item, active) {
@@ -678,8 +709,8 @@ export default function App() {
           </section>}
 
           {section === "catalog" && <>
-            <section className="card">
-              <div className="card-heading"><div><div className="section-kicker">SERVICE CATALOG / D1</div><h2>Thêm sản phẩm hoặc gói dịch vụ</h2></div><button className="secondary small" onClick={() => loadCatalog()}>↻ Làm mới</button></div>
+            <section className="card catalog-editor">
+              <div className="card-heading"><div><div className="section-kicker">SERVICE CATALOG / D1</div><h2>{editingCatalogId ? "Chỉnh sửa sản phẩm / gói dịch vụ" : "Thêm sản phẩm hoặc gói dịch vụ"}</h2></div><div className="transition-actions">{editingCatalogId && <button className="secondary small" type="button" onClick={cancelCatalogEdit}>Hủy sửa</button>}<button className="secondary small" type="button" onClick={() => loadCatalog()}>↻ Làm mới</button></div></div>
               <form className="management-form" onSubmit={saveCatalogItem}>
                 <label>Nhóm dịch vụ<select value={catalogForm.module} onChange={event => setCatalogForm({ ...catalogForm, module: event.target.value })}>
                   <option value="mini_game_live">Mini Game Live</option><option value="app_tool">Thuê Tool</option><option value="buy_code">Mua Code</option><option value="otp_proxy">OTP & Proxy</option><option value="vip">VIP / Kho đặc quyền</option>
@@ -691,21 +722,21 @@ export default function App() {
                 <label>Tồn kho / số lượng<input type="number" min="0" max="1000000" value={catalogForm.stock} onChange={event => setCatalogForm({ ...catalogForm, stock: event.target.value })} placeholder="Để trống nếu không giới hạn" /></label>
                 <label>Thứ tự hiển thị<input type="number" min="0" value={catalogForm.sortOrder} onChange={event => setCatalogForm({ ...catalogForm, sortOrder: event.target.value })} /></label>
                 <label className="wide">Mô tả<textarea value={catalogForm.description} onChange={event => setCatalogForm({ ...catalogForm, description: event.target.value })} rows="3" maxLength="1000" /></label>
-                <button disabled={busy}>{busy ? "Đang lưu…" : "＋ Tạo sản phẩm trong D1"}</button>
+                <button disabled={busy}>{busy ? "Đang lưu…" : editingCatalogId ? "Lưu thay đổi danh mục" : "＋ Tạo sản phẩm trong D1"}</button>
               </form>
               <p className="hint">Giá và thời hạn được đọc từ D1 phía máy chủ. Không thể dùng payload trình duyệt để thay giá. Sản phẩm cần cấu hình đúng trước khi mở bán.</p>
             </section>
             <section className="card order-queue-card">
               <div className="card-heading"><div><div className="section-kicker">PUBLISHED CATALOG</div><h2>Danh mục hiện tại ({catalog.length})</h2></div></div>
               <div className="queue-table-wrap"><table className="queue-table">
-                <thead><tr><th>NHÓM</th><th>SẢN PHẨM</th><th>GIÁ / THỜI HẠN</th><th>TỒN KHO</th><th>TRẠNG THÁI</th><th></th></tr></thead>
+                <thead><tr><th>NHÓM</th><th>SẢN PHẨM</th><th>GIÁ / THỜI HẠN</th><th>TỒN KHO</th><th>TRẠNG THÁI</th><th>THAO TÁC</th></tr></thead>
                 <tbody>{catalog.map(item => <tr key={item.id}>
                   <td>{MODULE_LABEL[item.module] || item.module}</td>
                   <td><b>{item.title}</b><small>{item.slug}</small></td>
                   <td><b>{item.unit_price === null ? "Chờ báo giá" : money(item.unit_price)}</b><small>{item.duration_days ? item.duration_days + " ngày" : "Không giới hạn thời hạn"}</small></td>
                   <td>{item.stock === null ? "Không giới hạn" : item.stock}</td>
                   <td><span className={"status-pill " + (Number(item.is_active) ? "status-completed" : "status-cancelled")}>{Number(item.is_active) ? "Đang mở" : "Đã tắt"}</span></td>
-                  <td><button className="row-action" disabled={busy} onClick={() => setCatalogStatus(item, !Number(item.is_active))}>{Number(item.is_active) ? "Ngừng bán" : "Mở bán"}</button></td>
+                  <td><div className="transition-actions"><button className="row-action" type="button" disabled={busy} onClick={() => editCatalogItem(item)}>Sửa</button><button className="row-action" type="button" disabled={busy} onClick={() => setCatalogStatus(item, !Number(item.is_active))}>{Number(item.is_active) ? "Ngừng bán" : "Mở bán"}</button></div></td>
                 </tr>)}
                 {!catalog.length && <tr><td colSpan="6" className="table-empty">Chưa có sản phẩm. Tạo sản phẩm ở biểu mẫu phía trên.</td></tr>}</tbody>
               </table></div>
