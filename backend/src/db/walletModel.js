@@ -22,14 +22,23 @@ function present(row) {
 export async function getWalletOverview(env, userId) {
   const id = parseTelegramId(userId);
   if (!id) fail("Telegram user ID không hợp lệ.");
-  const [user, rows] = await Promise.all([
+  const [user, rows, ledgerRows] = await Promise.all([
     env.DB.prepare("SELECT balance,voucher FROM users WHERE id = ?").bind(id).first(),
-    env.DB.prepare("SELECT * FROM deposit_requests WHERE user_id = ? ORDER BY created_at DESC LIMIT 50").bind(id).all()
+    env.DB.prepare("SELECT * FROM deposit_requests WHERE user_id = ? ORDER BY created_at DESC LIMIT 50").bind(id).all(),
+    env.DB.prepare("SELECT id,source_type,source_id,amount,balance_after,created_at FROM wallet_ledger WHERE user_id = ? ORDER BY created_at DESC,rowid DESC LIMIT 50").bind(id).all()
   ]);
   if (!user) fail("Không tìm thấy người dùng.", 404);
   return {
     balance: Number(user.balance || 0), voucher: Number(user.voucher || 0),
     deposits: (rows.results || []).map(present),
+    transactions: (ledgerRows.results || []).map(row => ({
+      id: row.id,
+      type: row.source_type,
+      sourceId: row.source_id,
+      amount: Number(row.amount),
+      balanceAfter: Number(row.balance_after),
+      createdAt: row.created_at
+    })),
     payment: {
       bankName: String(env.BANK_NAME || ""), bankBin: String(env.BANK_BIN || ""),
       accountNumber: String(env.BANK_ACCOUNT || ""), accountName: String(env.BANK_ACCOUNT_NAME || ""),
@@ -53,7 +62,11 @@ export async function createDepositRequest(env, userId, input, keyValue) {
   ).bind(id, key).first();
   if (existing) {
     if (Number(existing.amount) !== amount) fail("Idempotency-Key đã được dùng cho yêu cầu nạp khác.", 409);
-    return { request: present(existing), duplicate: true };
+    return {
+      request: present(existing),
+      transfer: makeTransferDetails(env, Number(existing.amount), existing.reference),
+      duplicate: true
+    };
   }
   const requestId = randomId();
   const reference = "HD" + Date.now().toString(36).toUpperCase() + crypto.randomUUID().slice(0, 6).toUpperCase();
@@ -65,7 +78,11 @@ export async function createDepositRequest(env, userId, input, keyValue) {
   ).bind(id, key).first();
   if (!saved) fail("Không thể tạo yêu cầu nạp tiền.");
   if (Number(saved.amount) !== amount) fail("Idempotency-Key đã được dùng cho yêu cầu nạp khác.", 409);
-  return { request: present(saved), duplicate: saved.id !== requestId };
+  return {
+    request: present(saved),
+    transfer: makeTransferDetails(env, Number(saved.amount), saved.reference),
+    duplicate: saved.id !== requestId
+  };
 }
 
 export async function listAdminDeposits(env, status = "pending") {
@@ -98,4 +115,27 @@ export async function reviewDepositRequest(env, requestId, admin, input) {
     fail("Không thể cập nhật trạng thái yêu cầu.");
   }
   return { request: present(saved), duplicate: Number(results?.[0]?.meta?.changes || 0) === 0 };
+}
+
+
+function makeTransferDetails(env, amount, reference) {
+  const bankBin = String(env.BANK_BIN || "").trim();
+  const accountNumber = String(env.BANK_ACCOUNT || "").trim();
+  const configured = Boolean(accountNumber && env.BANK_ACCOUNT_NAME && (bankBin || env.BANK_NAME));
+  const qrUrl = configured && bankBin
+    ? "https://img.vietqr.io/image/" + encodeURIComponent(bankBin) + "-" +
+      encodeURIComponent(accountNumber) + "-compact2.png?amount=" + amount +
+      "&addInfo=" + encodeURIComponent(reference) +
+      "&accountName=" + encodeURIComponent(String(env.BANK_ACCOUNT_NAME || ""))
+    : null;
+  return {
+    configured,
+    bankName: String(env.BANK_NAME || ""),
+    bankBin,
+    accountNumber,
+    accountName: String(env.BANK_ACCOUNT_NAME || ""),
+    amount,
+    reference,
+    qrUrl
+  };
 }
