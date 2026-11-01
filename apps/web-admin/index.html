@@ -1,1 +1,50 @@
-<!doctype html><html lang="vi"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#101522"><title>Hendy Admin Studio</title><link rel="stylesheet" href="/style.css"><script src="https://telegram.org/js/telegram-web-app.js"></script></head><body><main><header><strong>HENDY CONTROL CENTER</strong><span>Quản trị hệ thống</span></header><section class="hero"><p class="eyebrow">ADMIN • DEV STUDIO</p><h1>Trung tâm<br>điều hành Hendy</h1><p>Bảng điều khiển dành cho quản trị viên đã xác thực bằng Telegram.</p></section><section class="grid"><article><small>THÀNH VIÊN</small><b id="users">—</b></article><article><small>ĐƠN CHỜ XỬ LÝ</small><b id="orders">—</b></article><article><small>YÊU CẦU NẠP</small><b id="deposits">—</b></article></section><p id="notice">Mở trang này bên trong Telegram Mini App để xác thực.</p></main><script src="/app.js"></script></body></html>
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#101522"><title>Hendy Control Center</title>
+  <link rel="stylesheet" href="/style.css">
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <script src="/config.js"></script>
+</head>
+<body>
+<main>
+  <header><a class="brand" href="/">HENDY <span>CONTROL CENTER</span></a><span class="tag">ADMIN</span></header>
+  <section class="hero"><p class="eyebrow">OPERATIONS • ADMIN STUDIO</p><h1>Trung tâm<br><em>điều hành Hendy.</em></h1>
+    <p>Quản lý thành viên, đơn hàng, nạp tiền, danh mục dịch vụ và cấu hình vận hành.</p>
+    <p id="notice" class="notice" role="status">Đang xác thực quản trị viên…</p>
+  </section>
+  <section class="stats">
+    <article class="panel"><small>THÀNH VIÊN</small><b id="users">—</b></article>
+    <article class="panel"><small>ĐƠN CHỜ XỬ LÝ</small><b id="orders-count">—</b></article>
+    <article class="panel"><small>YÊU CẦU NẠP</small><b id="deposits-count">—</b></article>
+    <article class="panel"><small>VÉ HỖ TRỢ</small><b id="tickets-count">—</b></article>
+  </section>
+  <section class="panel"><div class="section-head"><div><small>WORKFLOW</small><h2>Đơn hàng cần xử lý</h2></div><button id="refresh" class="subtle">Làm mới</button></div><div id="order-list" class="rows"></div></section>
+  <section class="panel"><small>FINANCE</small><h2>Yêu cầu nạp tiền</h2><div id="deposit-list" class="rows"></div></section>
+  <section class="panel"><small>CATALOG</small><h2>Tạo dịch vụ mới</h2>
+    <form id="package-form" class="form-grid">
+      <label>Tên dịch vụ<input id="pkg-name" maxlength="120" required></label>
+      <label>Slug<input id="pkg-slug" maxlength="80" required placeholder="ten-dich-vu"></label>
+      <label>Danh mục<input id="pkg-category" maxlength="60" required></label>
+      <label>Giá VNĐ<input id="pkg-price" type="number" min="0" required></label>
+      <label class="wide">Mô tả<textarea id="pkg-description" maxlength="1000" rows="2"></textarea></label>
+      <button type="submit">Tạo dịch vụ</button>
+    </form><p id="package-result" class="muted"></p>
+  </section>
+  <section class="panel"><small>CONFIGURATION</small><h2>Thiết lập hiển thị</h2>
+    <form id="settings-form" class="form-grid">
+      <label>Tên hệ thống<input id="site-name" maxlength="100"></label>
+      <label>Tài khoản hỗ trợ<input id="support" maxlength="100"></label>
+      <label>Kênh tin tức<input id="news" maxlength="300"></label>
+      <label>Nhóm cộng đồng<input id="group" maxlength="300"></label>
+      <label class="wide">Thông tin chuyển khoản<textarea id="bank-info" maxlength="1500" rows="3"></textarea></label>
+      <label class="check"><input id="maintenance" type="checkbox"> Bật chế độ bảo trì</label>
+      <button type="submit">Lưu cấu hình</button>
+    </form><p id="settings-result" class="muted"></p>
+  </section>
+  <section class="panel"><small>CUSTOMER CARE</small><h2>Yêu cầu hỗ trợ</h2><div id="ticket-list" class="rows"></div></section>
+  <footer>© Hendy • Mọi thay đổi quản trị đều được ghi nhật ký.</footer>
+</main>
+<script src="/app.js"></script>
+</body></html>

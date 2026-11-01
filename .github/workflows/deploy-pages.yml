@@ -3,10 +3,14 @@ on:
   workflow_dispatch:
 permissions:
   contents: read
+concurrency:
+  group: hendy-cloudflare-pages-production
+  cancel-in-progress: false
 jobs:
   deploy:
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
         app: [web-user, web-admin]
     steps:
@@ -15,7 +19,14 @@ jobs:
         with:
           node-version: 22
       - run: npm install --no-audit --no-fund
-      - run: npx wrangler pages deploy apps/${{ matrix.app }} --project-name hendy-${{ matrix.app }}
+      - name: Check API domain configuration
+        run: |
+          if grep -q 'example.com' apps/${{ matrix.app }}/config.js; then
+            echo "Update apiBase in apps/${{ matrix.app }}/config.js before deployment."
+            exit 1
+          fi
+      - name: Deploy Pages
+        run: npx wrangler pages deploy apps/${{ matrix.app }} --project-name hendy-${{ matrix.app }} --branch main --commit-hash "${{ github.sha }}"
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}

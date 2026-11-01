@@ -1,11 +1,15 @@
 name = "hendy-edge-router"
 main = "src/index.ts"
 compatibility_date = "2026-11-01"
+workers_dev = true
+
 [[services]]
 binding = "BACKEND"
 service = "hendy-backend-api"
+
 [vars]
 USER_PAGES_ORIGIN = "https://hendy-web-user.pages.dev"
 ADMIN_PAGES_ORIGIN = "https://hendy-web-admin.pages.dev"
+
 [observability]
 enabled = true

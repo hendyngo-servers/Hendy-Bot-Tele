@@ -1,1 +1,37 @@
-<!doctype html><html lang="vi"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#101522"><title>Hendy App Store</title><link rel="stylesheet" href="/style.css"></head><body><main><header><strong>HENDY APP STORE</strong><span>Trung tâm ứng dụng</span></header><section class="hero"><p class="eyebrow">HỆ SINH THÁI HENDY</p><h1>Khám phá ứng dụng<br>và dịch vụ của bạn</h1><p>Đăng nhập qua Telegram để xem hồ sơ, số dư, dịch vụ và đơn hàng.</p><a href="https://t.me/" rel="noopener">Mở Telegram</a></section><section class="panel"><h2>Trạng thái hệ thống</h2><p id="status">Đang kiểm tra kết nối API…</p></section><footer>© Hendy • Giao diện tiếng Việt</footer></main><script src="/app.js"></script></body></html>
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#101522"><title>Hendy App Store</title>
+  <link rel="stylesheet" href="/style.css">
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <script src="/config.js"></script>
+</head>
+<body>
+<main>
+  <header><a class="brand" href="/">HENDY <span>APP STORE</span></a><span class="tag">MINI APP</span></header>
+  <section class="hero"><p class="eyebrow">HỆ SINH THÁI HENDY</p><h1>Mọi dịch vụ<br><em>trong một ứng dụng.</em></h1>
+    <p>Quản lý số dư, đặt dịch vụ, theo dõi đơn hàng và gửi yêu cầu hỗ trợ ngay trong Telegram.</p>
+    <p id="status" class="notice" role="status">Đang kết nối hệ thống…</p>
+  </section>
+  <section class="profile panel">
+    <div><small>TÀI KHOẢN</small><h2 id="member-name">Chưa đăng nhập</h2><p id="member-id">Mở Mini App từ bot Telegram để xác thực.</p></div>
+    <div class="balance"><small>SỐ DƯ</small><strong id="balance">—</strong><span>VNĐ</span></div>
+  </section>
+  <section class="panel"><div class="section-head"><div><small>HENDY MARKET</small><h2>Dịch vụ nổi bật</h2></div></div><div id="packages" class="cards"><p class="muted">Đang tải danh mục…</p></div></section>
+  <section class="columns">
+    <section class="panel"><small>NẠP TÀI KHOẢN</small><h2>Tạo yêu cầu nạp</h2>
+      <form id="deposit-form"><label for="deposit-amount">Số tiền (VNĐ)</label><input id="deposit-amount" type="number" min="10000" max="100000000" step="1000" required placeholder="Ví dụ: 50000"><button type="submit">Tạo yêu cầu nạp</button></form>
+      <p id="deposit-result" class="muted"></p>
+    </section>
+    <section class="panel"><small>HỖ TRỢ</small><h2>Gửi yêu cầu</h2>
+      <form id="ticket-form"><label for="ticket-subject">Tiêu đề</label><input id="ticket-subject" maxlength="120" required>
+        <label for="ticket-message">Nội dung</label><textarea id="ticket-message" maxlength="4000" rows="3" required></textarea><button type="submit" class="secondary">Gửi hỗ trợ</button></form>
+      <p id="ticket-result" class="muted"></p>
+    </section>
+  </section>
+  <section class="panel"><div class="section-head"><div><small>LỊCH SỬ</small><h2>Đơn hàng gần đây</h2></div><button id="refresh" class="subtle" type="button">Làm mới</button></div><div id="orders" class="rows"><p class="muted">Đăng nhập để xem đơn hàng.</p></div></section>
+  <footer>© Hendy • Giao diện tiếng Việt • Xác thực Telegram</footer>
+</main>
+<script src="/app.js"></script>
+</body></html>

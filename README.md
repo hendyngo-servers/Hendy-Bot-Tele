@@ -1,135 +1,194 @@
 # Hendy Bot Tele — Cloudflare Platform
 
-Hạ tầng đích: Cloudflare Workers + Pages + D1 + R2. Giao diện mặc định tiếng Việt.
+Nền tảng triển khai trên **Cloudflare Workers + Pages + D1 + R2**. Ngôn ngữ giao diện mặc định: tiếng Việt.
 
-## Cấu trúc
+## Thành phần
 
-- apps/web-user: Pages dành cho người dùng.
-- apps/web-admin: Pages dành cho quản trị viên.
-- workers/edge-router: định tuyến hostname và chuyển API bằng Service Binding.
-- workers/backend-api: REST API, Telegram webhook, xác thực Telegram Mini App, D1 và R2.
-- workers/self-healing: Cron health checks và cảnh báo theo rules; không tự sửa mã hoặc tự deploy.
-- packages/db-schema: D1 migrations.
-- packages/crypto: mã hóa AES-256-GCM bằng Web Crypto API.
+| Thành phần | Vai trò |
+|---|---|
+| apps/web-user | Telegram Mini App cho thành viên: hồ sơ, số dư, danh mục, tạo đơn, yêu cầu nạp, hỗ trợ |
+| apps/web-admin | Trung tâm quản trị: thống kê, duyệt nạp, xử lý đơn, tạo dịch vụ, cấu hình và phản hồi hỗ trợ |
+| workers/backend-api | API, xác thực Telegram Mini App, webhook, D1 và R2 |
+| workers/edge-router | Chuyển API qua Service Binding đến backend; các hostname khác được chuyển đến Pages tương ứng |
+| workers/self-healing | Cron kiểm tra sức khỏe 5 phút/lần và gửi cảnh báo |
+| packages/db-schema | Migration D1 có version |
+| packages/crypto | Mã hóa AES-256-GCM bằng Web Crypto API |
 
-## Trạng thái và giới hạn quan trọng
+## Chức năng đã có trong mã nguồn
 
-Nhánh main đã được chuyển sang cấu trúc Cloudflare. Các endpoint nền tảng gồm health, Telegram webhook, hồ sơ, danh mục, tổng quan admin, cấu hình admin và tải tệp riêng tư. Đây chưa phải bản parity đầy đủ với mọi nghiệp vụ cũ của bot (đơn hàng, thanh toán, giftcode, referral, ticket và quản lý tài khoản liên kết). Những nghiệp vụ đó cần được port và kiểm thử từng module trước khi nhận traffic production.
+- Xác thực Telegram Mini App bằng HMAC initData, giới hạn tuổi phiên 24 giờ và kiểm tra Telegram admin ID ở backend.
+- Webhook Telegram có kiểm tra secret_token, lưu dấu update để tránh xử lý lặp, hỗ trợ /start, /admin, /id, /help.
+- Hồ sơ thành viên, số dư, danh mục dịch vụ và lịch sử đơn hàng.
+- Tạo đơn trừ số dư có điều kiện; đơn bị từ chối/hủy sẽ được hoàn tiền trong transaction D1.
+- Tạo yêu cầu nạp tiền; admin duyệt hoặc từ chối, tránh cộng số dư lặp khi API bị gọi lại.
+- Tạo gói dịch vụ; quản lý trạng thái đơn, yêu cầu nạp và vé hỗ trợ.
+- Tài khoản liên kết được mã hóa trước khi lưu D1; API danh sách không trả ciphertext.
+- Cấu hình giao diện, thông tin chuyển khoản, chế độ bảo trì được lưu trong D1; audit log cho thao tác quan trọng.
+- API tải object R2 yêu cầu xác thực; người dùng chỉ đọc được key nằm dưới thư mục Telegram ID của mình.
+- CI kiểm tra TypeScript và chạy thử toàn bộ migration bằng SQLite trước khi deploy.
 
-Dữ liệu cũ trong database.json không tự chuyển sang D1. Giữ bản sao lưu gốc và không xóa dịch vụ/disk Render cũ cho tới khi export, nhập, đối chiếu dữ liệu và kiểm thử xong. Nếu dữ liệu nhạy cảm đã mã hóa bằng khóa cũ, cần decrypt bằng khóa cũ rồi encrypt lại bằng khóa mới trong quy trình an toàn; không log plaintext và không đổi khóa trước khi chuyển đổi xong.
+## Giới hạn nghiệp vụ cần biết
 
-## Yêu cầu
+Đây là nền tảng Cloudflare có các luồng lõi hoạt động được sau khi cấu hình tài nguyên, **không phải bản sao đầy đủ mọi chức năng của bot cũ**:
 
-- Node.js 22+
-- Tài khoản Cloudflare có Workers, Pages, D1 và R2
-- Wrangler CLI: npm install rồi npx wrangler login
-- Nên có domain riêng cho app, admin và API.
+- Yêu cầu nạp tiền hiện là quy trình thủ công: admin đối soát giao dịch ngoài hệ thống rồi bấm duyệt. Chưa tích hợp cổng thanh toán/bank webhook.
+- Đơn hàng được tạo, trừ số dư và quản trị cập nhật trạng thái; chưa tích hợp nhà cung cấp để tự động giao tool/code.
+- Chưa triển khai gift code, referral, game live tự động, thuê tool có bộ đếm hạn và nhập dữ liệu cũ từ Render/JSON.
+- R2 có luồng đọc tệp riêng tư; chưa có API upload file cho người dùng.
+- Self-healing chỉ giám sát và cảnh báo; không tự sửa mã hoặc tự phát hành phiên bản mới.
 
-## 1. Tạo D1 và R2
+Không bật nhận traffic production cho nghiệp vụ tiền thật cho tới khi hoàn tất tích hợp thanh toán, kiểm thử đối soát và quy trình vận hành.
+
+## 1. Chuẩn bị
+
+- Node.js 22 trở lên.
+- Tài khoản Cloudflare bật Workers, Pages, D1 và R2.
+- Domain đã thêm vào Cloudflare DNS (khuyến nghị ba hostname app, admin, api).
+- Từ thư mục repository, chạy:
+
+    npm install
+    npm run check
+    npm run validate:config
+    npm run test:db
+
+## 2. Tạo tài nguyên Cloudflare
+
+Đăng nhập Wrangler:
+
+    npx wrangler login
 
 Tạo D1:
 
     npx wrangler d1 create hendy-production
 
-Thay REPLACE_WITH_D1_DATABASE_ID trong workers/backend-api/wrangler.toml bằng database_id trả về.
+Sao chép database_id được trả về và thay giá trị REPLACE_WITH_D1_DATABASE_ID trong workers/backend-api/wrangler.toml. Không dùng ID của database khác account.
 
 Tạo R2:
 
     npx wrangler r2 bucket create hendy-app-files
 
-Chạy migration local:
+Tên bucket phải khớp bucket_name trong backend Wrangler config.
 
-    npx wrangler d1 migrations apply hendy-production --local --config workers/backend-api/wrangler.toml
+## 3. Tạo Pages projects và cấu hình domain API
 
-Chạy migration production chỉ sau khi xác nhận đúng account/database và có backup:
+Tạo hai Pages project:
 
-    npx wrangler d1 migrations apply hendy-production --remote --config workers/backend-api/wrangler.toml
+    npx wrangler pages project create hendy-web-user --production-branch main
+    npx wrangler pages project create hendy-web-admin --production-branch main
 
-## 2. Thiết lập secrets backend
+Cập nhật apiBase trong cả hai tệp:
+- apps/web-user/config.js
+- apps/web-admin/config.js
 
-APP_ENCRYPTION_KEY phải là base64 của đúng 32 byte ngẫu nhiên. Dùng trình tạo mật mã an toàn; không dùng mật khẩu thường.
+Ví dụ giá trị sau khi bạn sở hữu domain:
+
+    window.HENDY_CONFIG = Object.freeze({ apiBase: "https://api.ten-mien-cua-ban.vn" });
+
+Gắn custom domain trực tiếp vào Pages:
+- Pages project hendy-web-user → app.ten-mien-cua-ban.vn
+- Pages project hendy-web-admin → admin.ten-mien-cua-ban.vn
+
+Trong workers/backend-api/wrangler.toml, sửa ALLOWED_ORIGINS, TELEGRAM_WEBAPP_URL thành domain thật. Trong phần [vars], thêm:
+
+    TELEGRAM_ADMIN_WEBAPP_URL = "https://admin.ten-mien-cua-ban.vn"
+
+Trong workers/edge-router/wrangler.toml, sửa USER_PAGES_ORIGIN và ADMIN_PAGES_ORIGIN thành hai hostname .pages.dev thực tế. Worker edge-router chỉ cần được gắn route api.ten-mien-cua-ban.vn/* trong Cloudflare Dashboard → Workers & Pages → hendy-edge-router → Settings → Domains & Routes. Không gắn route API vào backend trực tiếp vì edge-router dùng Service Binding.
+
+Trong workers/self-healing/wrangler.toml, sửa HEALTH_TARGETS sang URL health thật, ví dụ https://api.ten-mien-cua-ban.vn/healthz.
+
+## 4. Secrets runtime
+
+Không đặt token hoặc khóa mã hóa trong wrangler.toml, Pages config hay GitHub source. Dùng Wrangler secrets:
 
     npx wrangler secret put TELEGRAM_BOT_TOKEN --config workers/backend-api/wrangler.toml
     npx wrangler secret put TELEGRAM_WEBHOOK_SECRET --config workers/backend-api/wrangler.toml
     npx wrangler secret put TELEGRAM_ADMIN_IDS --config workers/backend-api/wrangler.toml
     npx wrangler secret put APP_ENCRYPTION_KEY --config workers/backend-api/wrangler.toml
 
-Thiết lập TELEGRAM_WEBAPP_URL và ALLOWED_ORIGINS trong cấu hình backend sau khi tạo domain thật. Không đặt token/khóa mã hóa trong vars hoặc Pages.
-
-Self-healing:
-
     npx wrangler secret put SELF_HEALING_TOKEN --config workers/self-healing/wrangler.toml
     npx wrangler secret put ALERT_WEBHOOK_URL --config workers/self-healing/wrangler.toml
 
-## 3. Deploy Workers
+- TELEGRAM_ADMIN_IDS: một hoặc nhiều Telegram numeric ID, ngăn cách bằng dấu phẩy.
+- TELEGRAM_WEBHOOK_SECRET: chuỗi ngẫu nhiên chỉ chứa chữ/số/_/-, dùng cùng giá trị khi đăng ký Telegram webhook.
+- APP_ENCRYPTION_KEY: base64 của đúng 32 byte ngẫu nhiên. Có thể tạo bằng Node.js: node -e "console.log(require('crypto').randomBytes(32).toString('base64'))".
+- SELF_HEALING_TOKEN: token ngẫu nhiên dài; dùng để bảo vệ endpoint kiểm tra thủ công.
+- ALERT_WEBHOOK_URL: tùy chọn, URL webhook nhận cảnh báo.
 
-Sau khi đã điền D1 ID và secrets:
+**Quan trọng:** nếu đã có ciphertext được mã hóa bằng khóa cũ, phải giải mã bằng khóa cũ và mã hóa lại bằng khóa mới trước khi đổi APP_ENCRYPTION_KEY. Mất khóa cũ đồng nghĩa không giải mã được dữ liệu cũ.
+
+## 5. Đăng ký Telegram webhook
+
+Chỉ thực hiện sau khi backend deploy thành công, secrets đã được cấu hình và API domain hoạt động:
+- Webhook URL: https://api.ten-mien-cua-ban.vn/telegram/webhook
+- secret_token: đúng giá trị đã đặt cho TELEGRAM_WEBHOOK_SECRET.
+
+Dừng long polling/getUpdates trên bot cũ trước khi bật webhook. Telegram không cho chạy đồng thời hai phương thức nhận update trên cùng bot token. Đặt domain Mini App trong cấu hình Telegram BotFather. Thành viên dùng /start; admin dùng /admin.
+
+## 6. Deploy
+
+### Cách thủ công
+
+Sau khi thay D1 ID và domain thật:
+
+    npm run check
+    npm run test:db
+    npx wrangler d1 migrations apply hendy-production --remote --config workers/backend-api/wrangler.toml
 
     npm run deploy:api
     npm run deploy:router
     npm run deploy:healing
-
-Backend phải deploy trước edge router vì router dùng Service Binding tới hendy-backend-api.
-
-## 4. Tạo Pages
-
-Trong Cloudflare Dashboard → Workers & Pages → Create → Pages → Connect to Git, tạo hai project:
-
-| Project | Root directory | Build command | Output |
-|---|---|---|---|
-| hendy-web-user | apps/web-user | để trống (static) | . |
-| hendy-web-admin | apps/web-admin | để trống (static) | . |
-
-Hoặc deploy thủ công:
-
     npm run deploy:user
     npm run deploy:admin
 
-## 5. Domain và API
+Backend phải deploy trước edge-router vì router sử dụng Service Binding tới service hendy-backend-api. Pages projects cần được tạo trước lần deploy đầu tiên.
 
-- app.example.com → Pages project hendy-web-user.
-- admin.example.com → Pages project hendy-web-admin.
-- api.example.com → Worker edge-router.
-- Thay api.example.com trong apps/web-user/app.js và apps/web-admin/app.js bằng API domain thật.
-- Cập nhật ALLOWED_ORIGINS, USER_PAGES_ORIGIN và ADMIN_PAGES_ORIGIN trong wrangler.toml.
+### GitHub Actions
 
-Pages custom domains có thể trỏ trực tiếp tới Pages. Chỉ cần router cho HTML nếu thật sự muốn một điểm vào tập trung; không dùng User-Agent như cơ chế bảo mật.
+Trong repository Settings → Secrets and variables → Actions, tạo:
+- CLOUDFLARE_API_TOKEN
+- CLOUDFLARE_ACCOUNT_ID
 
-## 6. Telegram webhook
+Cloudflare API token nên cấp quyền tối thiểu cần thiết cho Workers Scripts, D1, R2 và Pages trên đúng account. Không dùng Global API Key.
 
-Sau khi API domain hoạt động và secrets đã được cấu hình, gọi Telegram Bot API setWebhook với URL https://api.example.com/telegram/webhook và secret_token trùng TELEGRAM_WEBHOOK_SECRET. Dừng long polling cũ trước khi bật webhook; không chạy getUpdates đồng thời trên cùng bot token.
+Mở tab Actions và chạy thủ công:
+- **Deploy Cloudflare Workers**: áp migration D1 rồi deploy backend, edge-router, self-healing.
+- **Deploy Cloudflare Pages**: deploy song song hai giao diện.
 
-## 7. GitHub Actions
+Workflow Workers sẽ từ chối chạy nếu còn D1 ID/domain placeholder hoặc thiếu GitHub secrets. Workflow Pages sẽ từ chối nếu apiBase còn trỏ example.com.
 
-Thêm repository secrets CLOUDFLARE_API_TOKEN và CLOUDFLARE_ACCOUNT_ID. Cấp quyền tối thiểu cần thiết cho Workers Scripts, Pages, D1 và R2. Workflow deploy được để manual dispatch cho tới khi đã provision resource và điền ID/domain; CI vẫn chạy tự động khi push/PR.
+## 7. API
 
-## 8. Phát triển
+| Method | Endpoint | Quyền |
+|---|---|---|
+| GET | /healthz | Công khai |
+| POST | /telegram/webhook | Telegram webhook secret |
+| GET | /api/v1/packages | Công khai |
+| GET | /api/v1/me | Telegram user |
+| GET | /api/v1/me/orders | Telegram user |
+| POST | /api/v1/orders | Telegram user |
+| POST | /api/v1/deposits | Telegram user |
+| GET | /api/v1/me/deposits | Telegram user |
+| POST | /api/v1/tickets | Telegram user |
+| GET | /api/v1/me/tickets | Telegram user |
+| GET/POST/DELETE | /api/v1/accounts | Telegram user |
+| GET | /api/v1/files/:key | Telegram user; kiểm tra quyền sở hữu key |
+| GET | /api/v1/admin/overview | Telegram admin |
+| GET/PUT | /api/v1/admin/settings | Telegram admin |
+| GET/PATCH | /api/v1/admin/orders | Telegram admin |
+| GET/PATCH | /api/v1/admin/deposits | Telegram admin |
+| GET | /api/v1/admin/users | Telegram admin |
+| GET/POST/PUT | /api/v1/admin/packages | Telegram admin |
+| GET/PATCH | /api/v1/admin/tickets | Telegram admin |
 
-- Backend: thêm endpoint vào workers/backend-api/src/index.ts; xác thực, validate payload, giới hạn kích thước và audit thao tác admin.
-- D1: mỗi thay đổi schema tạo migration SQL mới; không sửa migration đã chạy production.
-- R2: object key không đoán được, xác thực trước tải, giới hạn content-type/kích thước, không bật public write.
-- Crypto: dùng ciphertext có version; không đổi APP_ENCRYPTION_KEY nếu chưa re-encrypt dữ liệu cũ.
-- Pages: chỉ chứa public config; không nhúng secret.
-- Self-healing: chỉ health checks, cảnh báo và rules idempotent đã phê duyệt.
+Các endpoint cần Telegram auth nhận header X-Telegram-Init-Data. Không tự gửi user ID từ trình duyệt thay cho bước xác thực HMAC.
 
-## 9. Di trú và cutover
+## 8. Chuyển dữ liệu và cutover
 
-1. Export database.json và file QR/app cũ thành backup bất biến.
-2. Viết importer map users, appData, orders, deposits và linked accounts sang schema D1.
-3. Chuyển đổi ciphertext bằng khóa cũ rồi mã hóa bằng khóa mới; tuyệt đối không ghi log plaintext.
-4. Đối chiếu số user, tổng số dư, trạng thái giao dịch, VIP và tham chiếu file.
-5. Kiểm thử staging bằng Bot test token.
-6. Dừng long polling Render, bật webhook trên Cloudflare, theo dõi lỗi và delivery.
-7. Chỉ tắt Render sau khi toàn bộ chức năng và dữ liệu đã được xác nhận.
+1. Export và lưu backup bất biến từ Render/JSON cũ.
+2. Viết và chạy importer map user, số dư, VIP, đơn, nạp tiền, tài khoản liên kết và object files sang D1/R2.
+3. Đối chiếu số lượng bản ghi, tổng số dư, tổng giao dịch, trạng thái từng đơn và ciphertext.
+4. Kiểm thử bằng bot test và D1 staging trước production.
+5. Dừng bot long polling cũ, chuyển webhook và quan sát logs/health.
+6. Chỉ tắt Render khi dữ liệu và nghiệp vụ đã được đối chiếu đầy đủ.
 
-## API hiện có
-
-- GET /healthz
-- POST /telegram/webhook
-- GET /api/v1/me (Telegram Mini App initData)
-- GET /api/v1/packages
-- GET /api/v1/admin/overview
-- GET/PUT /api/v1/admin/settings
-- GET /api/v1/files/:key (xác thực Telegram Mini App)
-
-Đây là nền tảng Cloudflare ban đầu, chưa thay thế đầy đủ toàn bộ nghiệp vụ bot cũ.
+Không có dữ liệu Render cũ nào được tự động nhập vào D1 trong lần deploy này. Giữ dịch vụ cũ và backup cho tới khi hoàn tất đối soát.

@@ -3,6 +3,9 @@ on:
   workflow_dispatch:
 permissions:
   contents: read
+concurrency:
+  group: hendy-cloudflare-workers-production
+  cancel-in-progress: false
 jobs:
   deploy:
     runs-on: ubuntu-latest
@@ -12,7 +15,16 @@ jobs:
         with:
           node-version: 22
       - run: npm install --no-audit --no-fund
-      - name: Apply D1 migrations
+      - name: Validate production configuration
+        run: node scripts/validate-cloudflare-config.mjs --deploy
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      - name: Type check and database migration test
+        run: |
+          npm run check
+          npm run test:db
+      - name: Apply remote D1 migrations
         run: npx wrangler d1 migrations apply hendy-production --remote --config workers/backend-api/wrangler.toml
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -27,7 +39,7 @@ jobs:
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-      - name: Deploy self-healing
+      - name: Deploy self-healing worker
         run: npx wrangler deploy --config workers/self-healing/wrangler.toml
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}

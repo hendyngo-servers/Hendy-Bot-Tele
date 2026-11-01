@@ -1,1 +1,20 @@
-{"name":"hendy-bot-tele","version":"5.0.0","private":true,"type":"module","scripts":{"check":"tsc --noEmit","deploy:api":"wrangler deploy --config workers/backend-api/wrangler.toml","deploy:router":"wrangler deploy --config workers/edge-router/wrangler.toml","deploy:healing":"wrangler deploy --config workers/self-healing/wrangler.toml","deploy:user":"wrangler pages deploy apps/web-user --project-name hendy-web-user","deploy:admin":"wrangler pages deploy apps/web-admin --project-name hendy-web-admin"},"devDependencies":{"typescript":"^5.9.3","wrangler":"^4.45.0"}}
+{
+  "name": "hendy-bot-tele",
+  "version": "5.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "check": "tsc --noEmit",
+    "validate:config": "node scripts/validate-cloudflare-config.mjs",
+    "test:db": "python3 scripts/test_schema.py",
+    "deploy:api": "wrangler deploy --config workers/backend-api/wrangler.toml",
+    "deploy:router": "wrangler deploy --config workers/edge-router/wrangler.toml",
+    "deploy:healing": "wrangler deploy --config workers/self-healing/wrangler.toml",
+    "deploy:user": "wrangler pages deploy apps/web-user --project-name hendy-web-user",
+    "deploy:admin": "wrangler pages deploy apps/web-admin --project-name hendy-web-admin"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.3",
+    "wrangler": "^4.45.0"
+  }
+}
