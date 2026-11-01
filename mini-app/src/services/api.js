@@ -7,3 +7,10 @@ export function telegramFetch(resource, options = {}) {
   const url = resource.startsWith("http") ? resource : API_BASE + resource;
   return fetch(url, { ...options, headers, credentials: "omit" });
 }
+
+export function getRealtimeUrl() {
+  const base = API_BASE || window.location.origin;
+  const url = new URL("/ws", base);
+  url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
+  return url.toString();
+}
