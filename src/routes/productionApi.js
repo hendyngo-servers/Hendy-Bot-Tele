@@ -4,6 +4,10 @@ import multer from "multer";
 import { executeD1Query, d1First, getD1Health, getBotSettings, setBotSetting, writeAdminAudit } from "../services/productionD1.js";
 import { requireTelegramAuth, requireAdmin, isTelegramAdmin } from "../middlewares/telegramAuth.js";
 import { buildMainKeyboard } from "../services/telegramKeyboard.js";
+import { broadcastPublicConfigUpdate, broadcastRealtime } from "../services/adminRealtime.js";
+import { scanConfigurationLocations } from "../services/configScanner.js";
+import { getRuntimeConfigStatus, syncRuntimeConfig } from "../services/runtimeConfigSync.js";
+import { refreshTelegramMenuMessages } from "../services/telegramMenuSync.js";
 
 const router = express.Router();
 const releaseUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024, files: 1 } });
@@ -11,6 +15,46 @@ const asyncRoute = (handler) => (req, res, next) => Promise.resolve(handler(req,
 const id = () => crypto.randomUUID();
 const text = (value, max = 500) => String(value ?? "").trim().slice(0, max);
 const number = (value, fallback = 0) => Number.isSafeInteger(Number(value)) ? Number(value) : fallback;
+
+const TELEGRAM_MENU_MODULES = ["mini_game_live","app_tool","buy_code","wallet","otp_proxy","vip_tools","support","pairing","referral","giftcode"];
+
+function validateTelegramLink(value, field) {
+  const normalized = text(value, 2048);
+  if (!normalized) return "";
+  let url;
+  try { url = new URL(normalized); } catch { throw new Error(field + " phải là URL HTTPS hợp lệ."); }
+  if (url.protocol !== "https:" || !["t.me", "telegram.me"].includes(url.hostname.toLowerCase()) || url.pathname === "/") {
+    throw new Error(field + " phải là liên kết HTTPS hợp lệ thuộc t.me hoặc telegram.me.");
+  }
+  return url.toString();
+}
+
+function validateTheme(value) {
+  const defaults = { primary: "#2563eb", accent: "#22d3ee", background: "#0a0e17", panel: "#111827" };
+  if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("ui_theme phải là đối tượng màu hợp lệ.");
+  const theme = { ...defaults };
+  for (const key of Object.keys(defaults)) {
+    if (value[key] !== undefined) {
+      const color = String(value[key]);
+      if (!/^#[0-9a-f]{6}$/i.test(color)) throw new Error("Màu " + key + " phải ở dạng #RRGGBB.");
+      theme[key] = color.toLowerCase();
+    }
+  }
+  return theme;
+}
+
+function validateMenuConfig(value) {
+  if (!Array.isArray(value) || value.length > TELEGRAM_MENU_MODULES.length) throw new Error("menu_config không hợp lệ.");
+  const seen = new Set();
+  return value.map((item) => {
+    const module = text(item?.module, 40);
+    if (!TELEGRAM_MENU_MODULES.includes(module) || seen.has(module)) throw new Error("Menu có module không hợp lệ hoặc bị trùng.");
+    seen.add(module);
+    const label = text(item?.label, 48);
+    if (!label) throw new Error("Nhãn menu không được để trống.");
+    return { module, label, enabled: item?.enabled !== false };
+  });
+}
 
 function formatOrder(row) {
   if (!row) return row;
@@ -79,6 +123,7 @@ async function sendTelegram(method, payload) {
 async function handleTelegramUpdate(update) {
   const message = update.message || update.edited_message;
   const callback = update.callback_query;
+  const settings = await getBotSettings();
 
   if (callback) {
     await sendTelegram("answerCallbackQuery", { callback_query_id: callback.id });
@@ -87,7 +132,7 @@ async function handleTelegramUpdate(update) {
       await sendTelegram("sendMessage", {
         chat_id: chatId,
         text: "Vui lòng mở Mini App từ nút chức năng trong menu.",
-        reply_markup: buildMainKeyboard()
+        reply_markup: buildMainKeyboard(process.env, settings)
       });
     }
     return;
@@ -106,7 +151,6 @@ async function handleTelegramUpdate(update) {
     [telegramId, from.username || null, text(from.first_name, 100), text(from.last_name, 100), text(from.language_code || "vi", 12)]
   );
 
-  const settings = await getBotSettings();
   const admin = isTelegramAdmin(telegramId);
   if (settings.maintenance_mode && !admin) {
     if (message.chat?.id) {
@@ -138,7 +182,14 @@ async function handleTelegramUpdate(update) {
       "Chọn chức năng bạn cần ở menu bên dưới."
     ];
     if (admin) lines.push("", "Bạn có quyền quản trị. Sử dụng /admin để mở bảng điều khiển.");
-    await sendTelegram("sendMessage", { chat_id: chatId, text: lines.join("\n"), reply_markup: buildMainKeyboard() });
+    const sent = await sendTelegram("sendMessage", { chat_id: chatId, text: lines.join("\n"), reply_markup: buildMainKeyboard(process.env, settings) });
+    if (sent?.message_id) {
+      await executeD1Query(
+        "INSERT INTO telegram_menu_messages(chat_id,message_id,updated_at) VALUES(?,?,datetime('now')) " +
+        "ON CONFLICT(chat_id) DO UPDATE SET message_id=excluded.message_id,updated_at=datetime('now')",
+        [String(chatId), Number(sent.message_id)]
+      );
+    }
   } else if (command === "/help") {
     await sendTelegram("sendMessage", {
       chat_id: chatId,
@@ -240,7 +291,12 @@ router.get("/public-config", asyncRoute(async (_req, res) => {
     language: "vi",
     maintenance_mode: settings.maintenance_mode,
     maintenance_message: settings.maintenance_message,
-    support_telegram: settings.support_telegram
+    support_telegram: settings.support_telegram,
+    group_chat_url: settings.group_chat_url,
+    news_channel_url: settings.news_channel_url,
+    support_url: settings.support_url,
+    ui_theme: settings.ui_theme,
+    menu_config: settings.menu_config
   });
 }));
 
@@ -701,19 +757,101 @@ router.get("/admin/settings", requireAdmin, asyncRoute(async (_req, res) => {
 }));
 
 router.post("/admin/settings", requireAdmin, asyncRoute(async (req, res) => {
-  const allowed = ["welcome_message", "support_telegram", "language", "vietqr_bank", "vietqr_account_no", "vietqr_account_name"];
+  const allowedText = [
+    "welcome_message", "support_telegram", "language",
+    "vietqr_bank", "vietqr_account_no", "vietqr_account_name"
+  ];
+  const allowedLinks = ["group_chat_url", "news_channel_url", "support_url"];
   const updates = req.body && typeof req.body === "object" ? req.body : {};
-  for (const key of allowed) {
+  const adminId = String(req.telegramUser.id);
+
+  for (const key of allowedText) {
     if (updates[key] !== undefined) {
       const value = text(updates[key], key === "welcome_message" ? 2000 : key === "vietqr_account_name" ? 120 : 100);
-      await setBotSetting(key, value, String(req.telegramUser.id));
+      if (key === "vietqr_bank" && value && !/^[A-Z0-9_-]{2,20}$/i.test(value)) return res.status(400).json({ error: "VIETQR_BANK_ID không hợp lệ." });
+      if (key === "vietqr_account_no" && value && !/^[0-9]{4,30}$/.test(value)) return res.status(400).json({ error: "VIETQR_ACCOUNT_NO phải có 4–30 chữ số." });
+      await setBotSetting(key, value, adminId);
     }
   }
-  if (updates.maintenance_message !== undefined) {
-    await setBotSetting("maintenance_message", text(updates.maintenance_message, 1000), String(req.telegramUser.id));
+
+  for (const key of allowedLinks) {
+    if (updates[key] !== undefined) {
+      let value;
+      try { value = validateTelegramLink(updates[key], key.toUpperCase()); }
+      catch (error) { return res.status(400).json({ error: error.message }); }
+      await setBotSetting(key, value, adminId);
+    }
   }
-  await writeAdminAudit(req.telegramUser.id, "bot.settings.update", "settings", null, { keys: Object.keys(updates).filter((key) => [...allowed, "maintenance_message"].includes(key)) });
-  res.json({ success: true, settings: await getBotSettings() });
+
+  if (updates.ui_theme !== undefined) {
+    let theme;
+    try { theme = validateTheme(updates.ui_theme); }
+    catch (error) { return res.status(400).json({ error: error.message }); }
+    await setBotSetting("ui_theme", JSON.stringify(theme), adminId);
+  }
+
+  if (updates.menu_config !== undefined) {
+    let menu;
+    try { menu = validateMenuConfig(updates.menu_config); }
+    catch (error) { return res.status(400).json({ error: error.message }); }
+    await setBotSetting("menu_config", JSON.stringify(menu), adminId);
+  }
+
+  if (updates.maintenance_message !== undefined) {
+    await setBotSetting("maintenance_message", text(updates.maintenance_message, 1000), adminId);
+  }
+
+  const settings = await getBotSettings();
+  await writeAdminAudit(adminId, "bot.settings.update", "settings", null, {
+    keys: Object.keys(updates).filter((key) => [...allowedText, ...allowedLinks, "ui_theme", "menu_config", "maintenance_message"].includes(key))
+  });
+  const menuRefresh = updates.menu_config !== undefined || allowedLinks.some((key) => updates[key] !== undefined)
+    ? await refreshTelegramMenuMessages(settings)
+    : { updated: 0, failed: 0 };
+  await broadcastPublicConfigUpdate(settings);
+  broadcastRealtime("admin.settings.updated", {
+    updatedKeys: Object.keys(updates),
+    telegramMenus: menuRefresh
+  }, { adminOnly: true });
+  res.json({ success: true, settings, menuRefresh });
+}));
+
+router.get("/admin/config/registry", requireAdmin, asyncRoute(async (_req, res) => {
+  res.json(await scanConfigurationLocations());
+}));
+
+router.get("/admin/runtime-config/status", requireAdmin, asyncRoute(async (_req, res) => {
+  const rows = await executeD1Query(
+    "SELECT key,value FROM bot_settings WHERE key IN ('runtime_admin_webapp_url','runtime_allowed_origins','runtime_vite_api_base_url')"
+  );
+  const values = Object.fromEntries(rows.results.map((row) => [row.key, row.value]));
+  res.json({
+    integration: getRuntimeConfigStatus(),
+    current: {
+      adminWebappUrl: values.runtime_admin_webapp_url || process.env.ADMIN_WEBAPP_URL || "",
+      allowedOrigins: values.runtime_allowed_origins || process.env.ALLOWED_ORIGINS || "",
+      viteApiBaseUrl: values.runtime_vite_api_base_url || ""
+    }
+  });
+}));
+
+router.post("/admin/runtime-config/apply", requireAdmin, asyncRoute(async (req, res) => {
+  const input = req.body && typeof req.body === "object" ? req.body : {};
+  const result = await syncRuntimeConfig(input);
+  const adminId = String(req.telegramUser.id);
+  if (input.adminWebappUrl) await setBotSetting("runtime_admin_webapp_url", String(input.adminWebappUrl).trim(), adminId);
+  if (input.allowedOrigins) await setBotSetting("runtime_allowed_origins", String(input.allowedOrigins).trim(), adminId);
+  if (input.viteApiBaseUrl) await setBotSetting("runtime_vite_api_base_url", String(input.viteApiBaseUrl).trim(), adminId);
+  await writeAdminAudit(adminId, "runtime.config.sync", "deployment", null, {
+    keys: result.updatedKeys,
+    renderDeploy: Boolean(result.deployments.render),
+    cloudflareWorkflow: Boolean(result.deployments.cloudflareWorkflow)
+  });
+  broadcastRealtime("runtime_config.updated", {
+    updatedKeys: result.updatedKeys,
+    deployments: result.deployments
+  }, { adminOnly: true });
+  res.json(result);
 }));
 
 router.post("/admin/maintenance", requireAdmin, asyncRoute(async (req, res) => {
@@ -722,6 +860,7 @@ router.post("/admin/maintenance", requireAdmin, asyncRoute(async (req, res) => {
   await setBotSetting("maintenance_mode", enabled ? "1" : "0", String(req.telegramUser.id));
   await writeAdminAudit(req.telegramUser.id, "bot.maintenance.toggle", "settings", "maintenance_mode", { enabled });
   const settings = await getBotSettings();
+  await broadcastPublicConfigUpdate(settings);
   res.json({ success: true, maintenance_mode: settings.maintenance_mode, settings });
 }));
 
