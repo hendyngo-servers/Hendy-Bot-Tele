@@ -495,12 +495,15 @@ export async function updateOrderStatus(env, orderId, actor, input, idempotencyK
       statements.push(env.DB.prepare(
         `INSERT INTO referral_commissions
           (id,referrer_user_id,referred_user_id,order_id,amount,currency,status)
-         SELECT ?,u.referred_by,o.user_id,o.id,CAST(o.paid_amount * ? / 10000 AS INTEGER),'VND','pending'
+         SELECT ?,u.referred_by,o.user_id,o.id,
+           (CAST(o.paid_amount / 10000 AS INTEGER) * ? + CAST((o.paid_amount % 10000) * ? / 10000 AS INTEGER)),
+           'VND','pending'
            FROM orders o JOIN users u ON u.id=o.user_id
           WHERE o.id=? AND o.status='completed' AND o.payment_status='paid'
-            AND u.referred_by IS NOT NULL AND CAST(o.paid_amount * ? / 10000 AS INTEGER) > 0
+            AND u.referred_by IS NOT NULL
+            AND (CAST(o.paid_amount / 10000 AS INTEGER) * ? + CAST((o.paid_amount % 10000) * ? / 10000 AS INTEGER)) > 0
          ON CONFLICT(order_id) DO NOTHING`
-      ).bind(randomId(), commissionBps, orderId, commissionBps));
+      ).bind(randomId(), commissionBps, commissionBps, orderId, commissionBps, commissionBps));
     }
 
     const vipPointsPerUnit = Number(env.VIP_POINTS_PER_10000_VND || 0);
