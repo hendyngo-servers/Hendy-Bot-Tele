@@ -36,7 +36,7 @@ export function mainMenu(env) {
         appButton(env, "💳 NẠP TIỀN", "wallet", {}, "danger"),
         appButton(env, "🛡️ OTP & PROXY", "otp_proxy", {}, "primary")
       ],
-      [appButton(env, "🏆 KHO VIP · CÔNG CỤ ĐẶC QUYỀN", "vip", {}, "success")],
+      [appButton(env, "🏆 KHO VIP · CÔNG CỤ ĐẶC QUYỀN", "vip_tools", {}, "success")],
       [appButton(env, "💎 TRUNG TÂM KHÁCH HÀNG", "support", {}, "primary")],
       [appButton(env, "💞 HỆ THỐNG GHÉP ĐÔI", "mini_game_live", { section: "pairing" }, "danger")],
       [
