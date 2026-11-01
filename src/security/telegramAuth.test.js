@@ -29,6 +29,24 @@ describe("TelegramAuth", () => {
     assert.match(result.error, /Signature mismatch/);
   });
 
+  test("rejects expired Telegram WebApp initData", () => {
+    const stale = generateTelegramInitDataMock(dummyUser, dummyToken, {
+      auth_date: String(Math.floor(Date.now() / 1000) - 90000)
+    });
+    const result = verifyTelegramWebAppData(stale, dummyToken, { maxAgeSeconds: 3600 });
+    assert.equal(result.valid, false);
+    assert.match(result.error, /expired/);
+  });
+
+  test("rejects duplicated security parameters", () => {
+    const initData = generateTelegramInitDataMock(dummyUser, dummyToken);
+    const hash = new URLSearchParams(initData).get("hash");
+    const duplicated = initData + "&hash=" + hash;
+    const result = verifyTelegramWebAppData(duplicated, dummyToken);
+    assert.equal(result.valid, false);
+    assert.match(result.error, /duplicated hash/i);
+  });
+
   test("rejects empty or malformed strings", () => {
     assert.equal(verifyTelegramWebAppData("", dummyToken).valid, false);
     assert.equal(verifyTelegramWebAppData("foo=bar", dummyToken).valid, false);
