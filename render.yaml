@@ -34,7 +34,7 @@ services:
         sync: false
       - key: CLOUDFLARE_D1_DATABASE_ID
         sync: false
-      - key: CLOUDFLARE_API_TOKEN
+      - key: CLOUDFLARE_D1_API_TOKEN
         sync: false
       - key: BACKUP_WORKER_URL
         sync: false
