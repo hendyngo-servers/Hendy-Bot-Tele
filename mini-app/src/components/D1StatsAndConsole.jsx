@@ -1,10 +1,10 @@
 import React, { useState } from "react";
 import { telegramFetch } from "../services/api.js";
-import { Database, Play, Clock, CheckCircle2, Terminal, Code2, Server } from "lucide-react";
+import { Database, Play, Clock, Terminal, Archive, RefreshCw } from "lucide-react";
 
 const SAMPLE_QUERIES = [
   { label: "bot_settings", sql: "SELECT * FROM bot_settings;" },
-  { label: "bot_stats", sql: "SELECT * FROM bot_stats;" },
+  { label: "bot_events", sql: "SELECT * FROM bot_events ORDER BY created_at DESC LIMIT 20;" },
   { label: "users", sql: "SELECT * FROM users LIMIT 10;" },
   { label: "catalog_products", sql: "SELECT * FROM catalog_products LIMIT 5;" },
   { label: "sqlite_master", sql: "SELECT name, type FROM sqlite_master WHERE type='table';" }
@@ -14,6 +14,8 @@ export function D1StatsAndConsole({ adminStats, showToast }) {
   const [sqlInput, setSqlInput] = useState("SELECT * FROM bot_settings;");
   const [loading, setLoading] = useState(false);
   const [queryOutput, setQueryOutput] = useState(null);
+  const [backupLoading, setBackupLoading] = useState(false);
+  const [backupResult, setBackupResult] = useState(null);
 
   const handleRunQuery = async () => {
     if (!sqlInput.trim()) return;
@@ -58,10 +60,10 @@ export function D1StatsAndConsole({ adminStats, showToast }) {
         <div className="flex items-center gap-2">
           <span className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 text-xs font-semibold">
             <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-            <span>D1 {adminStats?.d1Status || "Connected"}</span>
+            <span>D1 {adminStats?.d1Status || "Chưa xác định"}</span>
           </span>
           <span className="text-xs font-mono text-cyan-300 font-semibold px-2.5 py-1 rounded-xl bg-white/5 border border-white/5">
-            {adminStats?.d1Latency || "1 ms"}
+            {adminStats?.d1Latency || "—"}
           </span>
         </div>
       </div>
@@ -71,30 +73,55 @@ export function D1StatsAndConsole({ adminStats, showToast }) {
         <div className="p-3 rounded-xl bg-white/5 border border-white/5 space-y-1">
           <span className="text-[11px] text-slate-400 block">Độ Trễ Phản Hồi (Latency)</span>
           <span className="text-base font-bold text-emerald-400 block">
-            {adminStats?.d1Latency || "1.2 ms"}
+            {adminStats?.d1Latency || "—"}
           </span>
         </div>
 
         <div className="p-3 rounded-xl bg-white/5 border border-white/5 space-y-1">
           <span className="text-[11px] text-slate-400 block">Cơ Sở Dữ Liệu D1</span>
           <span className="text-xs font-mono font-bold text-cyan-300 block truncate">
-            {adminStats?.d1Database || "d1-hendy-bot-db"}
+            {adminStats?.d1Database || "Chưa cấu hình"}
           </span>
         </div>
 
         <div className="p-3 rounded-xl bg-white/5 border border-white/5 space-y-1">
           <span className="text-[11px] text-slate-400 block">Tổng Lượng Truy Vấn D1</span>
           <span className="text-base font-bold text-white block">
-            {adminStats?.d1Queries || "14.2K req/d"}
+            {adminStats?.d1Queries ?? "—"}
           </span>
         </div>
 
         <div className="p-3 rounded-xl bg-white/5 border border-white/5 space-y-1">
           <span className="text-[11px] text-slate-400 block">Hạ Tầng Vận Hành</span>
           <span className="text-xs font-semibold text-indigo-300 block truncate">
-            {adminStats?.d1ServedBy || "Cloudflare D1"}
+            {adminStats?.d1ServedBy || "—"}
           </span>
         </div>
+      </div>
+
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-xl border border-amber-500/20 bg-amber-500/5 p-4">
+        <div>
+          <div className="flex items-center gap-2 text-sm font-semibold text-white">
+            <Archive className="w-4 h-4 text-amber-300" />
+            Sao lưu D1 sang Cloudflare R2
+          </div>
+          <p className="mt-1 text-xs text-slate-400">
+            Tạo CSV cho từng bảng và manifest; lịch tự động chạy hằng ngày lúc 02:00 UTC trên Worker.
+          </p>
+          {backupResult && (
+            <p className={`mt-2 text-xs ${backupResult.error ? "text-red-300" : "text-emerald-300"}`}>
+              {backupResult.error || `Bản sao lưu: ${backupResult.backup_id || "hoàn tất"} · ${backupResult.table_count || 0} bảng · ${backupResult.row_count || 0} dòng`}
+            </p>
+          )}
+        </div>
+        <button
+          type="button"
+          onClick={handleBackup}
+          disabled={backupLoading}
+          className="shrink-0 rounded-xl bg-amber-600 px-4 py-2 text-xs font-bold text-white hover:bg-amber-500 disabled:opacity-50"
+        >
+          {backupLoading ? <><RefreshCw className="mr-1 inline h-3.5 w-3.5 animate-spin" /> Đang sao lưu…</> : "Sao lưu ngay"}
+        </button>
       </div>
 
       {/* SQL Query Console */}
