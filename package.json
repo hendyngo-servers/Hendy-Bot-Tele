@@ -1,14 +1,18 @@
 {
   "name": "hendy-bot-tele",
-  "version": "1.0.0",
+  "version": "2.0.0",
+  "private": true,
   "type": "module",
-  "description": "Telegram Bot System integrated with Render and Cloudflare (D1, R2, Pages)",
+  "description": "Telegram Bot production service on Render with Cloudflare D1 and R2 backups",
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
-    "dev": "node src/server.js",
+    "dev": "NODE_ENV=development node src/server.js",
     "start": "node src/server.js",
-    "build": "vite build mini-app",
-    "test": "node --test src/**/*.test.js",
-    "lint": "node --check src/server.js src/controllers/botController.js src/services/userService.js src/services/appDataService.js src/services/d1Client.js src/services/settingsService.js src/services/telegramService.js src/routes/api.js"
+    "build": "vite build --config mini-app/vite.config.mjs",
+    "test": "node --test",
+    "lint": "node --check src/server.js && node --check src/routes/productionApi.js && node --check src/services/productionD1.js && node --check src/middlewares/telegramAuth.js && node --check src/security/telegramAuth.js && node --check cloudflare/worker.js"
   },
   "dependencies": {
     "cors": "^2.8.5",
