@@ -136,10 +136,18 @@ for (const gift of giftcodes) {
 }
 add("giftcode_redemptions", ["id","giftcode_id","telegram_id","reward_type","reward_value"], redemptionRows);
 
-if (app.paymentSettings) records.push({
-  table:"app_settings",columns:["setting_key","value_json","updated_by"],
-  rows:[["payment",JSON.stringify(app.paymentSettings),"migration"]]
-});
+if (app.paymentSettings) {
+  const paymentSettings = { ...app.paymentSettings };
+  if (paymentSettings.qrImagePath && !paymentSettings.qrImageKey) {
+    console.warn("QR cũ chưa được chuyển tự động từ Render: hãy tải ảnh lên R2 và đặt qrImageKey trong Admin sau khi import.");
+    delete paymentSettings.qrImagePath;
+  }
+  if (!paymentSettings.qrImageKey) paymentSettings.qrImageKey = "";
+  records.push({
+    table:"app_settings",columns:["setting_key","value_json","updated_by"],
+    rows:[["payment",JSON.stringify(paymentSettings),"migration"]]
+  });
+}
 
 const endpoint = "https://api.cloudflare.com/client/v4/accounts/" + accountId + "/d1/database/" + databaseId + "/query";
 async function query(sql, params = []) {

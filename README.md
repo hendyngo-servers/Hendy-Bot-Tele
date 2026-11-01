@@ -195,7 +195,12 @@ Script sẽ dừng nếu bảng users đã có dữ liệu. Flag --force chỉ d
 
 Nếu Render không có Persistent Disk hoặc database.json rỗng, cần tìm bản sao lưu thực tế trước khi chuyển đổi. R2 chỉ nhận file ứng dụng, không tự động nhập dữ liệu từ Render.
 
-Ảnh/tệp trong thư mục qr cũ cần upload riêng lên R2 và cập nhật key tương ứng; script JSON không thể tự lấy những file nhị phân không nằm trong database.json.
+Ảnh/tệp trong thư mục qr cũ cần upload riêng lên R2; script JSON sẽ bỏ đường dẫn file hệ thống cũ và để trống qrImageKey, không giả định file đã được di trú.
+Ví dụ upload ảnh QR PNG cũ bằng Wrangler:
+
+    npx wrangler r2 object put hendy-app-files/applications/payments/qr.png --file .\qr\payment.png --content-type image/png --remote
+
+Sau khi upload, mở Admin → Cấu hình → qrImageKey và nhập đúng key applications/payments/qr.png. API cấp URL HMAC có thời hạn 5 phút qua /public/qr/*; R2 bucket vẫn private, URL hết hạn tự động. BACKUP_SECRET backend phải được đặt trước khi sử dụng QR riêng. Nếu không cấu hình qrImageKey, hệ thống tạo QR VietQR theo BIN và số tài khoản ngân hàng.
 
 ## 8. Backup và tự giám sát
 
@@ -222,6 +227,7 @@ Workflow CI chạy typecheck, test và build hai Pages. Workflow deploy Workers/
 - tạo đơn/nạp/ticket và thao tác duyệt chạy chính xác.
 - secrets tài khoản liên kết được mã hóa, giải mã được với khóa cũ.
 - tải file lên/download R2 yêu cầu auth; không có public-write.
+- ảnh QR dùng signed URL hết hạn sau 5 phút và không mở public bucket.
 - backup xuất hiện trong R2 và thử restore vào database staging.
 - kiểm tra số lượng dữ liệu và đối soát số dư trước/sau.
 - chỉ sau khi tất cả đạt mới chuyển domain, ngừng Render, rồi mới xóa tài nguyên/secret cũ.

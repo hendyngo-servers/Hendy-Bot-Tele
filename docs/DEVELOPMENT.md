@@ -167,11 +167,10 @@ Quy tắc:
 Binding: FILES
 
 Prefix khuyến nghị:
-- applications/: package APK/EXE/DMG/ZIP.
-- qr/: ảnh thanh toán.
+- applications/: package APK/EXE/DMG/ZIP và ảnh QR.
 - backups/: snapshot database.
 
-Bucket không public-write. Với file ứng dụng, chỉ người dùng có đơn approved liên kết tới file key mới được phép tải. Đối với loại file mới, phải cập nhật allowlist content type và kiểm soát size ở Worker.
+Bucket không public-write. Ảnh QR có thể upload dưới prefix applications/payments/; sao chép object key vào trường qrImageKey trong Cấu hình thanh toán. Backend chỉ phát URL QR có chữ ký HMAC tồn tại 5 phút, kiểm tra content-type và không bật public bucket. Với file ứng dụng, chỉ người dùng có đơn approved liên kết tới file key mới được phép tải. Đối với loại file mới, phải cập nhật allowlist content type và kiểm soát size ở Worker.
 
 ## 10. Quy trình pull request và deploy
 

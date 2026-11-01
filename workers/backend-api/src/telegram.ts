@@ -540,13 +540,16 @@ async function handleAdminCommand(env: BackendEnv, chatId: string, userId: strin
     }
     const note = cleanText(noteParts.join(" ") || "Điều chỉnh số dư bằng lệnh Admin.", 200);
     const reference = "ADMIN-" + crypto.randomUUID();
-    const updated = await env.DB.prepare("UPDATE users SET balance_vnd=balance_vnd+?,updated_at=CURRENT_TIMESTAMP WHERE telegram_id=? AND balance_vnd+?>=0")
-      .bind(amount, target, amount).run();
-    if (!Number(updated.meta?.changes || 0)) {
+    const results = await env.DB.batch([
+      env.DB.prepare("UPDATE users SET balance_vnd=balance_vnd+?,updated_at=CURRENT_TIMESTAMP WHERE telegram_id=? AND balance_vnd+?>=0")
+        .bind(amount, target, amount),
+      env.DB.prepare("INSERT INTO balance_transactions (id,telegram_id,amount_vnd,reference,description) " +
+        "SELECT ?,?,?,?,? WHERE changes()>0 AND EXISTS (SELECT 1 FROM users WHERE telegram_id=?)")
+        .bind(crypto.randomUUID(), target, amount, reference, note, target)
+    ]);
+    if (!Number(results[0]?.meta?.changes || 0)) {
       await sendTelegramMessage(env, chatId, "Không tìm thấy thành viên hoặc số dư mới không hợp lệ.");
     } else {
-      await env.DB.prepare("INSERT INTO balance_transactions (id,telegram_id,amount_vnd,reference,description) VALUES (?,?,?,?,?)")
-        .bind(crypto.randomUUID(), target, amount, reference, note).run();
       await sendTelegramMessage(env, chatId, "✅ Đã cập nhật số dư " + target + " " + (amount > 0 ? "+" : "") + money(amount) + ".");
       await sendTelegramMessage(env, target, "💰 Số dư vừa được Admin điều chỉnh: " + (amount > 0 ? "+" : "") + money(amount) + ".").catch(() => undefined);
     }

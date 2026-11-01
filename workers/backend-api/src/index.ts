@@ -568,11 +568,14 @@ async function routeApi(request: Request, env: BackendEnv): Promise<Response> {
         const amount = safeInteger(body.amountVnd, -1000000000, 1000000000);
         const note = cleanText(body.note, 200);
         if (amount === null || amount === 0 || !note) return failure("Số tiền điều chỉnh hoặc lý do không hợp lệ.");
-        const result = await env.DB.prepare("UPDATE users SET balance_vnd=balance_vnd+?,updated_at=CURRENT_TIMESTAMP WHERE telegram_id=? AND balance_vnd+?>=0")
-          .bind(amount, userBalance[1], amount).run();
-        if (!Number(result.meta?.changes || 0)) return failure("Không tìm thấy thành viên hoặc số dư không đủ.", 404);
-        await env.DB.prepare("INSERT INTO balance_transactions (id,telegram_id,amount_vnd,reference,description) VALUES (?,?,?,?,?)")
-          .bind(crypto.randomUUID(), userBalance[1], amount, "ADMIN-" + crypto.randomUUID(), note).run();
+        const results = await env.DB.batch([
+          env.DB.prepare("UPDATE users SET balance_vnd=balance_vnd+?,updated_at=CURRENT_TIMESTAMP WHERE telegram_id=? AND balance_vnd+?>=0")
+            .bind(amount, userBalance[1], amount),
+          env.DB.prepare("INSERT INTO balance_transactions (id,telegram_id,amount_vnd,reference,description) " +
+            "SELECT ?,?,?,?,? WHERE changes()>0 AND EXISTS (SELECT 1 FROM users WHERE telegram_id=?)")
+            .bind(crypto.randomUUID(), userBalance[1], amount, "ADMIN-" + crypto.randomUUID(), note, userBalance[1])
+        ]);
+        if (!Number(results[0]?.meta?.changes || 0)) return failure("Không tìm thấy thành viên hoặc số dư không đủ.", 404);
         await audit(env, session.id, "user.balance.adjust", "user", userBalance[1], { amount, note });
         return success({ telegramId: userBalance[1], adjustedBy: amount });
       }
