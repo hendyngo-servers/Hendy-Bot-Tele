@@ -43,6 +43,23 @@ export function D1StatsAndConsole({ adminStats, showToast }) {
     }
   };
 
+  const handleBackup = async () => {
+    setBackupLoading(true);
+    setBackupResult(null);
+    try {
+      const response = await telegramFetch("/api/admin/backup", { method: "POST" });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || "Không thể tạo bản sao lưu.");
+      setBackupResult(result.backup || result);
+      showToast("Đã hoàn tất sao lưu D1 sang Cloudflare R2.");
+    } catch (error) {
+      setBackupResult({ error: error.message });
+      showToast(error.message, "error");
+    } finally {
+      setBackupLoading(false);
+    }
+  };
+
   return (
     <div className="glass-panel p-6 space-y-4 border-cyan-500/30">
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
