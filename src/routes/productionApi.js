@@ -660,7 +660,9 @@ router.get("/admin/stats", requireAdmin, asyncRoute(async (_req, res) => {
     "(SELECT COUNT(*) FROM deposits WHERE status='pending') AS pending_deposits," +
     "(SELECT COUNT(*) FROM support_tickets WHERE status IN ('open','pending')) AS open_tickets," +
     "(SELECT COUNT(*) FROM bot_events) AS total_updates," +
-    "(SELECT COALESCE(SUM(amount_delta),0) FROM wallet_ledger) AS ledger_net"
+    "(SELECT COALESCE(SUM(amount_delta),0) FROM wallet_ledger) AS ledger_net," +
+    "(SELECT COALESCE(-SUM(amount_delta),0) FROM wallet_ledger WHERE entry_type='order_payment') AS total_revenue," +
+    "(SELECT MAX(finished_at) FROM backup_runs WHERE status='success') AS last_backup"
   );
   const settings = await getBotSettings();
   const d1Health = await getD1Health();
@@ -677,6 +679,8 @@ router.get("/admin/stats", requireAdmin, asyncRoute(async (_req, res) => {
       }
     },
     totalUsers: Number(stats?.users || 0),
+    totalRevenue: Number(stats?.total_revenue || 0),
+    lastBackupAt: stats?.last_backup || null,
     orderStats: {
       total: Number(stats?.total_orders || 0),
       pending: Number(stats?.pending_orders || 0),
