@@ -81,24 +81,40 @@ function miniAppUrl(module = "home") {
   return url.toString();
 }
 
+function telegramLinkButton(label, rawValue) {
+  const value = text(rawValue, 2048);
+  if (!value) return null;
+  try {
+    const url = new URL(value);
+    if (url.protocol !== "https:" || !["t.me", "telegram.me"].includes(url.hostname.toLowerCase()) || url.pathname === "/") {
+      return null;
+    }
+    return { text: label, url: url.toString() };
+  } catch {
+    return null;
+  }
+}
+
 function mainKeyboard() {
   const web = (label, module) => {
     const url = miniAppUrl(module);
     return url ? { text: label, web_app: { url } } : { text: label, callback_data: "open_" + module };
   };
-  return {
-    inline_keyboard: [
-      [web("🎮 MINI GAME LIVE", "mini_game_live"), web("🧰 THUÊ TOOL", "app_tool")],
-      [web("💻 MUA CODE", "buy_code"), web("💳 NẠP TIỀN", "wallet")],
-      [web("🛡️ OTP & PROXY", "otp_proxy"), web("👑 KHO VIP", "vip_tools")],
-      [web("💎 TRUNG TÂM KHÁCH HÀNG", "support"), web("💞 GHÉP ĐÔI", "pairing")],
-      [web("🤝 GIỚI THIỆU REF", "referral"), web("🎟️ GIFTCODE", "giftcode")],
-      [
-        { text: "👥 NHÓM CHAT", url: process.env.GROUP_CHAT_URL || "https://t.me/" },
-        { text: "📢 KÊNH THÔNG BÁO", url: process.env.NEWS_CHANNEL_URL || "https://t.me/" }
-      ]
-    ]
-  };
+  const rows = [
+    [web("🎮 MINI GAME LIVE", "mini_game_live"), web("🧰 THUÊ TOOL", "app_tool")],
+    [web("💻 MUA CODE", "buy_code"), web("💳 NẠP TIỀN", "wallet")],
+    [web("🛡️ OTP & PROXY", "otp_proxy"), web("👑 KHO VIP", "vip_tools")],
+    [web("💎 TRUNG TÂM KHÁCH HÀNG", "support"), web("💞 GHÉP ĐÔI", "pairing")],
+    [web("🤝 GIỚI THIỆU REF", "referral"), web("🎟️ GIFTCODE", "giftcode")]
+  ];
+  const community = [
+    telegramLinkButton("👥 NHÓM CHAT", process.env.GROUP_CHAT_URL),
+    telegramLinkButton("📢 KÊNH THÔNG BÁO", process.env.NEWS_CHANNEL_URL)
+  ].filter(Boolean);
+  if (community.length) rows.push(community);
+  const support = telegramLinkButton("☎️ LIÊN HỆ CSKH", process.env.SUPPORT_URL);
+  if (support) rows.push([support]);
+  return { inline_keyboard: rows };
 }
 
 async function handleTelegramUpdate(update) {
