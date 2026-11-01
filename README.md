@@ -99,7 +99,7 @@ openssl rand -hex 32
 
 Lần lượt dùng cho `WEBHOOK_SECRET`, `BACKUP_TRIGGER_SECRET`, `R2_UPLOAD_SECRET`. Telegram webhook secret chỉ nên dùng ký tự chữ/số, dấu gạch dưới hoặc gạch nối; chuỗi hex ở trên đáp ứng định dạng đó.
 
-Cloudflare API Token cần quyền quản lý Worker, Pages, D1 và R2 tương ứng với account/repository triển khai. Không dùng Global API Key.
+Tách token theo nguyên tắc quyền tối thiểu: GitHub Secret `CLOUDFLARE_API_TOKEN` dùng để triển khai Worker/Pages/D1/R2; Render chỉ nhận `CLOUDFLARE_D1_API_TOKEN` với quyền đọc/ghi đúng D1 database. Không dùng Global API Key.
 
 Workflow triển khai sẽ:
 1. Kiểm tra các secrets/variables bắt buộc.
@@ -137,7 +137,7 @@ Build command đã cài cả devDependencies vì Vite là công cụ build, kể
 | `ALLOWED_ORIGINS` | Origin Pages, ví dụ `https://hendy-bot-miniapp.pages.dev`; nhiều origin phân cách bằng dấu phẩy |
 | `CLOUDFLARE_ACCOUNT_ID` | Cloudflare Account ID |
 | `CLOUDFLARE_D1_DATABASE_ID` | D1 Database ID |
-| `CLOUDFLARE_API_TOKEN` | Token có quyền D1 cần thiết |
+| `CLOUDFLARE_D1_API_TOKEN` | Token riêng cho Render; chỉ cần quyền đọc/ghi D1 database này |
 | `BACKUP_WORKER_URL` | URL gốc Worker |
 | `BACKUP_TRIGGER_SECRET` | Cùng giá trị GitHub Secret `BACKUP_TRIGGER_SECRET` |
 | `R2_UPLOAD_WORKER_URL` | URL gốc Worker |
