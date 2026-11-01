@@ -1,6 +1,7 @@
 import type { BackendEnv } from "../../../packages/shared/src/cloudflare";
 import { cleanText } from "../../../packages/shared/src/validation";
 import { encryptSecret, serializeCiphertext } from "../../../packages/crypto/src/index";
+import { createSignedQrUrl } from "./signedAssets";
 import { isAdmin, constantTimeEqual } from "./auth";
 import { upsertTelegramUser } from "./db";
 
@@ -170,11 +171,14 @@ async function createDeposit(env: BackendEnv, chatId: string, userId: string, am
   const id = crypto.randomUUID();
   await env.DB.prepare("INSERT INTO deposits (id,telegram_id,amount_vnd,reference) VALUES (?,?,?,?)")
     .bind(id, userId, amount, reference).run();
-  const qrUrl = settings.bankBin && settings.bankAccount
+  const customQrUrl = settings.qrImageKey && env.API_PUBLIC_URL && env.BACKUP_SECRET && env.BACKUP_SECRET.length >= 32
+    ? await createSignedQrUrl(env.BACKUP_SECRET, env.API_PUBLIC_URL, cleanText(settings.qrImageKey, 512), 300)
+    : null;
+  const qrUrl = customQrUrl || (settings.bankBin && settings.bankAccount
     ? "https://img.vietqr.io/image/" + encodeURIComponent(settings.bankBin) + "-" + encodeURIComponent(settings.bankAccount) +
       "-compact2.png?amount=" + amount + "&addInfo=" + encodeURIComponent(reference) +
       "&accountName=" + encodeURIComponent(settings.bankAccountName || "")
-    : null;
+    : null);
   const text = [
     "💳 <b>THÔNG TIN NẠP TIỀN</b>", "━━━━━━━━━━━━━━━━━━━━",
     "Số tiền: <b>" + money(amount) + "</b>",
