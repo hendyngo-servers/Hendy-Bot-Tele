@@ -10,6 +10,11 @@ export interface TelegramUser {
 
 const encoder = new TextEncoder();
 const toHex = (bytes: Uint8Array) => Array.from(bytes, value => value.toString(16).padStart(2, "0")).join("");
+const toArrayBuffer = (bytes: Uint8Array): ArrayBuffer => {
+  const copy = new Uint8Array(bytes.byteLength);
+  copy.set(bytes);
+  return copy.buffer;
+};
 
 export function constantTimeEqual(left: string, right: string): boolean {
   if (left.length !== right.length) return false;
@@ -49,7 +54,7 @@ export async function verifyTelegramInitData(
   );
   const secret = await hmac(secretKey, botToken);
   const dataKey = await crypto.subtle.importKey(
-    "raw", secret, { name: "HMAC", hash: "SHA-256" }, false, ["sign"]
+    "raw", toArrayBuffer(secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]
   );
   const expected = toHex(await hmac(dataKey, checkString));
   if (!constantTimeEqual(expected.toLowerCase(), suppliedHash.toLowerCase())) return null;

@@ -1,5 +1,13 @@
 import type { Fetcher } from "../../../packages/shared/src/cloudflare";
 
+interface ScheduledController {
+  cron: string;
+  scheduledTime: number;
+}
+interface ExecutionContext {
+  waitUntil(promise: Promise<unknown>): void;
+}
+
 interface Env {
   BACKEND: Fetcher;
   HEALTH_URLS: string;

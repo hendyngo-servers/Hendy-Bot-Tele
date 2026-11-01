@@ -10,6 +10,11 @@ function fromBase64(value: string): Uint8Array {
   const binary = atob(value);
   return Uint8Array.from(binary, character => character.charCodeAt(0));
 }
+function toArrayBuffer(bytes: Uint8Array): ArrayBuffer {
+  const copy = new Uint8Array(bytes.byteLength);
+  copy.set(bytes);
+  return copy.buffer;
+}
 async function deriveAesKey(secret: string): Promise<CryptoKey> {
   if (secret.length < 32) throw new Error("APP_ENCRYPTION_KEY cần tối thiểu 32 ký tự.");
   const digest = await crypto.subtle.digest("SHA-256", encoder.encode(secret));
@@ -41,7 +46,7 @@ export async function decryptSecret(payload: unknown, secret: string): Promise<s
   combined.set(data);
   combined.set(tag, data.length);
   const key = await deriveAesKey(secret);
-  const plain = await crypto.subtle.decrypt({ name: "AES-GCM", iv, tagLength: 128 }, key, combined);
+  const plain = await crypto.subtle.decrypt({ name: "AES-GCM", iv: toArrayBuffer(iv), tagLength: 128 }, key, toArrayBuffer(combined));
   return decoder.decode(plain);
 }
 
