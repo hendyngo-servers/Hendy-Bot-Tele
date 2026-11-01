@@ -91,6 +91,8 @@ Không chạy import dữ liệu cho tới khi schema remote đã được tạo
     npx wrangler secret put TELEGRAM_ADMIN_IDS --config workers/backend-api/wrangler.jsonc
     npx wrangler secret put TELEGRAM_BOT_USERNAME --config workers/backend-api/wrangler.jsonc
     npx wrangler secret put WEB_APP_URL --config workers/backend-api/wrangler.jsonc
+    npx wrangler secret put WEB_USER_URL --config workers/backend-api/wrangler.jsonc
+    npx wrangler secret put WEB_ADMIN_URL --config workers/backend-api/wrangler.jsonc
     npx wrangler secret put APP_ENCRYPTION_KEY --config workers/backend-api/wrangler.jsonc
     npx wrangler secret put BACKUP_SECRET --config workers/backend-api/wrangler.jsonc
 

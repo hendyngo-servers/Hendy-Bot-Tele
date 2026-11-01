@@ -37,6 +37,10 @@ export interface BackendEnv {
   TELEGRAM_ADMIN_IDS: string;
   TELEGRAM_BOT_USERNAME: string;
   WEB_APP_URL: string;
+  WEB_USER_URL?: string;
+  WEB_ADMIN_URL?: string;
+  WEB_USER_URL?: string;
+  WEB_ADMIN_URL?: string;
   APP_ENCRYPTION_KEY: string;
   BACKUP_SECRET: string;
   ALLOWED_ORIGINS: string;

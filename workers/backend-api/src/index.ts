@@ -508,10 +508,21 @@ async function routeApi(request: Request, env: BackendEnv): Promise<Response> {
         const body = await bodyJson(request);
         const status = ["open","answered","closed"].includes(body.status) ? body.status : "answered";
         const reply = cleanText(body.reply || "", 2000);
+        const ticket = await env.DB.prepare("SELECT telegram_id FROM tickets WHERE id=?")
+          .bind(ticketAction[1]).first<{ telegram_id: string }>();
+        if (!ticket) return failure("Không tìm thấy yêu cầu hỗ trợ.", 404);
         const result = await env.DB.prepare("UPDATE tickets SET status=?,reply=?,updated_at=CURRENT_TIMESTAMP WHERE id=?")
           .bind(status, reply, ticketAction[1]).run();
-        if (!Number(result.meta?.changes || 0)) return failure("Không tìm thấy yêu cầu hỗ trợ.", 404);
+        if (!Number(result.meta?.changes || 0)) return failure("Yêu cầu hỗ trợ không được cập nhật.", 409);
         await audit(env, session.id, "ticket.update", "ticket", ticketAction[1], { status });
+        if (reply) {
+          const safeReply = reply.replace(/[&<>"']/g, character => ({
+            "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;", "'": "&#39;"
+          }[character] || character));
+          await sendTelegramMessage(env, ticket.telegram_id,
+            "🧑‍💻 <b>PHẢN HỒI HỖ TRỢ HENDY</b>\nMã ticket: <code>" + ticketAction[1] +
+            "</code>\n\n" + safeReply).catch(error => console.warn("Ticket notification failed", error instanceof Error ? error.message : "unknown"));
+        }
         return success({ id: ticketAction[1], status });
       }
       if (path === "/api/v1/admin/users" && method === "GET") {
