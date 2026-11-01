@@ -1,0 +1,24 @@
+name = "hendy-bot-backend"
+main = "src/index.js"
+compatibility_date = "2026-11-01"
+workers_dev = true
+minify = true
+
+[vars]
+ENVIRONMENT = "production"
+WEBAPP_URL = "https://hendy-web-user.pages.dev"
+ALLOWED_ORIGINS = "https://hendy-web-user.pages.dev,https://hendy-web-admin.pages.dev"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "hendy_bot_db"
+database_id = "REPLACE_WITH_D1_DATABASE_ID"
+migrations_dir = "../packages/db-schema/migrations"
+
+[[r2_buckets]]
+binding = "STORAGE"
+bucket_name = "hendy-bot-assets"
+
+[[kv_namespaces]]
+binding = "RATE_LIMITER"
+id = "REPLACE_WITH_KV_NAMESPACE_ID"
