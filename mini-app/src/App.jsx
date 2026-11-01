@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from "react";
+import { telegramFetch } from "./services/api.js";
 import {
   ShoppingBag,
   Wallet,
@@ -151,7 +152,7 @@ export default function App() {
     setLoading(true);
     try {
       // Catalog
-      const catRes = await fetch("/api/catalog").catch(() => null);
+      const catRes = await telegramFetch("/api/catalog").catch(() => null);
       if (catRes && catRes.ok) {
         const catData = await catRes.json();
         const items = (catData.items || []).map((item) => {
@@ -167,68 +168,68 @@ export default function App() {
       }
 
       // Member Home & Wallet
-      const homeRes = await fetch("/api/home").catch(() => null);
+      const homeRes = await telegramFetch("/api/home").catch(() => null);
       if (homeRes && homeRes.ok) {
         const homeData = await homeRes.json();
         setUserProfile(homeData.user);
       }
 
-      const walletRes = await fetch("/api/wallet").catch(() => null);
+      const walletRes = await telegramFetch("/api/wallet").catch(() => null);
       if (walletRes && walletRes.ok) {
         const walletData = await walletRes.json();
         setWallet(walletData);
       }
 
-      const ordersRes = await fetch("/api/orders").catch(() => null);
+      const ordersRes = await telegramFetch("/api/orders").catch(() => null);
       if (ordersRes && ordersRes.ok) {
         const ordersData = await ordersRes.json();
         setOrders(ordersData.orders || []);
       }
 
-      const vipRes = await fetch("/api/vip").catch(() => null);
+      const vipRes = await telegramFetch("/api/vip").catch(() => null);
       if (vipRes && vipRes.ok) {
         const vipData = await vipRes.json();
         setVipProfile(vipData);
       }
 
-      const ticketRes = await fetch("/api/support/tickets").catch(() => null);
+      const ticketRes = await telegramFetch("/api/support/tickets").catch(() => null);
       if (ticketRes && ticketRes.ok) {
         const tData = await ticketRes.json();
         setTickets(tData.tickets || []);
       }
 
       // Admin Data
-      const admOrdersRes = await fetch("/api/admin/orders").catch(() => null);
+      const admOrdersRes = await telegramFetch("/api/admin/orders").catch(() => null);
       if (admOrdersRes && admOrdersRes.ok) {
         const oData = await admOrdersRes.json();
         setAdminOrders(oData.orders || []);
       }
 
-      const admDepRes = await fetch("/api/deposits").catch(() => null);
+      const admDepRes = await telegramFetch("/api/deposits").catch(() => null);
       if (admDepRes && admDepRes.ok) {
         const dData = await admDepRes.json();
         setAdminDeposits(dData.deposits || []);
       }
 
-      const admGiftRes = await fetch("/api/giftcodes").catch(() => null);
+      const admGiftRes = await telegramFetch("/api/giftcodes").catch(() => null);
       if (admGiftRes && admGiftRes.ok) {
         const gData = await admGiftRes.json();
         setAdminGiftcodes(gData.giftcodes || []);
       }
 
-      const statsRes = await fetch("/api/admin/stats").catch(() => null);
+      const statsRes = await telegramFetch("/api/admin/stats").catch(() => null);
       if (statsRes && statsRes.ok) {
         const sData = await statsRes.json();
         setAdminStats(sData);
       }
 
-      const settingsRes = await fetch("/api/admin/settings").catch(() => null);
+      const settingsRes = await telegramFetch("/api/admin/settings").catch(() => null);
       if (settingsRes && settingsRes.ok) {
         const settsData = await settingsRes.json();
         setBotSettings(settsData.settings);
       }
 
-      const webhookRes = await fetch("/api/admin/telegram/webhook-info").catch(() => null);
+      const webhookRes = await telegramFetch("/api/admin/telegram/webhook-info").catch(() => null);
       if (webhookRes && webhookRes.ok) {
         const wData = await webhookRes.json();
         setWebhookInfo(wData.webhookInfo?.result || wData.webhookInfo);
@@ -242,6 +243,24 @@ export default function App() {
 
   useEffect(() => {
     fetchData();
+  }, []);
+
+  // Làm mới số liệu quản trị từ Cloudflare D1 định kỳ, không sử dụng số liệu mẫu.
+  useEffect(() => {
+    if (!window.Telegram?.WebApp?.initData) return undefined;
+    let disposed = false;
+    const refreshStats = async () => {
+      try {
+        const response = await telegramFetch("/api/admin/stats");
+        if (!response.ok) return;
+        const data = await response.json();
+        if (!disposed) setAdminStats(data);
+      } catch (error) {
+        console.warn("Không thể cập nhật thống kê D1:", error.message);
+      }
+    };
+    const timer = window.setInterval(refreshStats, 15000);
+    return () => { disposed = true; window.clearInterval(timer); };
   }, []);
 
   // Filtered Catalog
@@ -268,7 +287,7 @@ export default function App() {
   // Handle Quick Deposit
   const handleCreateDeposit = async () => {
     try {
-      const res = await fetch("/api/deposits", {
+      const res = await telegramFetch("/api/deposits", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ amountVnd: depositAmount })
@@ -288,7 +307,7 @@ export default function App() {
     if (!product) return;
     const finalAmount = Number(product.price ?? product.unit_price ?? 0);
     try {
-      const res = await fetch("/api/orders", {
+      const res = await telegramFetch("/api/orders", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -303,7 +322,7 @@ export default function App() {
 
       // Direct pay if balance sufficient
       const orderId = data.order.id;
-      const payRes = await fetch(`/api/orders/${orderId}/pay`, { method: "POST" });
+      const payRes = await telegramFetch(`/api/orders/${orderId}/pay`, { method: "POST" });
       const payData = await payRes.json();
       if (payRes.ok) {
         showToast(`🎉 Thanh toán thành công! Mã đơn: ${orderId}. Mã truy cập: ${payData.accessKey || "HENDY-R2-KEY"}`);
@@ -322,7 +341,7 @@ export default function App() {
     e.preventDefault();
     if (!redeemCodeInput.trim()) return;
     try {
-      const res = await fetch("/api/giftcodes/redeem", {
+      const res = await telegramFetch("/api/giftcodes/redeem", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ code: redeemCodeInput.trim() })
@@ -355,7 +374,7 @@ export default function App() {
         tags: packageForm.tags.split(",").map((s) => s.trim()).filter(Boolean)
       };
 
-      const res = await fetch("/api/admin/catalog/package-deploy", {
+      const res = await telegramFetch("/api/admin/catalog/package-deploy", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload)
@@ -386,7 +405,7 @@ export default function App() {
   // Handle Admin Deposit Review
   const handleReviewDeposit = async (id, decision) => {
     try {
-      const res = await fetch(`/api/deposits/${id}/review`, {
+      const res = await telegramFetch(`/api/deposits/${id}/review`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ decision })
@@ -403,7 +422,7 @@ export default function App() {
   // Handle Admin Order Status
   const handleUpdateOrderStatus = async (orderId, status) => {
     try {
-      const res = await fetch(`/api/orders/${orderId}/status`, {
+      const res = await telegramFetch(`/api/orders/${orderId}/status`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status })
@@ -419,7 +438,7 @@ export default function App() {
   // Handle Maintenance Mode Toggle & Settings
   const handleToggleMaintenance = async (enabled, customMsg) => {
     try {
-      const res = await fetch("/api/admin/maintenance", {
+      const res = await telegramFetch("/api/admin/maintenance", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ enabled, message: customMsg })
@@ -441,7 +460,7 @@ export default function App() {
 
   const handleUpdateMaintenanceMessage = async (customMsg) => {
     try {
-      const res = await fetch("/api/admin/maintenance", {
+      const res = await telegramFetch("/api/admin/maintenance", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ enabled: botSettings?.maintenance_mode, message: customMsg })
@@ -457,7 +476,7 @@ export default function App() {
   };
 
   const handleSaveBotSettings = async (formData) => {
-    const res = await fetch("/api/admin/settings", {
+    const res = await telegramFetch("/api/admin/settings", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(formData)
@@ -471,7 +490,7 @@ export default function App() {
   const handleReplyTicket = async (ticketId) => {
     if (!ticketReplyMessage.trim()) return;
     try {
-      const res = await fetch(`/api/support/tickets/${ticketId}/reply`, {
+      const res = await telegramFetch(`/api/support/tickets/${ticketId}/reply`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ message: ticketReplyMessage.trim(), sender: "support" })
@@ -494,7 +513,7 @@ export default function App() {
     e.preventDefault();
     if (!newTicketSubject.trim() || !newTicketMessage.trim()) return;
     try {
-      const res = await fetch("/api/support/tickets", {
+      const res = await telegramFetch("/api/support/tickets", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -1532,7 +1551,7 @@ export default function App() {
                     const amount = Number(prompt("Nhập số tiền VNĐ tặng:", "50000"));
                     if (!amount || isNaN(amount)) return;
                     try {
-                      const res = await fetch("/api/giftcodes", {
+                      const res = await telegramFetch("/api/giftcodes", {
                         method: "POST",
                         headers: { "Content-Type": "application/json" },
                         body: JSON.stringify({ codePrefix: code, amountVnd: amount, maxUses: 10 })
