@@ -8,7 +8,7 @@
     "start": "node src/server.js",
     "build": "vite build mini-app",
     "test": "node --test src/**/*.test.js",
-    "lint": "node --check src/server.js src/controllers/botController.js src/services/userService.js src/services/appDataService.js src/routes/api.js"
+    "lint": "node --check src/server.js src/controllers/botController.js src/services/userService.js src/services/appDataService.js src/services/d1Client.js src/services/settingsService.js src/services/telegramService.js src/routes/api.js"
   },
   "dependencies": {
     "cors": "^2.8.5",

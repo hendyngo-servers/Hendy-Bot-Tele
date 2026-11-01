@@ -39,6 +39,10 @@ import {
   History,
   FileText
 } from "lucide-react";
+import { MaintenanceBanner } from "./components/MaintenanceBanner.jsx";
+import { TelegramWebhookManager } from "./components/TelegramWebhookManager.jsx";
+import { D1StatsAndConsole } from "./components/D1StatsAndConsole.jsx";
+import { BotSettingsCard } from "./components/BotSettingsCard.jsx";
 
 // Safe numeric and currency formatting helpers
 export const formatVnd = (value) => {
@@ -84,6 +88,8 @@ export default function App() {
   const [adminDeposits, setAdminDeposits] = useState([]);
   const [adminGiftcodes, setAdminGiftcodes] = useState([]);
   const [adminStats, setAdminStats] = useState(null);
+  const [botSettings, setBotSettings] = useState(null);
+  const [webhookInfo, setWebhookInfo] = useState(null);
   const [loading, setLoading] = useState(true);
   const [notice, setNotice] = useState(null);
 
@@ -214,6 +220,18 @@ export default function App() {
       if (statsRes && statsRes.ok) {
         const sData = await statsRes.json();
         setAdminStats(sData);
+      }
+
+      const settingsRes = await fetch("/api/admin/settings").catch(() => null);
+      if (settingsRes && settingsRes.ok) {
+        const settsData = await settingsRes.json();
+        setBotSettings(settsData.settings);
+      }
+
+      const webhookRes = await fetch("/api/admin/telegram/webhook-info").catch(() => null);
+      if (webhookRes && webhookRes.ok) {
+        const wData = await webhookRes.json();
+        setWebhookInfo(wData.webhookInfo?.result || wData.webhookInfo);
       }
     } catch (err) {
       console.error("fetchData error:", err);
@@ -396,6 +414,57 @@ export default function App() {
     } catch (err) {
       showToast(err.message, "error");
     }
+  };
+
+  // Handle Maintenance Mode Toggle & Settings
+  const handleToggleMaintenance = async (enabled, customMsg) => {
+    try {
+      const res = await fetch("/api/admin/maintenance", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ enabled, message: customMsg })
+      });
+      const data = await res.json();
+      if (data.success) {
+        setBotSettings(data.settings);
+        showToast(
+          data.maintenance_mode
+            ? "Đã kích hoạt Chế Độ Bảo Trì!"
+            : "Đã tắt Chế Độ Bảo Trì! Hệ thống bot đã hoạt động bình thường."
+        );
+        fetchData();
+      }
+    } catch (err) {
+      showToast(err.message, "error");
+    }
+  };
+
+  const handleUpdateMaintenanceMessage = async (customMsg) => {
+    try {
+      const res = await fetch("/api/admin/maintenance", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ enabled: botSettings?.maintenance_mode, message: customMsg })
+      });
+      const data = await res.json();
+      if (data.success) {
+        setBotSettings(data.settings);
+        showToast("Đã cập nhật thông điệp bảo trì!");
+      }
+    } catch (err) {
+      showToast(err.message, "error");
+    }
+  };
+
+  const handleSaveBotSettings = async (formData) => {
+    const res = await fetch("/api/admin/settings", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(formData)
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || "Không thể lưu cài đặt");
+    setBotSettings(data.settings);
   };
 
   // Handle Support Ticket Reply
@@ -633,7 +702,16 @@ export default function App() {
       </div>
 
       {/* MAIN CONTENT CONTAINER */}
-      <main className="flex-1 max-w-7xl w-full mx-auto p-4 lg:p-8">
+      <main className="flex-1 max-w-7xl w-full mx-auto p-4 lg:p-8 space-y-6">
+        {/* Global Maintenance Banner when active */}
+        {activeTab !== "admin" && botSettings?.maintenance_mode && (
+          <MaintenanceBanner
+            isMaintenance={true}
+            message={botSettings.maintenance_message}
+            isAdmin={false}
+          />
+        )}
+
         {/* ========================================================= */}
         {/* TAB 1: STORE UI (Google Play / App Store Inspired) */}
         {/* ========================================================= */}
@@ -1154,10 +1232,32 @@ export default function App() {
         )}
 
         {/* ========================================================= */}
-        {/* TAB 3: ADMIN PANEL (Order Queue, Deposits, Packaging R2) */}
+        {/* TAB 3: ADMIN PANEL (Order Queue, Deposits, Packaging R2, Cloudflare D1) */}
         {/* ========================================================= */}
         {activeTab === "admin" && (
           <div className="space-y-6 animate-fade-in">
+            {/* Interactive Maintenance Mode Control Banner */}
+            <MaintenanceBanner
+              isMaintenance={botSettings?.maintenance_mode}
+              message={botSettings?.maintenance_message}
+              onToggle={handleToggleMaintenance}
+              onUpdateMessage={handleUpdateMaintenanceMessage}
+              isAdmin={true}
+            />
+
+            {/* Real-time Cloudflare D1 Statistics & Interactive SQL Console */}
+            <D1StatsAndConsole
+              adminStats={adminStats}
+              showToast={showToast}
+            />
+
+            {/* Telegram Webhook & Render Service Manager */}
+            <TelegramWebhookManager
+              webhookInfo={webhookInfo}
+              onRefresh={fetchData}
+              showToast={showToast}
+            />
+
             {/* Admin Stats Strip */}
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
               <div className="glass-panel p-4">
@@ -1468,6 +1568,13 @@ export default function App() {
                 ))}
               </div>
             </div>
+
+            {/* Bot System Settings & VietQR Configuration (Stored in Cloudflare D1) */}
+            <BotSettingsCard
+              settings={botSettings}
+              onSaveSettings={handleSaveBotSettings}
+              showToast={showToast}
+            />
           </div>
         )}
 

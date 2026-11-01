@@ -1,0 +1,19 @@
+name = "hendy-bot-tele-edge"
+main = "cloudflare/worker.js"
+compatibility_date = "2024-11-01"
+compatibility_flags = ["nodejs_compat"]
+
+# Cloudflare D1 Database Binding
+[[d1_databases]]
+binding = "DB"
+database_name = "d1-hendy-bot-db"
+database_id = "d1-hendy-bot-db"
+
+# Cloudflare R2 Object Storage Binding
+[[r2_buckets]]
+binding = "BUCKET"
+bucket_name = "hendy-bot-assets"
+
+[vars]
+RENDER_BACKEND_URL = "https://hendy-bot-tele.onrender.com"
+ENVIRONMENT = "production"

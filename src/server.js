@@ -20,11 +20,12 @@ app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Health Check
-app.get("/healthz", (req, res) => {
+// Health Checks for Render & Cloudflare Monitors
+app.get(["/health", "/healthz"], (req, res) => {
   res.json({
     status: "ok",
     environment: process.env.NODE_ENV || "development",
+    service: "Hendy Bot Tele Web Service",
     timestamp: new Date().toISOString()
   });
 });

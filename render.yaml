@@ -1,10 +1,12 @@
 services:
   - type: web
-    name: hendy-bot-tele-backend
+    name: hendy-bot-tele
     env: node
     plan: starter
     buildCommand: npm install && npm run build
     startCommand: npm start
+    healthCheckPath: /health
+    autoDeploy: true
     envVars:
       - key: NODE_VERSION
         value: 24.22.1
@@ -16,11 +18,23 @@ services:
         generateValue: true
       - key: ENCRYPTION_KEY
         generateValue: true
+      - key: BASE_URL
+        value: https://hendy-bot-tele.onrender.com
+      - key: CLOUDFLARE_ACCOUNT_ID
+        sync: false
+      - key: CLOUDFLARE_API_TOKEN
+        sync: false
       - key: CLOUDFLARE_D1_DATABASE_ID
-        sync: false
+        value: d1-hendy-bot-db
       - key: CLOUDFLARE_R2_BUCKET
-        sync: false
+        value: hendy-bot-assets
       - key: CLOUDFLARE_PAGES_URL
-        sync: false
+        value: https://hendy-web-user.pages.dev
       - key: TELEGRAM_BOT_MODE
         value: webhook
+      - key: VIETQR_BANK_ID
+        value: MB
+      - key: VIETQR_ACCOUNT_NO
+        value: "0988776655"
+      - key: VIETQR_ACCOUNT_NAME
+        value: "HENDY STUDIO CO"
