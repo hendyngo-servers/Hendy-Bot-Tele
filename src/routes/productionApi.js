@@ -242,6 +242,11 @@ router.get("/public-config", asyncRoute(async (_req, res) => {
   });
 }));
 
+router.get("/releases", asyncRoute(async (_req, res) => {
+  const rows = await executeD1Query("SELECT id,title,version,platform,download_url AS downloadUrl,notes,created_at FROM app_releases WHERE is_active=1 ORDER BY created_at DESC LIMIT 100");
+  res.json({ releases: rows.results });
+}));
+
 router.use(requireTelegramAuth);
 
 router.get("/home", asyncRoute(async (req, res) => {
@@ -490,6 +495,16 @@ router.get("/admin/stats", requireAdmin, asyncRoute(async (_req, res) => {
   const d1Health = await getD1Health();
   res.json({
     ...stats,
+    stats: {
+      users: Number(stats?.users || 0),
+      releases: 0,
+      orderStats: {
+        total: Number(stats?.total_orders || 0),
+        pending: Number(stats?.pending_orders || 0),
+        processing: Number(stats?.processing_orders || 0),
+        completed: Number(stats?.completed_orders || 0)
+      }
+    },
     totalUsers: Number(stats?.users || 0),
     orderStats: {
       total: Number(stats?.total_orders || 0),
@@ -631,7 +646,7 @@ router.get("/admin/telegram/webhook-info", requireAdmin, asyncRoute(async (_req,
 }));
 
 router.post("/admin/telegram/set-webhook", requireAdmin, asyncRoute(async (req, res) => {
-  const base = process.env.BASE_URL;
+  const base = process.env.BASE_URL || process.env.RENDER_EXTERNAL_URL;
   const token = process.env.BOT_TOKEN;
   const secret = process.env.WEBHOOK_SECRET;
   if (!base || !token || !secret) return res.status(503).json({ error: "Thiếu BASE_URL, BOT_TOKEN hoặc WEBHOOK_SECRET." });
@@ -682,10 +697,7 @@ router.post("/admin/catalog/package-deploy", requireAdmin, async (_req, res) => 
 });
 
 // Compatibility endpoints for the separately hosted admin and user frontends.
-router.get("/releases", asyncRoute(async (_req, res) => {
-  const rows = await executeD1Query("SELECT id,title,version,platform,download_url AS downloadUrl,notes,created_at FROM app_releases WHERE is_active=1 ORDER BY created_at DESC LIMIT 100");
-  res.json({ releases: rows.results });
-}));
+
 
 router.get("/links", asyncRoute(async (req, res) => {
   const rows = await executeD1Query("SELECT id,brand,account_label AS tk FROM user_links WHERE telegram_id=? ORDER BY created_at DESC", [String(req.telegramUser.id)]);
