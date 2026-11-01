@@ -15,6 +15,7 @@ const BACKUP_TABLES = [
   "app_releases",
   "admin_audit_logs",
   "backup_runs",
+  "telegram_menu_messages",
   "referral_profiles",
   "referral_commissions",
   "voucher_ledger"
