@@ -12,7 +12,7 @@
     "start": "node src/server.js",
     "build": "vite build --config mini-app/vite.config.mjs",
     "test": "node --test",
-    "lint": "node --check src/server.js && node --check src/routes/productionApi.js && node --check src/services/productionD1.js && node --check src/middlewares/telegramAuth.js && node --check src/security/telegramAuth.js && node --check src/services/telegramService.js && node --check cloudflare/worker.js"
+    "lint": "node --check src/server.js && node --check src/routes/productionApi.js && node --check src/services/productionD1.js && node --check src/middlewares/telegramAuth.js && node --check src/security/telegramAuth.js && node --check src/services/telegramService.js && node --check src/services/telegramKeyboard.js && node --check cloudflare/worker.js"
   },
   "dependencies": {
     "cors": "^2.8.5",
