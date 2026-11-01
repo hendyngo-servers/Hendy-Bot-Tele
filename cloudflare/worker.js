@@ -16,7 +16,8 @@ const BACKUP_TABLES = [
   "admin_audit_logs",
   "backup_runs",
   "referral_profiles",
-  "referral_commissions"
+  "referral_commissions",
+  "voucher_ledger"
 ];
 
 const encoder = new TextEncoder();
