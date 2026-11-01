@@ -9,6 +9,25 @@ const id = () => crypto.randomUUID();
 const text = (value, max = 500) => String(value ?? "").trim().slice(0, max);
 const number = (value, fallback = 0) => Number.isSafeInteger(Number(value)) ? Number(value) : fallback;
 
+function formatOrder(row) {
+  if (!row) return row;
+  let details = {};
+  try { details = typeof row.details_json === "string" ? JSON.parse(row.details_json) : (row.details || {}); } catch {}
+  return {
+    ...row,
+    orderNumber: row.orderNumber || row.order_number || row.id,
+    userId: row.userId || row.telegram_id || row.user_id,
+    customerName: row.customerName || [row.first_name, row.last_name].filter(Boolean).join(" ") || "Thành viên",
+    paymentStatus: row.paymentStatus || row.payment_status || "unpaid",
+    createdAt: row.createdAt || row.created_at,
+    updatedAt: row.updatedAt || row.updated_at,
+    description: row.description || details.description || "",
+    details,
+    quote: row.quote || details.quote || null
+  };
+}
+
+
 async function ensureUser(user) {
   const telegramId = String(user.id);
   await executeD1Query(
@@ -268,7 +287,27 @@ router.get("/wallet", asyncRoute(async (req, res) => {
     "WHERE telegram_id=? ORDER BY created_at DESC LIMIT 50",
     [String(req.telegramUser.id)]
   );
-  res.json({ userId: user.id, balance: user.balance, voucher: user.voucher, points: user.points, ledger: ledger.results });
+  const depositRows = await executeD1Query(
+    "SELECT id,amount,transfer_content AS reference,status,admin_note,created_at FROM deposits WHERE telegram_id=? ORDER BY created_at DESC LIMIT 30",
+    [String(req.telegramUser.id)]
+  );
+  res.json({
+    userId: user.id,
+    balance: user.balance,
+    voucher: user.voucher,
+    points: user.points,
+    ledger: ledger.results,
+    transactions: ledger.results,
+    deposits: depositRows.results,
+    payment: {
+      configured: Boolean(process.env.VIETQR_BANK_ID && process.env.VIETQR_ACCOUNT_NO && process.env.VIETQR_ACCOUNT_NAME),
+      bankName: process.env.VIETQR_BANK_ID || "",
+      bankBin: process.env.VIETQR_BANK_ID || "",
+      accountNumber: process.env.VIETQR_ACCOUNT_NO || "",
+      accountName: process.env.VIETQR_ACCOUNT_NAME || "",
+      instruction: "Chuyển khoản đúng số tiền và nội dung tham chiếu của yêu cầu nạp. Chờ quản trị viên đối soát."
+    }
+  });
 }));
 
 router.get("/orders", asyncRoute(async (req, res) => {
@@ -279,7 +318,7 @@ router.get("/orders", asyncRoute(async (req, res) => {
     "WHERE telegram_id=? ORDER BY created_at DESC LIMIT 100",
     [String(req.telegramUser.id)]
   );
-  res.json({ orders: result.results.map((row) => ({ ...row, details: JSON.parse(row.details_json || "{}") })) });
+  res.json({ orders: result.results.map(formatOrder) });
 }));
 
 router.post("/orders", asyncRoute(async (req, res) => {
@@ -299,10 +338,10 @@ router.post("/orders", asyncRoute(async (req, res) => {
     "VALUES(?,?,?,?,?,?,?,'pending','unpaid',?)",
     [orderId, userId, text(req.body?.title || product?.title || "Yêu cầu dịch vụ", 180),
       text(req.body?.module || product?.module || "tools", 80), product?.id || null, quantity, amount,
-      JSON.stringify(req.body?.details && typeof req.body.details === "object" ? req.body.details : {})]
+      JSON.stringify({ ...(req.body?.details && typeof req.body.details === "object" ? req.body.details : {}), description: text(req.body?.description, 2000) })]
   );
   const order = await d1First("SELECT * FROM orders WHERE id=?", [orderId]);
-  res.status(201).json({ success: true, order });
+  res.status(201).json({ success: true, order: formatOrder(order) });
 }));
 
 router.post("/orders/:id/pay", asyncRoute(async (req, res) => {
@@ -320,7 +359,8 @@ router.post("/orders/:id/pay", asyncRoute(async (req, res) => {
     return res.status(400).json({ error: "Số dư không đủ hoặc đơn hàng không còn ở trạng thái có thể thanh toán." });
   }
   const updated = await d1First("SELECT * FROM orders WHERE id=?", [result.id]);
-  res.json({ success: true, order: updated });
+  const balance = await d1First("SELECT balance FROM users WHERE telegram_id=?", [userId]);
+  res.json({ success: true, order: formatOrder(updated), balance: Number(balance?.balance || 0) });
 }));
 
 router.post("/orders/:id/status", requireAdmin, asyncRoute(async (req, res) => {
@@ -488,6 +528,7 @@ router.get("/admin/stats", requireAdmin, asyncRoute(async (_req, res) => {
   const started = Date.now();
   const stats = await d1First(
     "SELECT (SELECT COUNT(*) FROM users) AS users," +
+    "(SELECT COUNT(*) FROM app_releases WHERE is_active=1) AS releases," +
     "(SELECT COUNT(*) FROM orders) AS total_orders," +
     "(SELECT COUNT(*) FROM orders WHERE status='pending') AS pending_orders," +
     "(SELECT COUNT(*) FROM orders WHERE status='processing') AS processing_orders," +
@@ -503,7 +544,7 @@ router.get("/admin/stats", requireAdmin, asyncRoute(async (_req, res) => {
     ...stats,
     stats: {
       users: Number(stats?.users || 0),
-      releases: 0,
+      releases: Number(stats?.releases || 0),
       orderStats: {
         total: Number(stats?.total_orders || 0),
         pending: Number(stats?.pending_orders || 0),
