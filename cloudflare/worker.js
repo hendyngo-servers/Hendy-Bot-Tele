@@ -19,6 +19,17 @@ const BACKUP_TABLES = [
 
 const encoder = new TextEncoder();
 
+
+function constantTimeEqual(left, right) {
+  if (left === undefined || right === undefined) return false;
+  const a = encoder.encode(String(left));
+  const b = encoder.encode(String(right));
+  if (a.length !== b.length) return false;
+  let mismatch = 0;
+  for (let i = 0; i < a.length; i += 1) mismatch |= a[i] ^ b[i];
+  return mismatch === 0;
+}
+
 function json(data, status = 200) {
   return new Response(JSON.stringify(data), {
     status,
@@ -147,10 +158,63 @@ export default {
       }
     }
 
+
+    if (url.pathname === "/api/storage/upload" && request.method === "POST") {
+      const supplied = (request.headers.get("Authorization") || "").replace(/^Bearer\s+/i, "");
+      if (!env.R2_UPLOAD_SECRET || !constantTimeEqual(env.R2_UPLOAD_SECRET, supplied)) {
+        return json({ error: "Unauthorized" }, 401);
+      }
+      if (!env.STORAGE) return json({ error: "Thiếu R2 STORAGE binding." }, 503);
+      const length = Number(request.headers.get("Content-Length") || 0);
+      if (length > 52 * 1024 * 1024) return json({ error: "Tệp vượt quá giới hạn 50 MiB." }, 413);
+      try {
+        const form = await request.formData();
+        const file = form.get("file");
+        const platform = String(form.get("platform") || "");
+        const version = String(form.get("version") || "");
+        const originalName = String(form.get("filename") || (file && file.name) || "release.bin");
+        if (!(file instanceof File) || !file.size || file.size > 50 * 1024 * 1024) {
+          return json({ error: "Tệp tải lên không hợp lệ hoặc vượt quá 50 MiB." }, 400);
+        }
+        if (!["Android", "Windows", "macOS", "Linux", "Other"].includes(platform)) {
+          return json({ error: "Nền tảng phát hành không hợp lệ." }, 400);
+        }
+        if (!/^[0-9A-Za-z.+_-]{1,40}$/.test(version)) return json({ error: "Phiên bản không hợp lệ." }, 400);
+        const safeName = originalName.normalize("NFKD").replace(/[^a-zA-Z0-9._-]+/g, "-").slice(-100) || "release.bin";
+        const key = "releases/" + crypto.randomUUID() + "-" + safeName;
+        const object = await env.STORAGE.put(key, file.stream(), {
+          httpMetadata: {
+            contentType: file.type || "application/octet-stream",
+            contentDisposition: 'attachment; filename="' + safeName.replace(/"/g, "") + '"',
+            cacheControl: "private, max-age=3600"
+          },
+          customMetadata: { platform, version, originalName: safeName }
+        });
+        return json({ success: true, key, etag: object.etag, size: file.size, filename: safeName }, 201);
+      } catch (error) {
+        return json({ error: "Không thể lưu tệp phát hành vào R2.", detail: error.message }, 500);
+      }
+    }
+
+    if (url.pathname.startsWith("/api/storage/download/") && request.method === "GET") {
+      if (!env.STORAGE) return json({ error: "Thiếu R2 STORAGE binding." }, 503);
+      const key = decodeURIComponent(url.pathname.slice("/api/storage/download/".length));
+      if (!key.startsWith("releases/") || key.includes("..")) return json({ error: "Đường dẫn tệp không hợp lệ." }, 400);
+      const object = await env.STORAGE.get(key);
+      if (!object) return json({ error: "Không tìm thấy tệp phát hành." }, 404);
+      const headers = new Headers();
+      object.writeHttpMetadata(headers);
+      headers.set("ETag", object.httpEtag);
+      headers.set("Cache-Control", "private, max-age=3600");
+      headers.set("X-Content-Type-Options", "nosniff");
+      headers.set("Content-Security-Policy", "default-src 'none'");
+      return new Response(object.body, { headers });
+    }
+
     if (url.pathname === "/api/backups/run" && request.method === "POST") {
       const expected = env.BACKUP_TRIGGER_SECRET;
       const supplied = request.headers.get("Authorization") || "";
-      if (!expected || supplied !== "Bearer " + expected) return json({ error: "Unauthorized" }, 401);
+      if (!expected || !constantTimeEqual(expected, supplied.replace(/^Bearer\\s+/i, ""))) return json({ error: "Unauthorized" }, 401);
       try {
         const body = await request.json().catch(() => ({}));
         const result = await createBackup(env, String(body.requestedBy || "admin"));
@@ -162,7 +226,7 @@ export default {
 
     if (url.pathname === "/webhook" || url.pathname === "/api/telegram/webhook") {
       const secret = env.WEBHOOK_SECRET;
-      if (secret && request.headers.get("X-Telegram-Bot-Api-Secret-Token") !== secret) {
+      if (secret && !constantTimeEqual(secret, request.headers.get("X-Telegram-Bot-Api-Secret-Token"))) {
         return json({ error: "Unauthorized webhook" }, 401);
       }
       if (!env.RENDER_BACKEND_URL) return json({ error: "RENDER_BACKEND_URL chưa được cấu hình." }, 503);
