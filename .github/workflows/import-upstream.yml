@@ -1,0 +1,41 @@
+name: Import upstream Hendy Bot source
+on:
+  push:
+    branches: [sync-source-trigger]
+    paths:
+      - SYNC_SOURCE_TRIGGER
+permissions:
+  contents: write
+concurrency:
+  group: import-hendy-upstream
+  cancel-in-progress: false
+jobs:
+  import:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout target main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - name: Fetch public upstream source
+        run: git clone --depth 1 https://github.com/ngogiaidy56-eng/hendy-bot-telegram.git /tmp/hendy-upstream
+      - name: Replace project files with upstream source
+        run: |
+          rsync -a --delete --exclude='.git' /tmp/hendy-upstream/ ./
+          # Keep deployment secrets aligned with the existing target repository.
+          find .github/workflows -type f -name '*.yml' -o -name '*.yaml' | while read file; do
+            sed -i 's/secrets\.CF_API_TOKEN/secrets.CLOUDFLARE_API_TOKEN/g; s/secrets\.CF_ACCOUNT_ID/secrets.CLOUDFLARE_ACCOUNT_ID/g' "$file"
+          done
+          # Keep the source repository's sample configuration secret-free.
+          if [ -f .env ]; then rm -f .env; fi
+      - name: Commit integration branch
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git switch -C feat/integrate-upstream-hendy-bot-telegram
+          git add -A
+          git commit -m "feat: import Hendy Bot Telegram upstream source"
+          git push --force origin HEAD:refs/heads/feat/integrate-upstream-hendy-bot-telegram
