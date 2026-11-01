@@ -2,10 +2,11 @@ import crypto from "crypto";
 
 const ALGORITHM = "aes-256-gcm";
 const IV_LENGTH = 12; // 96 bits for GCM
-const DEFAULT_SECRET = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
-
 function getKey() {
-  const secret = process.env.ENCRYPTION_KEY || DEFAULT_SECRET;
+  const secret = process.env.ENCRYPTION_KEY;
+  if (typeof secret !== "string" || Buffer.byteLength(secret, "utf8") < 32) {
+    throw new Error("ENCRYPTION_KEY must be configured with at least 32 bytes.");
+  }
   return crypto.createHash("sha256").update(secret).digest();
 }
 
@@ -44,6 +45,9 @@ export function generateHmac(data, secret) {
 }
 
 export function verifyHmac(data, signature, secret) {
+  if (typeof signature !== "string" || !/^[a-f0-9]{64}$/i.test(signature)) return false;
   const expected = generateHmac(data, secret);
-  return crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(signature));
+  const supplied = Buffer.from(signature, "hex");
+  const wanted = Buffer.from(expected, "hex");
+  return supplied.length === wanted.length && crypto.timingSafeEqual(wanted, supplied);
 }
