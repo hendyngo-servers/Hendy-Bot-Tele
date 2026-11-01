@@ -1,0 +1,12 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "hendy-self-healing",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-11-01",
+  "observability": { "enabled": true },
+  "services": [
+    { "binding": "BACKEND", "service": "hendy-backend-api" }
+  ],
+  "triggers": { "crons": ["*/5 * * * *", "0 2 * * *"] },
+  "vars": { "HEALTH_URLS": "https://api.example.com/healthz" }
+}

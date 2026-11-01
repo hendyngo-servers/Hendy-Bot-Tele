@@ -1,30 +1,38 @@
 {
-  "name": "hendy-bot-tele",
-  "version": "4.2.0",
+  "name": "hendy-bot-tele-cloudflare",
+  "version": "5.0.0",
   "private": true,
-  "description": "Hendy Telegram Bot, JSON file database and Admin Mini App on Render",
-  "main": "src/server.js",
-  "engines": {
-    "node": ">=22 <25"
-  },
+  "type": "module",
   "scripts": {
-    "dev": "node --watch src/server.js",
-    "start": "node src/server.js",
-    "build": "vite build --config mini-app/vite.config.mjs",
-    "test": "node --test",
-    "check": "node --check src/server.js && node --check src/routes/api.js && node --check src/controllers/botController.js && node --check src/controllers/botController.test.js && node --check src/middlewares/errorHandler.js && node --check src/services/qrStorageService.js && node --check src/services/qrStorageService.test.js && node --check src/services/jsonDatabase.js && node --check src/services/jsonDatabase.test.js && node --check src/services/userService.js && node --check src/services/userService.test.js && node --check src/services/appDataService.js && node --check src/services/appDataService.test.js && node --check src/security/telegramAuth.js && node --check src/security/cryptoService.js && node --check src/services/telegramStartup.js && node --check src/utils/keyboards.js && node --check mini-app/vite.config.mjs"
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "build:user": "vite build --config apps/web-user/vite.config.js",
+    "build:admin": "vite build --config apps/web-admin/vite.config.js",
+    "build": "npm run build:user && npm run build:admin",
+    "dev:user": "vite --config apps/web-user/vite.config.js",
+    "dev:admin": "vite --config apps/web-admin/vite.config.js",
+    "dev:api": "wrangler dev --config workers/backend-api/wrangler.jsonc",
+    "dev:router": "wrangler dev --config workers/edge-router/wrangler.jsonc",
+    "dev:healing": "wrangler dev --config workers/self-healing/wrangler.jsonc",
+    "deploy:api": "wrangler deploy --config workers/backend-api/wrangler.jsonc",
+    "deploy:router": "wrangler deploy --config workers/edge-router/wrangler.jsonc",
+    "deploy:healing": "wrangler deploy --config workers/self-healing/wrangler.jsonc",
+    "deploy:user": "wrangler pages deploy apps/web-user/dist --project-name hendy-web-user",
+    "deploy:admin": "wrangler pages deploy apps/web-admin/dist --project-name hendy-web-admin",
+    "db:local": "wrangler d1 migrations apply hendy-production --local --config workers/backend-api/wrangler.jsonc",
+    "db:remote": "wrangler d1 migrations apply hendy-production --remote --config workers/backend-api/wrangler.jsonc"
   },
   "dependencies": {
-    "dotenv": "^16.4.7",
-    "express": "^4.21.2",
-    "express-rate-limit": "^7.5.0",
-    "helmet": "^8.0.0",
-    "telegraf": "^4.16.3"
-  },
-  "devDependencies": {
     "@vitejs/plugin-react": "^4.3.4",
-    "vite": "^6.1.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
+  },
+  "devDependencies": {
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "typescript": "^5.9.3",
+    "vite": "^6.4.0",
+    "vitest": "^3.2.4",
+    "wrangler": "^4.45.0"
   }
 }

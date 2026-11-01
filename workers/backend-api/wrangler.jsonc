@@ -1,0 +1,23 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "hendy-backend-api",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-11-01",
+  "observability": { "enabled": true },
+  "vars": {
+    "APP_ENV": "production",
+    "ALLOWED_ORIGINS": "https://app.example.com,https://admin.example.com",
+    "RATE_LIMIT_PER_MINUTE": "90"
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "hendy-production",
+      "database_id": "REPLACE_WITH_D1_DATABASE_ID",
+      "migrations_dir": "../../packages/db-schema/migrations"
+    }
+  ],
+  "r2_buckets": [
+    { "binding": "FILES", "bucket_name": "hendy-app-files" }
+  ]
+}

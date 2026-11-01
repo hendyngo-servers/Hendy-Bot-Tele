@@ -1,39 +1,31 @@
-name: CI
+name: Cloudflare CI
 
 on:
   push:
-    branches: [main, "feature/**", "fix/**"]
+    branches: [main, "cloudflare-platform-v1", "feature/**", "fix/**"]
   pull_request:
-    branches: [main]
+    branches: [main, "cloudflare-platform-v1"]
 
 permissions:
   contents: read
 
 jobs:
   verify:
-    name: Check, test and build
+    name: Typecheck, test and build Pages
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - name: Checkout source
-        uses: actions/checkout@v4
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
         with:
-          node-version-file: .node-version
-
+          node-version: 22
       - name: Install dependencies
         run: npm install --no-audit --no-fund
-
-      - name: Check JavaScript syntax
-        run: npm run check
-
-      - name: Run automated tests
+      - name: TypeScript checks
+        run: npm run typecheck
+      - name: Unit tests
         run: npm test
-
-      - name: Build Admin Mini App to public/
+      - name: Build both Pages projects
         run: npm run build
-
-      - name: Verify generated Mini App
-        run: test -s public/index.html
+      - name: Verify build output
+        run: test -s apps/web-user/dist/index.html && test -s apps/web-admin/dist/index.html

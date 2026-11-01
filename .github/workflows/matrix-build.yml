@@ -1,0 +1,25 @@
+name: Pages matrix build
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths: ["apps/**", "packages/ui/**", "package.json"]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        app: [user, admin]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm install --no-audit --no-fund
+      - run: npm run build:$APP
+        env:
+          APP: ${{ matrix.app }}
