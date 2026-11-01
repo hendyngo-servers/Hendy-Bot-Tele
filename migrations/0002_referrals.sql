@@ -38,3 +38,17 @@ BEGIN
     AND p.referred_by IS NOT NULL
     AND p.referred_by <> NEW.telegram_id;
 END;
+
+
+CREATE TRIGGER IF NOT EXISTS trg_referral_commission_payout
+AFTER UPDATE OF status ON referral_commissions
+WHEN OLD.status <> 'paid' AND NEW.status = 'paid'
+BEGIN
+  UPDATE users
+    SET balance = balance + NEW.amount, updated_at = datetime('now')
+    WHERE telegram_id = NEW.referrer_telegram_id;
+  INSERT INTO wallet_ledger(id,telegram_id,amount_delta,balance_after,entry_type,note,reference_id)
+    SELECT lower(hex(randomblob(16))), telegram_id, NEW.amount, balance,
+      'referral_commission', 'Hoa hồng giới thiệu đơn ' || NEW.order_id, NEW.id
+    FROM users WHERE telegram_id = NEW.referrer_telegram_id;
+END;
