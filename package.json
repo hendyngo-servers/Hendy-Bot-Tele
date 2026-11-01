@@ -20,7 +20,8 @@
     "deploy:user": "wrangler pages deploy apps/web-user/dist --project-name hendy-web-user",
     "deploy:admin": "wrangler pages deploy apps/web-admin/dist --project-name hendy-web-admin",
     "db:local": "wrangler d1 migrations apply hendy-production --local --config workers/backend-api/wrangler.jsonc",
-    "db:remote": "wrangler d1 migrations apply hendy-production --remote --config workers/backend-api/wrangler.jsonc"
+    "db:remote": "wrangler d1 migrations apply hendy-production --remote --config workers/backend-api/wrangler.jsonc",
+    "check:workers": "wrangler deploy --dry-run --outdir .wrangler-dry-run/backend --config workers/backend-api/wrangler.jsonc && wrangler deploy --dry-run --outdir .wrangler-dry-run/router --config workers/edge-router/wrangler.jsonc && wrangler deploy --dry-run --outdir .wrangler-dry-run/healing --config workers/self-healing/wrangler.jsonc"
   },
   "dependencies": {
     "@vitejs/plugin-react": "^4.3.4",

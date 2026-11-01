@@ -66,7 +66,7 @@ Tạo D1 database:
 
     npx wrangler d1 create hendy-production
 
-Chép database_id Cloudflare trả về vào workers/backend-api/wrangler.jsonc, thay REPLACE_WITH_D1_DATABASE_ID.
+Chép database_id Cloudflare trả về vào workers/backend-api/wrangler.jsonc, thay UUID placeholder 00000000-0000-4000-8000-000000000000.
 
 Tạo R2 bucket:
 

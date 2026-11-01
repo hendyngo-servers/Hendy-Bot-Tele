@@ -23,6 +23,10 @@ jobs:
         run: npm install --no-audit --no-fund
       - name: TypeScript checks
         run: npm run typecheck
+      - name: Apply D1 migrations to local database
+        run: npm run db:local
+      - name: Compile Workers without deploying
+        run: npm run check:workers
       - name: Unit tests
         run: npm test
       - name: Build both Pages projects
