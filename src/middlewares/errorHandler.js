@@ -1,15 +1,13 @@
-export function errorHandler(err, req, res, next) {
-  const status = err.status || err.statusCode || 500;
-  const message = err.message || "Internal Server Error";
-  
+export function errorHandler(err, req, res, _next) {
+  const status = Number(err.status || err.statusCode || 500);
+  const safeStatus = status >= 400 && status < 600 ? status : 500;
   if (process.env.NODE_ENV !== "test") {
-    console.error(`[ErrorHandler] [${req.method} ${req.path}] ${status} - ${message}`);
-    if (status === 500 && err.stack) {
-      console.error(err.stack);
-    }
+    console.error("[ErrorHandler] " + req.method + " " + req.path + " " + safeStatus + " " + (err.code || "SERVER_ERROR") + ": " + (err.message || "Unknown error"));
   }
-
-  res.status(status).json({
+  const message = safeStatus >= 500 && process.env.NODE_ENV === "production"
+    ? "Dịch vụ gặp lỗi. Vui lòng thử lại sau."
+    : (err.message || "Internal Server Error");
+  res.status(safeStatus).json({
     error: message,
     code: err.code || "SERVER_ERROR",
     path: req.originalUrl || req.path,
