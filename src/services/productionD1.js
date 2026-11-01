@@ -95,7 +95,12 @@ export async function getBotSettings() {
     language: values.language || "vi",
     vietqr_bank: values.vietqr_bank || process.env.VIETQR_BANK_ID || "",
     vietqr_account_no: values.vietqr_account_no || process.env.VIETQR_ACCOUNT_NO || "",
-    vietqr_account_name: values.vietqr_account_name || process.env.VIETQR_ACCOUNT_NAME || "",
+    vietqr_account_name: values.vietqr_account_name !== undefined ? values.vietqr_account_name : (process.env.VIETQR_ACCOUNT_NAME || ""),
+    group_chat_url: values.group_chat_url !== undefined ? values.group_chat_url : (process.env.GROUP_CHAT_URL || ""),
+    news_channel_url: values.news_channel_url !== undefined ? values.news_channel_url : (process.env.NEWS_CHANNEL_URL || ""),
+    support_url: values.support_url !== undefined ? values.support_url : (process.env.SUPPORT_URL || ""),
+    ui_theme: (() => { try { return JSON.parse(values.ui_theme || "{}"); } catch { return {}; } })(),
+    menu_config: (() => { try { return JSON.parse(values.menu_config || "[]"); } catch { return []; } })(),
     updated_at: result.results.reduce((latest, row) => row.updated_at > latest ? row.updated_at : latest, "")
   };
 }
