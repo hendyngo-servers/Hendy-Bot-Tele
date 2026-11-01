@@ -607,7 +607,14 @@ router.post("/deposits/:id/review", requireAdmin, asyncRoute(async (req, res) =>
 
 router.get("/giftcodes", requireAdmin, asyncRoute(async (_req, res) => {
   const rows = await executeD1Query("SELECT * FROM giftcodes ORDER BY created_at DESC LIMIT 200");
-  res.json({ giftcodes: rows.results });
+  res.json({ giftcodes: rows.results.map((row) => ({
+    ...row,
+    rewardVoucher: Number(row.amount || 0),
+    maxRedemptions: Number(row.max_uses || 1),
+    actualRedemptions: Number(row.used_count || 0),
+    isActive: row.status === "active",
+    expiresAt: row.expires_at
+  })) });
 }));
 
 router.post("/giftcodes", requireAdmin, asyncRoute(async (req, res) => {
@@ -622,7 +629,7 @@ router.post("/giftcodes", requireAdmin, asyncRoute(async (req, res) => {
     [code, amount, maxUses, expiresAt, String(req.telegramUser.id)]
   );
   await writeAdminAudit(req.telegramUser.id, "giftcode.create", "giftcode", code, { amount, maxUses });
-  res.status(201).json({ code, amount, max_uses: maxUses, used_count: 0, status: "active", expires_at: expiresAt });
+  res.status(201).json({ code, amount, rewardVoucher: amount, max_uses: maxUses, maxRedemptions: maxUses, used_count: 0, actualRedemptions: 0, status: "active", isActive: true, expires_at: expiresAt, expiresAt });
 }));
 
 router.get("/admin/stats", requireAdmin, asyncRoute(async (_req, res) => {
@@ -704,15 +711,40 @@ router.post("/admin/maintenance", requireAdmin, asyncRoute(async (req, res) => {
 
 router.get("/admin/orders", requireAdmin, asyncRoute(async (req, res) => {
   const status = text(req.query.status || "all", 30);
+  const module = text(req.query.module || "all", 80);
+  const query = text(req.query.q || "", 100);
   const limit = Math.max(1, Math.min(200, number(req.query.limit, 100)));
-  const where = status === "all" ? "" : "WHERE o.status=?";
+  const clauses = [];
+  const params = [];
+  if (status !== "all") { clauses.push("o.status=?"); params.push(status); }
+  if (module !== "all") { clauses.push("o.module=?"); params.push(module); }
+  if (query) { clauses.push("(o.id LIKE ? OR o.title LIKE ? OR u.username LIKE ? OR u.first_name LIKE ?)"); params.push("%" + query + "%", "%" + query + "%", "%" + query + "%", "%" + query + "%"); }
+  const where = clauses.length ? "WHERE " + clauses.join(" AND ") : "";
   const rows = await executeD1Query(
     "SELECT o.*,u.username,u.first_name,u.last_name FROM orders o JOIN users u ON u.telegram_id=o.telegram_id " +
     where + " ORDER BY o.created_at DESC LIMIT " + limit,
-    status === "all" ? [] : [status]
+    params
   );
-  const totals = await d1First("SELECT COUNT(*) AS total FROM orders");
-  res.json({ orders: rows.results, total: Number(totals?.total || 0) });
+  const totals = await d1First(
+    "SELECT COUNT(*) AS total," +
+    "SUM(CASE WHEN status='pending' THEN 1 ELSE 0 END) AS pending," +
+    "SUM(CASE WHEN status='confirmed' THEN 1 ELSE 0 END) AS confirmed," +
+    "SUM(CASE WHEN status='processing' THEN 1 ELSE 0 END) AS processing," +
+    "SUM(CASE WHEN status='completed' THEN 1 ELSE 0 END) AS completed," +
+    "SUM(CASE WHEN status='cancelled' THEN 1 ELSE 0 END) AS cancelled FROM orders"
+  );
+  res.json({
+    orders: rows.results.map(formatOrder),
+    total: Number(totals?.total || 0),
+    stats: {
+      total: Number(totals?.total || 0),
+      pending: Number(totals?.pending || 0),
+      confirmed: Number(totals?.confirmed || 0),
+      processing: Number(totals?.processing || 0),
+      completed: Number(totals?.completed || 0),
+      cancelled: Number(totals?.cancelled || 0)
+    }
+  });
 }));
 
 router.get("/admin/catalog", requireAdmin, asyncRoute(async (_req, res) => {
@@ -889,7 +921,7 @@ router.get("/admin/deposits", requireAdmin, asyncRoute(async (req, res) => {
 router.get("/admin/orders/:id", requireAdmin, asyncRoute(async (req, res) => {
   const order = await d1First("SELECT o.*,u.username,u.first_name,u.last_name FROM orders o JOIN users u ON u.telegram_id=o.telegram_id WHERE o.id=?", [text(req.params.id, 100)]);
   if (!order) return res.status(404).json({ error: "Không tìm thấy đơn hàng." });
-  res.json({ order, events: [] });
+  res.json({ order: formatOrder(order), events: [] });
 }));
 
 router.post("/admin/orders/:id/status", requireAdmin, asyncRoute(async (req, res) => {
@@ -899,19 +931,30 @@ router.post("/admin/orders/:id/status", requireAdmin, asyncRoute(async (req, res
   const updated = await d1First("UPDATE orders SET status=?,updated_at=datetime('now') WHERE id=? RETURNING id,status", [status, text(req.params.id, 100)]);
   if (!updated) return res.status(404).json({ error: "Không tìm thấy đơn hàng." });
   await writeAdminAudit(req.telegramUser.id, "order.status.update", "order", updated.id, { status });
-  res.json({ order: updated, events: [] });
+  const current = await d1First("SELECT * FROM orders WHERE id=?", [updated.id]);
+  res.json({ order: formatOrder(current), events: [] });
 }));
 
 router.post("/admin/orders/:id/quote", requireAdmin, asyncRoute(async (req, res) => {
   const amount = number(req.body?.amount, -1);
-  if (amount < 0) return res.status(400).json({ error: "Giá báo không hợp lệ." });
-  const updated = await d1First(
-    "UPDATE orders SET amount=?,details_json=json_set(details_json,'$.quote.note',?,'$.quote.status','sent'),updated_at=datetime('now') WHERE id=? RETURNING *",
-    [amount, text(req.body?.note, 1000), text(req.params.id, 100)]
-  );
-  if (!updated) return res.status(404).json({ error: "Không tìm thấy đơn hàng." });
-  await writeAdminAudit(req.telegramUser.id, "order.quote", "order", updated.id, { amount });
-  res.json({ order: updated, events: [] });
+  if (amount < 1) return res.status(400).json({ error: "Giá báo phải là số nguyên VND dương." });
+  const existing = await d1First("SELECT * FROM orders WHERE id=?", [text(req.params.id, 100)]);
+  if (!existing) return res.status(404).json({ error: "Không tìm thấy đơn hàng." });
+  if (existing.payment_status === "paid") return res.status(409).json({ error: "Đơn hàng đã thanh toán, không thể thay đổi báo giá." });
+  let details = {};
+  try { details = JSON.parse(existing.details_json || "{}"); } catch {}
+  const quote = {
+    id: crypto.randomUUID(),
+    amount,
+    note: text(req.body?.note, 1000),
+    status: "sent",
+    createdAt: new Date().toISOString()
+  };
+  details.quote = quote;
+  await executeD1Query("UPDATE orders SET details_json=?,updated_at=datetime('now') WHERE id=?", [JSON.stringify(details), existing.id]);
+  const updated = await d1First("SELECT * FROM orders WHERE id=?", [existing.id]);
+  await writeAdminAudit(req.telegramUser.id, "order.quote", "order", existing.id, { amount, quoteId: quote.id });
+  res.json({ order: formatOrder(updated), events: [] });
 }));
 
 router.post("/admin/deposits/:id/review", requireAdmin, asyncRoute(async (req, res) => {
