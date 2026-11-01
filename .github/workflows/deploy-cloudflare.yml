@@ -65,6 +65,16 @@ jobs:
       - name: Apply D1 migrations
         run: npx --yes wrangler@4 d1 migrations apply hendy-bot-db --remote
 
+      - name: Sync Worker secrets
+        shell: bash
+        run: |
+          for secret_name in BACKUP_TRIGGER_SECRET R2_UPLOAD_SECRET WEBHOOK_SECRET; do
+            secret_value="$(printenv "$secret_name" || true)"
+            if [ -n "$secret_value" ]; then
+              printf '%s' "$secret_value" | npx --yes wrangler@4 secret put "$secret_name"
+            fi
+          done
+
       - name: Deploy Cloudflare Worker
         run: npx --yes wrangler@4 deploy
 
