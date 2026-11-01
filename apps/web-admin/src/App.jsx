@@ -365,6 +365,21 @@ export default function App() {
     }
   }
 
+  async function setGiftcodeActive(item, active) {
+    setBusy(true);
+    setError("");
+    setNotice("");
+    try {
+      await adminApi("/api/v1/admin/giftcodes/" + encodeURIComponent(item.id) + "/" + (active ? "activate" : "deactivate"), token, { method: "POST" });
+      await loadGiftcodes();
+      setNotice(active ? "Đã kích hoạt Giftcode." : "Đã thu hồi Giftcode; mã này không thể đổi thêm.");
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function openTicket(ticketId) {
     setBusy(true);
     setError("");
@@ -426,13 +441,15 @@ export default function App() {
   async function settleCommission(item, action) {
     const labels = { approve: "duyệt", pay: "chi trả vào ví", void: "hủy" };
     if (!window.confirm("Bạn xác nhận " + labels[action] + " khoản hoa hồng " + money(item.amount) + " của " + item.referrerName + "?")) return;
+    const note = window.prompt("Ghi chú đối soát (không bắt buộc):", item.adminNote || "");
+    if (note === null) return;
     setBusy(true);
     setError("");
     setNotice("");
     try {
       await adminApi("/api/v1/admin/referrals/commissions/" + encodeURIComponent(item.id) + "/settle", token, {
         method: "POST",
-        body: JSON.stringify({ action, note: "" })
+        body: JSON.stringify({ action, note })
       });
       await loadCommissions();
       setNotice("Đã " + labels[action] + " khoản hoa hồng.");
@@ -715,14 +732,15 @@ export default function App() {
             <section className="card order-queue-card">
               <div className="card-heading"><div><div className="section-kicker">GIFT CODE INVENTORY</div><h2>Danh sách Giftcode ({giftcodes.length})</h2></div><button className="secondary small" onClick={() => loadGiftcodes()}>↻ Làm mới</button></div>
               <div className="queue-table-wrap"><table className="queue-table">
-                <thead><tr><th>ID</th><th>THƯỞNG</th><th>LƯỢT ĐÃ ĐỔI</th><th>GIỚI HẠN</th><th>HẾT HẠN</th><th>TRẠNG THÁI</th></tr></thead>
+                <thead><tr><th>ID</th><th>THƯỞNG</th><th>LƯỢT ĐÃ ĐỔI</th><th>GIỚI HẠN</th><th>HẾT HẠN</th><th>TRẠNG THÁI</th><th>THAO TÁC</th></tr></thead>
                 <tbody>{giftcodes.map(item => <tr key={item.id}>
                   <td><code>{item.id.slice(0, 8)}…</code></td><td>{Number(item.rewardVoucher).toLocaleString("vi-VN")} voucher</td>
                   <td>{item.actualRedemptions}</td><td>{item.maxRedemptions}</td>
                   <td>{item.expiresAt ? new Date(item.expiresAt).toLocaleString("vi-VN") : "Không hết hạn"}</td>
                   <td><span className={"status-pill " + (item.isActive ? "status-completed" : "status-cancelled")}>{item.isActive ? "Đang hoạt động" : "Đã tắt"}</span></td>
+                  <td><button className={item.isActive ? "danger-action" : "primary-action"} disabled={busy} onClick={() => setGiftcodeActive(item,!item.isActive)}>{item.isActive ? "Thu hồi" : "Kích hoạt"}</button></td>
                 </tr>)}
-                {!giftcodes.length && <tr><td colSpan="6" className="table-empty">Chưa tạo Giftcode nào.</td></tr>}</tbody>
+                {!giftcodes.length && <tr><td colSpan="7" className="table-empty">Chưa tạo Giftcode nào.</td></tr>}</tbody>
               </table></div>
             </section>
           </>}
@@ -775,7 +793,7 @@ export default function App() {
               <tbody>{commissions.map(item => <tr key={item.id}>
                 <td><b>{item.referrerName}</b><small>ID {item.referrerUserId}</small></td>
                 <td><b>{item.referredName}</b><small>ID {item.referredUserId}</small></td>
-                <td>{item.orderNumber || "—"}</td><td><b>{money(item.amount)}</b></td><td>{item.status}</td>
+                <td>{item.orderNumber || "—"}</td><td><b>{money(item.amount)}</b>{item.adminNote && <small>{item.adminNote}</small>}</td><td>{item.status}{item.reviewedBy && <small>Đối soát: {item.reviewedBy}</small>}{item.paidBy && <small>Chi trả: {item.paidBy}</small>}</td>
                 <td><div className="transition-actions">
                   {item.status === "pending" && <button className="primary-action" disabled={busy} onClick={() => settleCommission(item,"approve")}>Duyệt</button>}
                   {item.status === "approved" && <button className="primary-action" disabled={busy} onClick={() => settleCommission(item,"pay")}>Chi vào ví</button>}
