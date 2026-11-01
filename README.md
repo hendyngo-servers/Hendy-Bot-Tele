@@ -132,9 +132,6 @@ Lệnh `/start` hiển thị menu nút nhiều hàng theo bố cục ảnh tham 
 Migration `0007_manual_deposits.sql` bổ sung yêu cầu nạp thủ công. Người dùng tạo yêu cầu với số tiền và mã tham chiếu; Admin kiểm tra giao dịch ngân hàng rồi duyệt hoặc từ chối. Duyệt dùng D1 batch để cập nhật số dư và ghi `wallet_ledger` một lần. Không có webhook ngân hàng tự động nên không được bật tự cộng tiền dựa trên nội dung người dùng gửi.
 
 Sau khi deploy Worker, cấu hình thông tin nhận tiền bằng Wrangler variables (không commit thông tin riêng tư vào mã nguồn):
-```sh
-npx wrangler secret? # Không dùng secret cho thông tin tài khoản ngân hàng công khai
-```
 Thiết lập `BANK_NAME`, `BANK_BIN`, `BANK_ACCOUNT`, `BANK_ACCOUNT_NAME` trong `backend/wrangler.toml` hoặc Worker Variables trên Cloudflare Dashboard, sau đó deploy lại Worker.
 
 ## Backup và TLS
