@@ -1,0 +1,2 @@
+interface Env { BACKEND: Fetcher; USER_PAGES_ORIGIN: string; ADMIN_PAGES_ORIGIN: string; }
+export default { async fetch(request:Request,env:Env):Promise<Response>{const url=new URL(request.url);if(url.pathname.startsWith("/api/")||url.pathname.startsWith("/telegram/")||url.pathname==="/healthz")return env.BACKEND.fetch(request);const origin=url.hostname.toLowerCase().startsWith("admin.")?env.ADMIN_PAGES_ORIGIN:env.USER_PAGES_ORIGIN;const target=new URL(url.pathname+url.search,origin);return fetch(new Request(target.toString(),request));} };

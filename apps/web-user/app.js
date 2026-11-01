@@ -1,0 +1,1 @@
+const API="https://api.example.com";fetch(API+"/healthz").then(r=>r.json()).then(d=>{document.querySelector("#status").textContent=d.ok?"API và D1 đang hoạt động.":"API chưa sẵn sàng."}).catch(()=>{document.querySelector("#status").textContent="Chưa kết nối được API. Vui lòng thử lại sau."});
