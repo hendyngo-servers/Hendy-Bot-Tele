@@ -681,4 +681,146 @@ router.post("/admin/catalog/package-deploy", requireAdmin, async (_req, res) => 
   res.status(501).json({ error: "Chức năng đóng gói cần luồng tải tệp trực tiếp vào R2 đã ký. Không ghi metadata giả hoặc báo thành công khi chưa lưu tệp." });
 });
 
+// Compatibility endpoints for the separately hosted admin and user frontends.
+router.get("/releases", asyncRoute(async (_req, res) => {
+  const rows = await executeD1Query("SELECT id,title,version,platform,download_url AS downloadUrl,notes,created_at FROM app_releases WHERE is_active=1 ORDER BY created_at DESC LIMIT 100");
+  res.json({ releases: rows.results });
+}));
+
+router.get("/links", asyncRoute(async (req, res) => {
+  const rows = await executeD1Query("SELECT id,brand,account_label AS tk FROM user_links WHERE telegram_id=? ORDER BY created_at DESC", [String(req.telegramUser.id)]);
+  const links = {};
+  for (const row of rows.results) {
+    if (!links[row.brand]) links[row.brand] = [];
+    links[row.brand].push(row);
+  }
+  res.json({ links });
+}));
+
+router.post("/links", asyncRoute(async (req, res) => {
+  const brand = text(req.body?.brand, 80);
+  const label = text(req.body?.accountLabel, 180);
+  if (!brand || !label) return res.status(400).json({ error: "Thiếu thương hiệu hoặc tài khoản." });
+  await executeD1Query("INSERT INTO user_links(id,telegram_id,brand,account_label) VALUES(?,?,?,?) ON CONFLICT(telegram_id,brand,account_label) DO NOTHING", [crypto.randomUUID(), String(req.telegramUser.id), brand, label]);
+  const rows = await executeD1Query("SELECT id,brand,account_label AS tk FROM user_links WHERE telegram_id=? ORDER BY created_at DESC", [String(req.telegramUser.id)]);
+  const links = {};
+  for (const row of rows.results) {
+    if (!links[row.brand]) links[row.brand] = [];
+    links[row.brand].push(row);
+  }
+  res.json({ links });
+}));
+
+router.delete("/links/:brand/:linkId", asyncRoute(async (req, res) => {
+  await executeD1Query("DELETE FROM user_links WHERE id=? AND brand=? AND telegram_id=?", [text(req.params.linkId, 100), text(req.params.brand, 80), String(req.telegramUser.id)]);
+  res.json({ success: true });
+}));
+
+router.get("/admin/deposits", requireAdmin, asyncRoute(async (req, res) => {
+  const status = text(req.query.status || "all", 20);
+  const rows = await executeD1Query(
+    "SELECT d.*,u.username,u.first_name,u.last_name FROM deposits d JOIN users u ON u.telegram_id=d.telegram_id " +
+    (status === "all" ? "" : "WHERE d.status=? ") + "ORDER BY d.created_at DESC LIMIT 200",
+    status === "all" ? [] : [status]
+  );
+  res.json({ deposits: rows.results });
+}));
+
+router.get("/admin/orders/:id", requireAdmin, asyncRoute(async (req, res) => {
+  const order = await d1First("SELECT o.*,u.username,u.first_name,u.last_name FROM orders o JOIN users u ON u.telegram_id=o.telegram_id WHERE o.id=?", [text(req.params.id, 100)]);
+  if (!order) return res.status(404).json({ error: "Không tìm thấy đơn hàng." });
+  res.json({ order, events: [] });
+}));
+
+router.post("/admin/orders/:id/status", requireAdmin, asyncRoute(async (req, res) => {
+  const allowed = ["pending", "confirmed", "processing", "completed", "cancelled"];
+  const status = text(req.body?.status, 30);
+  if (!allowed.includes(status)) return res.status(400).json({ error: "Trạng thái đơn hàng không hợp lệ." });
+  const updated = await d1First("UPDATE orders SET status=?,updated_at=datetime('now') WHERE id=? RETURNING id,status", [status, text(req.params.id, 100)]);
+  if (!updated) return res.status(404).json({ error: "Không tìm thấy đơn hàng." });
+  await writeAdminAudit(req.telegramUser.id, "order.status.update", "order", updated.id, { status });
+  res.json({ order: updated, events: [] });
+}));
+
+router.post("/admin/orders/:id/quote", requireAdmin, asyncRoute(async (req, res) => {
+  const amount = number(req.body?.amount, -1);
+  if (amount < 0) return res.status(400).json({ error: "Giá báo không hợp lệ." });
+  const updated = await d1First(
+    "UPDATE orders SET amount=?,details_json=json_set(details_json,'$.quote.note',?,'$.quote.status','sent'),updated_at=datetime('now') WHERE id=? RETURNING *",
+    [amount, text(req.body?.note, 1000), text(req.params.id, 100)]
+  );
+  if (!updated) return res.status(404).json({ error: "Không tìm thấy đơn hàng." });
+  await writeAdminAudit(req.telegramUser.id, "order.quote", "order", updated.id, { amount });
+  res.json({ order: updated, events: [] });
+}));
+
+router.post("/admin/deposits/:id/review", requireAdmin, asyncRoute(async (req, res) => {
+  const decision = text(req.body?.status || req.body?.decision, 20);
+  if (!["approved", "rejected"].includes(decision)) return res.status(400).json({ error: "Quyết định không hợp lệ." });
+  const updated = await d1First(
+    "UPDATE deposits SET status=?,admin_note=?,reviewed_at=datetime('now'),reviewer_id=? WHERE id=? AND status='pending' RETURNING id,telegram_id,amount,status",
+    [decision, text(req.body?.note, 500), String(req.telegramUser.id), text(req.params.id, 100)]
+  );
+  if (!updated) return res.status(409).json({ error: "Không tìm thấy yêu cầu hoặc đã được xử lý." });
+  await writeAdminAudit(req.telegramUser.id, "deposit.review", "deposit", updated.id, { decision });
+  res.json({ success: true, deposit: updated });
+}));
+
+router.get("/admin/giftcodes", requireAdmin, asyncRoute(async (_req, res) => {
+  const rows = await executeD1Query("SELECT * FROM giftcodes ORDER BY created_at DESC LIMIT 200");
+  res.json({ giftcodes: rows.results });
+}));
+
+router.post("/admin/giftcodes", requireAdmin, asyncRoute(async (req, res) => {
+  const prefix = text(req.body?.codePrefix || "HENDY", 20).toUpperCase().replace(/[^A-Z0-9]/g, "");
+  const amount = number(req.body?.amountVnd ?? req.body?.amount, 0);
+  const maxUses = Math.max(1, Math.min(10000, number(req.body?.maxUses ?? req.body?.maxRedemptions, 1)));
+  if (!prefix || amount < 1) return res.status(400).json({ error: "Thông tin giftcode không hợp lệ." });
+  const code = prefix + "-" + crypto.randomBytes(5).toString("hex").toUpperCase();
+  const expiresAt = text(req.body?.expiresAt, 40) || null;
+  await executeD1Query("INSERT INTO giftcodes(code,amount,max_uses,expires_at,created_by) VALUES(?,?,?,?,?)", [code, amount, maxUses, expiresAt, String(req.telegramUser.id)]);
+  await writeAdminAudit(req.telegramUser.id, "giftcode.create", "giftcode", code, { amount, maxUses });
+  res.status(201).json({ code, amount, max_uses: maxUses, used_count: 0, status: "active", expires_at: expiresAt });
+}));
+
+router.post("/admin/giftcodes/:code/:action", requireAdmin, asyncRoute(async (req, res) => {
+  if (!["activate", "deactivate"].includes(req.params.action)) return res.status(404).json({ error: "Thao tác không hợp lệ." });
+  const status = req.params.action === "activate" ? "active" : "revoked";
+  const updated = await d1First("UPDATE giftcodes SET status=? WHERE code=? RETURNING code,status", [status, text(req.params.code, 80)]);
+  if (!updated) return res.status(404).json({ error: "Không tìm thấy giftcode." });
+  await writeAdminAudit(req.telegramUser.id, "giftcode.status", "giftcode", updated.code, { status });
+  res.json({ success: true, giftcode: updated });
+}));
+
+router.get("/admin/support/tickets/:id", requireAdmin, asyncRoute(async (req, res) => {
+  const ticket = await d1First("SELECT * FROM support_tickets WHERE id=?", [text(req.params.id, 100)]);
+  if (!ticket) return res.status(404).json({ error: "Không tìm thấy ticket." });
+  const messages = await executeD1Query("SELECT * FROM support_messages WHERE ticket_id=? ORDER BY created_at", [ticket.id]);
+  res.json({ ticket, messages: messages.results });
+}));
+
+router.post("/admin/support/tickets/:id/messages", requireAdmin, asyncRoute(async (req, res) => {
+  const ticketId = text(req.params.id, 100);
+  const message = text(req.body?.message, 4000);
+  const ticket = await d1First("SELECT id FROM support_tickets WHERE id=?", [ticketId]);
+  if (!ticket) return res.status(404).json({ error: "Không tìm thấy ticket." });
+  if (!message) return res.status(400).json({ error: "Nội dung phản hồi không được để trống." });
+  await executeD1Query("INSERT INTO support_messages(id,ticket_id,sender_telegram_id,sender_type,message) VALUES(?,?,?,'admin',?)", [crypto.randomUUID(), ticketId, String(req.telegramUser.id), message]);
+  await executeD1Query("UPDATE support_tickets SET last_message=?,updated_at=datetime('now') WHERE id=?", [message, ticketId]);
+  const messages = await executeD1Query("SELECT * FROM support_messages WHERE ticket_id=? ORDER BY created_at", [ticketId]);
+  res.json({ ticket, messages: messages.results });
+}));
+
+router.get("/admin/referrals/commissions", requireAdmin, asyncRoute(async (_req, res) => {
+  res.json({ commissions: [], total: 0, note: "Module hoa hồng chưa có schema dữ liệu production." });
+}));
+
+router.post("/admin/webhook/setup", requireAdmin, asyncRoute(async (_req, res) => {
+  const base = process.env.BASE_URL || process.env.RENDER_EXTERNAL_URL;
+  const expectedUrl = base ? new URL("/api/telegram/webhook", base).toString() : "";
+  if (!expectedUrl || !process.env.BOT_TOKEN || !process.env.WEBHOOK_SECRET) return res.status(503).json({ error: "Thiếu cấu hình webhook trên Render." });
+  const result = await sendTelegram("setWebhook", { url: expectedUrl, secret_token: process.env.WEBHOOK_SECRET, allowed_updates: ["message", "edited_message", "callback_query"] });
+  res.json({ success: true, result, targetUrl: expectedUrl });
+}));
+
 export default router;
