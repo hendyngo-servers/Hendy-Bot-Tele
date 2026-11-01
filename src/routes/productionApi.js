@@ -193,9 +193,8 @@ router.post("/telegram/webhook", asyncRoute(async (req, res) => {
     return res.status(400).json({ error: "Telegram update thiếu update_id." });
   }
   const updateId = String(update.update_id);
-  await executeD1Query("INSERT OR IGNORE INTO processed_updates(update_id) VALUES(?)", [updateId]);
-  const inserted = await d1First("SELECT update_id FROM processed_updates WHERE update_id=?", [updateId]);
-  if (!inserted) return res.status(503).json({ error: "Không thể ghi nhận Telegram update." });
+  const inserted = await d1First("INSERT OR IGNORE INTO processed_updates(update_id) VALUES(?) RETURNING update_id", [updateId]);
+  if (!inserted) return res.json({ ok: true, duplicate: true });
 
   const eventType = update.message ? "message" : update.callback_query ? "callback_query" : "other";
   const telegramId = update.message?.from?.id || update.callback_query?.from?.id || null;
@@ -516,11 +515,11 @@ router.get("/admin/settings", requireAdmin, asyncRoute(async (_req, res) => {
 }));
 
 router.post("/admin/settings", requireAdmin, asyncRoute(async (req, res) => {
-  const allowed = ["welcome_message", "support_telegram", "language"];
+  const allowed = ["welcome_message", "support_telegram", "language", "vietqr_bank", "vietqr_account_no", "vietqr_account_name"];
   const updates = req.body && typeof req.body === "object" ? req.body : {};
   for (const key of allowed) {
     if (updates[key] !== undefined) {
-      const value = text(updates[key], key === "welcome_message" ? 2000 : 120);
+      const value = text(updates[key], key === "welcome_message" ? 2000 : key === "vietqr_account_name" ? 120 : 100);
       await setBotSetting(key, value, String(req.telegramUser.id));
     }
   }
