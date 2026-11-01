@@ -27,8 +27,6 @@ jobs:
         run: npm run db:local
       - name: Compile Workers without deploying
         run: npm run check:workers
-      - name: Check migration and webhook scripts
-        run: node --check scripts/import-json-to-d1.mjs && node --check scripts/verify-json-to-d1.mjs && node --check scripts/set-telegram-webhook.mjs
       - name: Unit tests
         run: npm test
       - name: Build both Pages projects

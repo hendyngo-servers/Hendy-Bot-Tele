@@ -27,7 +27,8 @@
   "dependencies": {
     "@vitejs/plugin-react": "^4.3.4",
     "react": "^19.0.0",
-    "react-dom": "^19.0.0"
+    "react-dom": "^19.0.0",
+    "libsodium-wrappers": "^0.8.4"
   },
   "devDependencies": {
     "@types/react": "^19.0.0",

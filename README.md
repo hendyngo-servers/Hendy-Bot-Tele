@@ -21,7 +21,7 @@ Nền tảng đích sử dụng Cloudflare Workers, Pages, D1 và R2. Đây là 
 - Webhook kiểm tra header X-Telegram-Bot-Api-Secret-Token và chống xử lý lặp update_id.
 - Admin ID nằm trong Worker Secret TELEGRAM_ADMIN_IDS (danh sách ID phân tách bằng dấu phẩy).
 - Khóa mã hóa chỉ được cấu hình dưới dạng Worker Secret APP_ENCRYPTION_KEY. Không lưu khóa trong D1, Pages hay GitHub source.
-- Mã hóa tài khoản liên kết hiện giữ định dạng AES-256-GCM version 1 để tương thích ciphertext cũ của Render; triển khai dùng Web Crypto của Workers. Đây **chưa phải libsodium**. Không đổi thuật toán/khóa trước khi giải mã và tái mã hóa dữ liệu cũ. Có thể nâng cấp sang libsodium ở phiên bản ciphertext mới sau migration có kiểm thử.
+- Mã hóa tài khoản liên kết: ciphertext cũ AES-256-GCM v1 từ Render vẫn được giải mã bằng đúng APP_ENCRYPTION_KEY cũ. Tất cả mật khẩu mới được mã hóa bằng **Libsodium XChaCha20-Poly1305 v2**, khóa dẫn xuất bằng HKDF-SHA256, nonce ngẫu nhiên 24 byte và tag xác thực. Reader hỗ trợ cả v1 và v2; importer giữ nguyên ciphertext v1 để bảo toàn dữ liệu. Không xoay APP_ENCRYPTION_KEY trước khi xác minh được việc giải mã dữ liệu cũ. Việc chuyển v1 sang v2 cho dữ liệu đã nhập là bước tái mã hóa riêng, không tự thực hiện trong importer.
 - Không cho self-healing tự sửa source hoặc tự deploy. Mọi thay đổi mã nguồn phải qua Pull Request và CI.
 - R2 bucket không bật public write. File download cần phiên Telegram hợp lệ.
 - Cấu hình CORS phải chỉ định đúng các origin thực tế.

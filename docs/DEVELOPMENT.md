@@ -211,3 +211,8 @@ Cutover:
 6. Chuyển DNS/custom domains tới Cloudflare.
 7. Theo dõi lỗi/backup trong thời gian ổn định rồi mới tắt Render.
 8. Chỉ xóa dữ liệu/secret/dịch vụ cũ sau khi bản backup độc lập đã được xác minh.
+
+
+## 12. Mã hóa Libsodium và dữ liệu legacy
+
+Ciphertext mới sử dụng Libsodium XChaCha20-Poly1305 version 2. Ciphertext AES-256-GCM version 1 từ Node.js cũ vẫn được đọc bằng APP_ENCRYPTION_KEY cũ. Importer không đổi ciphertext; không xoay khóa. Trước khi muốn chuyển toàn bộ dữ liệu v1 sang v2, phải có export backup, chạy migration offline trên bản sao, giải mã/đối chiếu và chỉ thay thế khi số lượng + kết quả xác thực đều đạt.
