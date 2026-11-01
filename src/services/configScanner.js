@@ -3,7 +3,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
-const SCAN_ROOTS = ["src", "mini-app", "cloudflare", ".github/workflows"];
+const SCAN_ROOTS = ["src", "apps", "mini-app", "cloudflare", ".github/workflows", "migrations", "scripts"];
 const ROOT_FILES = [".env.example", "render.yaml", "wrangler.toml", "package.json", "README.md"];
 const IGNORED_DIRS = new Set(["node_modules", "dist", ".git", ".wrangler"]);
 
@@ -32,7 +32,7 @@ async function walk(directory, base, files) {
   for (const entry of entries) {
     if (entry.isDirectory()) {
       if (!IGNORED_DIRS.has(entry.name)) await walk(path.join(directory, entry.name), base, files);
-    } else if (entry.isFile() && /\.(?:js|jsx|mjs|cjs|ts|tsx|yml|yaml|toml|md|example|json)$/.test(entry.name)) {
+    } else if (entry.isFile() && /\.(?:js|jsx|mjs|cjs|ts|tsx|yml|yaml|toml|md|example|json|css|sql|html)$/.test(entry.name)) {
       files.push(path.relative(ROOT, path.join(directory, entry.name)).replaceAll(path.sep, "/"));
     }
   }
