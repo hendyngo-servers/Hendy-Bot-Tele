@@ -23,7 +23,6 @@ concurrency:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    environment: production
     env:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
@@ -31,7 +30,6 @@ jobs:
       VITE_API_BASE_URL: ${{ vars.VITE_API_BASE_URL }}
       BACKUP_TRIGGER_SECRET: ${{ secrets.BACKUP_TRIGGER_SECRET }}
       R2_UPLOAD_SECRET: ${{ secrets.R2_UPLOAD_SECRET }}
-      WEBHOOK_SECRET: ${{ secrets.WEBHOOK_SECRET }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -50,10 +48,8 @@ jobs:
           test -n "$VITE_API_BASE_URL" || { echo "Missing repository variable VITE_API_BASE_URL"; exit 1; }
           test -n "$BACKUP_TRIGGER_SECRET" || { echo "Missing secret BACKUP_TRIGGER_SECRET"; exit 1; }
           test -n "$R2_UPLOAD_SECRET" || { echo "Missing secret R2_UPLOAD_SECRET"; exit 1; }
-          test -n "$WEBHOOK_SECRET" || { echo "Missing secret WEBHOOK_SECRET"; exit 1; }
           [[ "$BACKUP_TRIGGER_SECRET" =~ ^[A-Za-z0-9_-]{32,256}$ ]] || { echo "BACKUP_TRIGGER_SECRET must be 32-256 URL-safe characters"; exit 1; }
           [[ "$R2_UPLOAD_SECRET" =~ ^[A-Za-z0-9_-]{32,256}$ ]] || { echo "R2_UPLOAD_SECRET must be 32-256 URL-safe characters"; exit 1; }
-          [[ "$WEBHOOK_SECRET" =~ ^[A-Za-z0-9_-]{32,256}$ ]] || { echo "WEBHOOK_SECRET must be 32-256 URL-safe characters"; exit 1; }
           [[ "$VITE_API_BASE_URL" == https://* ]] || { echo "VITE_API_BASE_URL must use HTTPS"; exit 1; }
 
       - name: Install dependencies
@@ -77,7 +73,7 @@ jobs:
       - name: Sync Worker secrets
         shell: bash
         run: |
-          for secret_name in BACKUP_TRIGGER_SECRET R2_UPLOAD_SECRET WEBHOOK_SECRET; do
+          for secret_name in BACKUP_TRIGGER_SECRET R2_UPLOAD_SECRET; do
             secret_value="$(printenv "$secret_name" || true)"
             if [ -n "$secret_value" ]; then
               printf '%s' "$secret_value" | npx --yes wrangler@4 secret put "$secret_name"
