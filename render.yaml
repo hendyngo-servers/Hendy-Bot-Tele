@@ -42,6 +42,10 @@ services:
         sync: false
       - key: BACKUP_TRIGGER_SECRET
         sync: false
+      - key: R2_UPLOAD_WORKER_URL
+        sync: false
+      - key: R2_UPLOAD_SECRET
+        sync: false
       - key: VIETQR_BANK_ID
         sync: false
       - key: VIETQR_ACCOUNT_NO
