@@ -541,7 +541,10 @@ export default function App() {
 
           {tab === "wallet" && <section className="section-block">
             <div className="section-title"><div><span className="eyebrow">HENDY WALLET</span><h2>Ví điện tử</h2></div><button className="text-button" type="button" onClick={() => refreshWallet().catch(err => setError(err.message))}>↻ Làm mới</button></div>
-            <div className="balance-card"><div className="overview-label">SỐ DƯ KHẢ DỤNG</div><strong>{money(walletOverview?.balance ?? home?.user?.balance)}</strong><span>Ví nội bộ · VND</span></div>
+            <div className="overview-grid">
+              <article className="balance-card"><div className="overview-label">SỐ DƯ KHẢ DỤNG</div><strong>{money(walletOverview?.balance ?? home?.user?.balance)}</strong><span>Ví nội bộ · VND</span></article>
+              <article className="metric-card metric-violet"><span>VOUCHER GIFTcode</span><strong>{Number(walletOverview?.voucher ?? home?.user?.voucher ?? 0).toLocaleString("vi-VN")}</strong><small>Điểm thưởng, không phải tiền mặt</small></article>
+            </div>
             <section className="request-panel">
               <div className="section-title"><div><span className="eyebrow">BANK TRANSFER</span><h2>Thông tin chuyển khoản</h2></div></div>
               {walletOverview?.payment?.configured ? <>
