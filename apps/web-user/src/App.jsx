@@ -133,6 +133,10 @@ export default function App() {
       } else setNotice("Liên kết này chưa được cấu hình. Vui lòng liên hệ Admin.");
       return;
     }
+    if (item.id === "mini_game_live") {
+      setTab("links");
+      return;
+    }
     if (item.route === "wallet") {
       setTab("wallet");
       try { await refreshWallet(); } catch (err) { setError(err.message); }
@@ -637,7 +641,8 @@ export default function App() {
           </section>}
 
           {tab === "links" && <section className="section-block">
-            <div className="section-title"><div><span className="eyebrow">ACCOUNT CONNECTIONS</span><h2>Tài khoản liên kết</h2></div><span className="section-aside">{totalLinks} LIÊN KẾT</span></div>
+            <div className="section-title"><div><span className="eyebrow">MINI GAME LIVE · ACCOUNT CONNECTIONS</span><h2>Trung tâm quản lý tài khoản liên kết</h2></div><span className="section-aside">{totalLinks} LIÊN KẾT</span></div>
+            <div className="module-action-row"><p className="helper-copy">Quản lý mã/tên tài khoản của bạn, theo dõi đơn Mini Game Live trong mục Đơn hàng. Không gửi mật khẩu hay OTP.</p><button className="text-button" onClick={() => { const item = MODULES.find(value => value.id === "mini_game_live"); setSelectedModule(item); setOrderTitle("Yêu cầu Mini Game Live"); setOrderDescription(""); setQuantity(1); setTab("home"); }}>＋ Tạo yêu cầu Mini Game Live</button></div>
             <p className="helper-copy">Chỉ lưu tên/mã tài khoản để bạn quản lý. Không nhập mật khẩu, OTP, cookie hoặc mã khôi phục.</p>
             <form className="link-form" onSubmit={addLink}>
               <label>Sảnh / nền tảng<select value={brand} onChange={event => setBrand(event.target.value)}>{BRANDS.map(item => <option key={item}>{item}</option>)}</select></label>
