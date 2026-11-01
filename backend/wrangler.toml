@@ -8,6 +8,7 @@ minify = true
 ENVIRONMENT = "production"
 WEBAPP_URL = "https://hendy-web-user.pages.dev"
 ADMIN_WEBAPP_URL = "https://hendy-web-admin.pages.dev"
+BOT_USERNAME = ""
 GROUP_CHAT_URL = ""
 NEWS_CHANNEL_URL = ""
 SUPPORT_URL = ""
