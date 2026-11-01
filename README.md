@@ -228,6 +228,7 @@ npm install --include=dev
 npm run build
 npm test
 npm run lint
+npm run config:audit
 npm start
 ```
 
