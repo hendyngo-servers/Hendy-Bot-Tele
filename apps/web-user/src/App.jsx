@@ -49,6 +49,8 @@ export default function App() {
   const [referralCodeInput, setReferralCodeInput] = useState("");
   const [vipProfile, setVipProfile] = useState(null);
   const [giftcodeInput, setGiftcodeInput] = useState("");
+  const [walletOverview, setWalletOverview] = useState(null);
+  const [depositAmount, setDepositAmount] = useState("");
   const requestedModule = useMemo(() => new URLSearchParams(window.location.search).get("module"), []);
 
   useEffect(() => {
@@ -88,7 +90,8 @@ export default function App() {
     setSelectedModule(null);
     if (item.id === "wallet") {
       setTab("wallet");
-      setNotice("Nạp tiền chưa được kích hoạt. Chưa có cổng thanh toán/ngân hàng được xác minh nên hệ thống không nhận tiền hoặc tự cộng số dư.");
+      try { setWalletOverview(await api("/api/v1/wallet", {}, initData)); }
+      catch (err) { setError(err.message); }
       return;
     }
     if (item.id === "support") {
@@ -125,6 +128,26 @@ export default function App() {
     setQuantity(1);
     setTab("home");
     if (["app_tool", "buy_code", "otp_proxy"].includes(item.id)) await loadCatalog(item.id);
+  }
+
+  async function refreshWallet() {
+    setWalletOverview(await api("/api/v1/wallet", {}, initData));
+  }
+
+  async function submitDeposit(event) {
+    event.preventDefault();
+    setBusy(true); setError(""); setNotice("");
+    try {
+      const result = await api("/api/v1/deposits", {
+        method: "POST",
+        headers: { "Idempotency-Key": crypto.randomUUID() },
+        body: JSON.stringify({ amountVnd: Number(depositAmount) })
+      }, initData);
+      setDepositAmount("");
+      await refreshWallet();
+      setNotice("Đã tạo yêu cầu nạp " + result.request.reference + ". Chuyển khoản đúng nội dung tham chiếu và chờ Admin đối soát.");
+    } catch (err) { setError(err.message); }
+    finally { setBusy(false); }
   }
 
   async function submitSupport(event) {
@@ -376,9 +399,27 @@ export default function App() {
           </section>}
 
           {tab === "wallet" && <section className="section-block">
-            <div className="section-title"><div><span className="eyebrow">HENDY WALLET</span><h2>Ví điện tử</h2></div></div>
-            <div className="balance-card"><div className="overview-label">SỐ DƯ KHẢ DỤNG</div><strong>{money(home?.user?.balance)}</strong><span>Ví nội bộ · VND</span></div>
-            <div className="empty-panel">Nạp tiền và xác nhận thanh toán đang chờ cấu hình ngân hàng/cổng thanh toán cùng quy trình đối soát. Hiện không nhận tiền hoặc tự cộng số dư.</div>
+            <div className="section-title"><div><span className="eyebrow">HENDY WALLET</span><h2>Ví điện tử</h2></div><button className="text-button" type="button" onClick={() => refreshWallet().catch(err => setError(err.message))}>↻ Làm mới</button></div>
+            <div className="balance-card"><div className="overview-label">SỐ DƯ KHẢ DỤNG</div><strong>{money(walletOverview?.balance ?? home?.user?.balance)}</strong><span>Ví nội bộ · VND</span></div>
+            <section className="request-panel">
+              <div className="section-title"><div><span className="eyebrow">BANK TRANSFER</span><h2>Thông tin chuyển khoản</h2></div></div>
+              {walletOverview?.payment?.configured ? <>
+                <p><b>{walletOverview.payment.bankName || "Ngân hàng"}</b> {walletOverview.payment.bankBin ? "· " + walletOverview.payment.bankBin : ""}</p>
+                <p>Số tài khoản: <b>{walletOverview.payment.accountNumber}</b></p>
+                <p>Chủ tài khoản: <b>{walletOverview.payment.accountName}</b></p>
+                <p className="helper-copy">{walletOverview.payment.instruction}</p>
+                <form className="link-form" onSubmit={submitDeposit}>
+                  <label>Số tiền (10.000–100.000.000 VNĐ)<input type="number" min="10000" max="100000000" step="1000" value={depositAmount} onChange={e => setDepositAmount(e.target.value)} required /></label>
+                  <button disabled={busy}>{busy ? "Đang tạo…" : "Tạo yêu cầu nạp"}</button>
+                </form>
+              </> : <div className="empty-panel">Admin chưa cấu hình thông tin ngân hàng. Chưa thể tạo yêu cầu chuyển khoản.</div>}
+            </section>
+            <div className="section-title"><div><span className="eyebrow">TRANSACTION HISTORY</span><h2>Lịch sử nạp tiền</h2></div></div>
+            {(walletOverview?.deposits || []).length ? <div className="orders-list">{walletOverview.deposits.map(item => <article className="order-row" key={item.id}>
+              <div className="order-mark">₫</div><div className="order-main"><strong>{item.reference}</strong><span>{money(item.amount)}</span><small>{new Date(item.createdAt).toLocaleString("vi-VN")}</small></div>
+              <div className="order-side"><span className={"status-pill status-" + (item.status === "approved" ? "completed" : item.status === "rejected" ? "cancelled" : "pending")}>{item.status === "approved" ? "Đã cộng tiền" : item.status === "rejected" ? "Từ chối" : "Chờ đối soát"}</span>{item.adminNote && <small>{item.adminNote}</small>}</div>
+            </article>)}</div> : <div className="empty-panel">Chưa có giao dịch nạp tiền.</div>}
+            <p className="footnote">Số dư chỉ được cộng sau khi Admin kiểm tra giao dịch thực tế. Không gửi ảnh/chứng từ chứa thông tin ngân hàng nhạy cảm vào nhóm công khai.</p>
           </section>}
 
           {tab === "support" && <section className="section-block">
