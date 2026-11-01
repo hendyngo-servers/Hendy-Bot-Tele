@@ -178,7 +178,11 @@ Telegram gửi update dưới dạng HTTPS POST và kèm secret header. Không c
 
     node scripts/import-json-to-d1.mjs ./database.json --dry-run
 
-4. Chạy import vào D1 production chỉ khi D1 mới/đã backup.
+4. Chạy import vào D1 production chỉ khi D1 mới/đã backup. Sau khi import, đối chiếu dữ liệu bằng:
+
+    npm run verify:import -- ./database.json
+
+Script so sánh số lượng bảng nghiệp vụ và tổng số dư VND. Nếu có sai lệch, dừng cutover và điều tra trước khi chuyển webhook.
 
 Windows PowerShell:
 
