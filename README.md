@@ -44,18 +44,20 @@ WEBHOOK_SETUP_KEY: khóa riêng gọi endpoint đăng ký webhook.
 ADMIN_API_TOKEN: bearer token bảng quản trị.
 ADMIN_IDS: Worker variable tùy chọn, danh sách Telegram ID quản trị phân tách bằng dấu phẩy.
 
-Worker variables:
-- PUBLIC_API_BASE_URL: URL HTTPS public của Worker.
-- WEBAPP_URL: URL Pages của web-user.
-- ALLOWED_ORIGINS: hai origin Pages, phân cách bằng dấu phẩy.
-- ADMIN_IDS: danh sách Telegram ID quản trị, nếu dùng Telegram initData cho admin.
+Worker variables trong `backend/wrangler.toml`:
+- `WEBAPP_URL`: URL Pages của web-user.
+- `ADMIN_WEBAPP_URL`: URL Pages của web-admin, nút /admin mở trang này.
+- `ADMIN_IDS`: danh sách Telegram ID quản trị, phân cách bằng dấu phẩy.
+- `GROUP_CHAT_URL`, `NEWS_CHANNEL_URL`: URL HTTPS cho nút Nhóm chat và Kênh thông báo.
+- `BANK_NAME`, `BANK_BIN`, `BANK_ACCOUNT`, `BANK_ACCOUNT_NAME`: thông tin tài khoản nhận chuyển khoản. Để trống thì không hiện form tạo yêu cầu nạp.
+- `ALLOWED_ORIGINS`: origin Pages được phép gọi API.
 
 Webhook ở /telegram/webhook xác minh X-Telegram-Bot-Api-Secret-Token; không nhúng secret vào URL path.
 
 ## GitHub Actions
 Repository secrets:
-- CF_API_TOKEN: Cloudflare API token có quyền Workers Scripts:Edit, D1:Edit, R2:Edit, Pages:Edit.
-- CF_ACCOUNT_ID: Cloudflare Account ID.
+- CLOUDFLARE_API_TOKEN: Cloudflare API token có quyền Workers Scripts:Edit, D1:Edit, R2:Edit, Pages:Edit.
+- CLOUDFLARE_ACCOUNT_ID: Cloudflare Account ID.
 
 Repository variable:
 - VITE_API_BASE_URL: URL HTTPS Worker, không có dấu slash cuối.
@@ -84,8 +86,10 @@ Public:
 - GET /api/v1/releases/:id/download
 
 Yêu cầu Telegram Mini App; mọi request gửi header Authorization: tma <Telegram initData>:
-- GET /api/v1/home — hồ sơ thành viên, số dư đọc-only và số liệu tổng hợp đơn hàng.
+- GET /api/v1/home — hồ sơ thành viên, số dư và số liệu tổng hợp đơn hàng.
 - GET /api/v1/me — hồ sơ cơ bản.
+- GET /api/v1/wallet — số dư, hướng dẫn chuyển khoản và lịch sử yêu cầu nạp.
+- POST /api/v1/deposits — tạo yêu cầu nạp thủ công, bắt buộc `Idempotency-Key`.
 - GET /api/v1/orders?limit=20&offset=0 — danh sách đơn của chính Telegram user.
 - GET /api/v1/orders/:id — chi tiết một đơn thuộc chính user.
 - POST /api/v1/orders — tạo yêu cầu dịch vụ, bắt buộc header Idempotency-Key (8–128 ký tự an toàn).
@@ -101,6 +105,8 @@ Ví dụ tạo đơn (không truyền số tiền; hệ thống chờ nhân viê
 Module tạo đơn ở giai đoạn này: mini_game_live, app_tool, buy_code, otp_proxy, vip. Giá trị tiền do server/admin/provider quyết định ở giai đoạn sau; payload phía trình duyệt không thể thiết lập giá.
 
 Admin:
+- GET /api/v1/admin/deposits?status=pending — danh sách yêu cầu nạp.
+- POST /api/v1/admin/deposits/:id/review — duyệt/từ chối; chỉ duyệt sau khi xác minh tiền vào ngân hàng.
 - POST /api/v1/admin/releases — Bearer ADMIN_API_TOKEN hoặc Telegram admin allowlist.
 - GET /api/v1/admin/stats — quản trị đã xác thực.
 - POST /api/v1/admin/webhook/setup — quản trị đã xác thực và X-Webhook-Setup-Key.
@@ -134,6 +140,14 @@ Migration `0007_manual_deposits.sql` bổ sung yêu cầu nạp thủ công. Ng�
 Sau khi deploy Worker, cấu hình thông tin nhận tiền bằng Wrangler variables (không commit thông tin riêng tư vào mã nguồn):
 Thiết lập `BANK_NAME`, `BANK_BIN`, `BANK_ACCOUNT`, `BANK_ACCOUNT_NAME` trong `backend/wrangler.toml` hoặc Worker Variables trên Cloudflare Dashboard, sau đó deploy lại Worker.
 
+
+## Telegram Bot và ví nạp thủ công
+
+Lệnh `/start` hiển thị menu nhiều hàng theo ảnh tham chiếu: Mini Game Live, Thuê Tool, Mua Code, Nạp tiền, OTP & Proxy, Kho công cụ VIP, Trung tâm khách hàng, Ghép đôi, REF, VIP, Nhóm chat, Kênh thông báo, Giftcode và CSKH. Các nút Mini App truyền module qua query string. Lệnh `/admin` chỉ hoạt động với Telegram ID nằm trong `ADMIN_IDS` và mở `ADMIN_WEBAPP_URL`.
+
+Ví hỗ trợ tạo yêu cầu nạp bằng chuyển khoản thủ công, xem lịch sử và Admin duyệt/từ chối. Khi duyệt, Worker dùng D1 batch để cập nhật số dư và ghi `wallet_ledger`; lặp thao tác không cộng tiền lần hai. Không có bank webhook tự động, không có rút tiền. Admin phải kiểm tra giao dịch thật trước khi duyệt.
+
+
 ## Backup và TLS
     node scripts/db-backup.js
 
@@ -141,9 +155,11 @@ Script xuất D1 remote và upload SQL vào prefix backups/d1 trong R2. Cloudfla
 
 ## Triển khai và giới hạn
 
-Trước khi deploy cần thay database_id và KV namespace ID trong backend/wrangler.toml; tạo R2 bucket và hai Pages project; cấu hình secrets/variables trong GitHub và Cloudflare. Không commit .dev.vars hoặc token thật.
+Trước khi deploy cần thay `database_id` và KV namespace ID trong `backend/wrangler.toml`; tạo R2 bucket và hai Pages project; cấu hình secrets/variables trong GitHub và Cloudflare. Không commit `.dev.vars` hoặc token thật.
 
-Migration 0003 phải được áp dụng trước khi sử dụng API đơn hàng:
+GitHub Actions chỉ tự deploy khi có `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`, D1 ID, KV ID và `VITE_API_BASE_URL`. Nếu thiếu, CI vẫn chạy tests/build nhưng tự bỏ qua bước deploy để tránh triển khai sai cấu hình.
+
+Áp dụng toàn bộ migration D1 theo thứ tự trước khi sử dụng API đơn hàng và ví:
 
     pnpm exec wrangler d1 migrations apply DB --remote --config backend/wrangler.toml
 
