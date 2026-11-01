@@ -302,6 +302,10 @@ router.get("/wallet", asyncRoute(async (req, res) => {
     "SELECT id,amount,transfer_content AS reference,status,admin_note,created_at FROM deposits WHERE telegram_id=? ORDER BY created_at DESC LIMIT 30",
     [String(req.telegramUser.id)]
   );
+  const voucherRows = await executeD1Query(
+    "SELECT id,amount_delta,balance_after,entry_type,note,created_at FROM voucher_ledger WHERE telegram_id=? ORDER BY created_at DESC LIMIT 50",
+    [String(req.telegramUser.id)]
+  );
   res.json({
     userId: user.id,
     balance: user.balance,
@@ -309,6 +313,7 @@ router.get("/wallet", asyncRoute(async (req, res) => {
     points: user.points,
     ledger: ledger.results,
     transactions: ledger.results,
+    voucherLedger: voucherRows.results,
     deposits: depositRows.results,
     payment: {
       configured: Boolean(process.env.VIETQR_BANK_ID && process.env.VIETQR_ACCOUNT_NO && process.env.VIETQR_ACCOUNT_NAME),
@@ -797,7 +802,7 @@ router.post("/admin/releases", requireAdmin, releaseUpload.single("file"), async
   }
 
   const releaseId = "REL-" + crypto.randomUUID().slice(0, 12).toUpperCase();
-  const downloadUrl = new URL("/api/storage/download/" + encodeURIComponent(uploadResult.key), workerBase).toString();
+  const downloadUrl = new URL("/api/storage/download/" + uploadResult.key.split("/").map(encodeURIComponent).join("/"), workerBase).toString();
   await executeD1Query(
     "INSERT INTO app_releases(id,title,version,platform,download_url,notes,is_active) VALUES(?,?,?,?,?,?,1)",
     [releaseId, safeName, version, platform, downloadUrl, notes]
@@ -925,6 +930,14 @@ router.get("/admin/d1/health", requireAdmin, asyncRoute(async (_req, res) => {
   res.json(await getD1Health());
 }));
 
+router.get("/admin/backups", requireAdmin, asyncRoute(async (_req, res) => {
+  const rows = await executeD1Query(
+    "SELECT id,status,object_prefix,table_count,row_count,error_message,started_at,finished_at " +
+    "FROM backup_runs ORDER BY started_at DESC LIMIT 50"
+  );
+  res.json({ backups: rows.results });
+}));
+
 router.post("/admin/backup", requireAdmin, asyncRoute(async (_req, res) => {
   const workerBase = process.env.BACKUP_WORKER_URL;
   const secret = process.env.BACKUP_TRIGGER_SECRET;
@@ -974,8 +987,24 @@ router.post("/links", asyncRoute(async (req, res) => {
 }));
 
 router.delete("/links/:brand/:linkId", asyncRoute(async (req, res) => {
-  await executeD1Query("DELETE FROM user_links WHERE id=? AND brand=? AND telegram_id=?", [text(req.params.linkId, 100), text(req.params.brand, 80), String(req.telegramUser.id)]);
-  res.json({ success: true });
+  const brand = text(req.params.brand, 80);
+  const userId = String(req.telegramUser.id);
+  let linkId = text(req.params.linkId, 100);
+  if (/^\d+$/.test(linkId)) {
+    const indexed = await d1First(
+      "SELECT id FROM user_links WHERE telegram_id=? AND brand=? ORDER BY created_at DESC LIMIT 1 OFFSET ?",
+      [userId, brand, Number(linkId)]
+    );
+    linkId = indexed?.id || "";
+  }
+  if (linkId) await executeD1Query("DELETE FROM user_links WHERE id=? AND brand=? AND telegram_id=?", [linkId, brand, userId]);
+  const rows = await executeD1Query("SELECT id,brand,account_label AS tk FROM user_links WHERE telegram_id=? ORDER BY created_at DESC", [userId]);
+  const links = {};
+  for (const row of rows.results) {
+    if (!links[row.brand]) links[row.brand] = [];
+    links[row.brand].push(row);
+  }
+  res.json({ success: true, links });
 }));
 
 router.get("/admin/deposits", requireAdmin, asyncRoute(async (req, res) => {
@@ -1046,7 +1075,7 @@ router.get("/admin/giftcodes", requireAdmin, asyncRoute(async (_req, res) => {
 
 router.post("/admin/giftcodes", requireAdmin, asyncRoute(async (req, res) => {
   const prefix = text(req.body?.codePrefix || "HENDY", 20).toUpperCase().replace(/[^A-Z0-9]/g, "");
-  const amount = number(req.body?.amountVnd ?? req.body?.amount, 0);
+  const amount = number(req.body?.rewardVoucher ?? req.body?.amountVnd ?? req.body?.amount, 0);
   const maxUses = Math.max(1, Math.min(10000, number(req.body?.maxUses ?? req.body?.maxRedemptions, 1)));
   if (!prefix || amount < 1) return res.status(400).json({ error: "Thông tin giftcode không hợp lệ." });
   const code = prefix + "-" + crypto.randomBytes(5).toString("hex").toUpperCase();
