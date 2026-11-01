@@ -463,33 +463,6 @@ export default function App() {
     }
   };
 
-  // Bot Simulator: Send message
-  const handleSendBotMessage = (text) => {
-    const input = text || botChatInput;
-    if (!input.trim()) return;
-
-    setBotChatMessages((prev) => [...prev, { sender: "user", text: input }]);
-    setBotChatInput("");
-
-    setTimeout(() => {
-      let reply = "Tôi có thể hỗ trợ gì cho bạn? Hãy chọn một tính năng trong menu 14 nút!";
-      const cmd = input.trim().toLowerCase();
-      if (cmd === "/start") {
-        reply = "👋 Chào mừng bạn đến với Hendy Bot Telegram — Cloudflare Edition! Hệ thống tích hợp R2, D1, và Mini App store!";
-      } else if (cmd === "/store") {
-        reply = "🛍️ Kho ứng dụng Hendy App Store đã sẵn sàng! Bạn có thể xem ngay tại tab Cửa hàng.";
-      } else if (cmd === "/wallet") {
-        reply = `💳 Số dư ví của bạn hiện tại là ${formatVnd(wallet?.balance ?? 1500000)} đ.`;
-      } else if (cmd === "/admin") {
-        reply = "🛡️ Chào mừng Quản trị viên! Bạn có thể quản lý đơn hàng, duyệt nạp tiền, và đóng gói sản phẩm.";
-      } else if (cmd === "/id") {
-        reply = `🆔 ID Telegram: ${userProfile?.id || "99887766"} | Tên: ${userProfile?.name || "Hội viên Hendy"}`;
-      }
-
-      setBotChatMessages((prev) => [...prev, { sender: "bot", text: reply }]);
-    }, 400);
-  };
-
   return (
     <div className="min-h-screen flex flex-col bg-[#0a0e17] text-[#e6edf3]">
       {/* Toast Notification */}
