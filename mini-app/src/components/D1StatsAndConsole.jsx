@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { telegramFetch } from "../services/api.js";
 import { Database, Play, Clock, Terminal, Archive, RefreshCw } from "lucide-react";
 
@@ -16,6 +16,19 @@ export function D1StatsAndConsole({ adminStats, showToast }) {
   const [queryOutput, setQueryOutput] = useState(null);
   const [backupLoading, setBackupLoading] = useState(false);
   const [backupResult, setBackupResult] = useState(null);
+  const [backupRuns, setBackupRuns] = useState([]);
+
+  useEffect(() => {
+    let disposed = false;
+    telegramFetch("/api/admin/backups")
+      .then(async (response) => {
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || "Không lấy được lịch sử sao lưu.");
+        if (!disposed) setBackupRuns(data.backups || []);
+      })
+      .catch((error) => console.warn("Không thể tải lịch sử backup:", error.message));
+    return () => { disposed = true; };
+  }, []);
 
   const handleRunQuery = async () => {
     if (!sqlInput.trim()) return;
@@ -51,6 +64,8 @@ export function D1StatsAndConsole({ adminStats, showToast }) {
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || "Không thể tạo bản sao lưu.");
       setBackupResult(result.backup || result);
+      const history = await telegramFetch("/api/admin/backups");
+      if (history.ok) setBackupRuns((await history.json()).backups || []);
       showToast("Đã hoàn tất sao lưu D1 sang Cloudflare R2.");
     } catch (error) {
       setBackupResult({ error: error.message });
@@ -75,8 +90,8 @@ export function D1StatsAndConsole({ adminStats, showToast }) {
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <span className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 text-xs font-semibold">
-            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+          <span className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold ${adminStats?.d1Status === "connected" ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/30" : "bg-red-500/10 text-red-300 border border-red-500/30"}`}>
+            <span className={`w-2 h-2 rounded-full ${adminStats?.d1Status === "connected" ? "bg-emerald-400 animate-pulse" : "bg-red-400"}`}></span>
             <span>D1 {adminStats?.d1Status || "Chưa xác định"}</span>
           </span>
           <span className="text-xs font-mono text-cyan-300 font-semibold px-2.5 py-1 rounded-xl bg-white/5 border border-white/5">
@@ -102,7 +117,7 @@ export function D1StatsAndConsole({ adminStats, showToast }) {
         </div>
 
         <div className="p-3 rounded-xl bg-white/5 border border-white/5 space-y-1">
-          <span className="text-[11px] text-slate-400 block">Tổng Lượng Truy Vấn D1</span>
+          <span className="text-[11px] text-slate-400 block">Lượt truy vấn D1 (instance)</span>
           <span className="text-base font-bold text-white block">
             {adminStats?.d1Queries ?? "—"}
           </span>
@@ -140,6 +155,26 @@ export function D1StatsAndConsole({ adminStats, showToast }) {
           {backupLoading ? <><RefreshCw className="mr-1 inline h-3.5 w-3.5 animate-spin" /> Đang sao lưu…</> : "Sao lưu ngay"}
         </button>
       </div>
+
+      {backupRuns.length > 0 && (
+        <div className="rounded-xl border border-white/10 bg-white/[0.03] p-4">
+          <div className="mb-2 flex items-center justify-between gap-2">
+            <span className="text-xs font-semibold text-slate-200">Lịch sử sao lưu gần đây</span>
+            <span className="text-[10px] text-slate-500">Tối đa 50 lần gần nhất</span>
+          </div>
+          <div className="space-y-2">
+            {backupRuns.slice(0, 5).map((run) => (
+              <div key={run.id} className="flex flex-wrap items-center justify-between gap-2 text-xs">
+                <span className="font-mono text-slate-400">{run.id.slice(0, 8)} · {run.table_count} bảng · {run.row_count} dòng</span>
+                <span className={run.status === "success" ? "text-emerald-300" : "text-red-300"}>
+                  {run.status === "success" ? "Thành công" : "Thất bại"}
+                </span>
+                <span className="text-slate-500">{run.finished_at || run.started_at}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* SQL Query Console */}
       <div className="space-y-2 pt-2 border-t border-white/5">
