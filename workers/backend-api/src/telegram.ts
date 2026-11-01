@@ -41,6 +41,12 @@ async function handleMessage(env: BackendEnv, message: Record<string, any>) {
   };
   await upsertTelegramUser(env.DB, user, isAdmin(user.id, env));
   const text = String(message.text || "").trim();
+  const referral = text.match(/^\/start(?:@[^ ]+)?\s+ref_(\d+)$/i);
+  if (referral && referral[1] !== user.id) {
+    await env.DB.prepare("INSERT OR IGNORE INTO referrals (id,referrer_id,referred_id) " +
+      "SELECT ?,?,? WHERE EXISTS (SELECT 1 FROM users WHERE telegram_id=?)")
+      .bind(crypto.randomUUID(), referral[1], user.id, referral[1]).run();
+  }
   if (!text.startsWith("/")) return;
 
   if (text.startsWith("/id")) {
@@ -55,7 +61,7 @@ async function handleMessage(env: BackendEnv, message: Record<string, any>) {
     await sendTelegramMessage(
       env,
       String(chatId),
-      "Xin chào <b>" + greeting + "</b>!\\nChào mừng bạn đến với Hendy Bot. Chọn nút bên dưới để mở ứng dụng.",
+      "Xin chào <b>" + greeting + "</b>!\nChào mừng bạn đến với Hendy Bot. Chọn nút bên dưới để mở ứng dụng.",
       keyboard
     );
     return;
@@ -65,7 +71,7 @@ async function handleMessage(env: BackendEnv, message: Record<string, any>) {
       .bind(user.id).first<{ balance_vnd: number; vip_level: number }>();
     await sendTelegramMessage(
       env, String(chatId),
-      "Số dư: <b>" + Number(account?.balance_vnd || 0).toLocaleString("vi-VN") + " VNĐ</b>\\nVIP: <b>" + Number(account?.vip_level || 0) + "</b>"
+      "Số dư: <b>" + Number(account?.balance_vnd || 0).toLocaleString("vi-VN") + " VNĐ</b>\nVIP: <b>" + Number(account?.vip_level || 0) + "</b>"
     );
   }
 }

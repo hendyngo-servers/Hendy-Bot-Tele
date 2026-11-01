@@ -3,7 +3,7 @@ import { api, formatVnd } from "./api";
 
 const NAV = [
   ["home","Tổng quan","⌂"],["catalog","Chợ ứng dụng","▦"],["orders","Đơn hàng","▤"],
-  ["deposits","Nạp tiền","＋"],["accounts","Tài khoản liên kết","◈"],["tickets","Hỗ trợ","✉"]
+  ["deposits","Nạp tiền","＋"],["accounts","Tài khoản liên kết","◈"],["giftcodes","Giftcode","✳"],["referrals","Giới thiệu","↗"],["tickets","Hỗ trợ","✉"]
 ];
 
 function App() {
@@ -20,6 +20,8 @@ function App() {
   const [notice,setNotice] = useState("");
   const [amount,setAmount] = useState("50000");
   const [ticketText,setTicketText] = useState("");
+  const [giftCode,setGiftCode] = useState("");
+  const [referral,setReferral] = useState(null);
   const [account,setAccount] = useState({provider:"",accountName:"",username:"",password:""});
   const [depositInfo,setDepositInfo] = useState(null);
   const greeting = useMemo(() => me?.display_name || "Thành viên Hendy", [me]);
@@ -28,12 +30,12 @@ function App() {
     if (!initData) return;
     setBusy(true);
     try {
-      const [profile,items,ordersData,depositsData,accountsData,ticketsData] = await Promise.all([
+      const [profile,items,ordersData,depositsData,accountsData,ticketsData,referralData] = await Promise.all([
         api("/api/v1/me"),api("/api/v1/catalog"),api("/api/v1/orders"),api("/api/v1/deposits"),
-        api("/api/v1/linked-accounts"),api("/api/v1/tickets")
+        api("/api/v1/linked-accounts"),api("/api/v1/tickets"),api("/api/v1/referrals")
       ]);
       setMe(profile); setCatalog(items); setOrders(ordersData); setDeposits(depositsData);
-      setAccounts(accountsData); setTickets(ticketsData);
+      setAccounts(accountsData); setTickets(ticketsData); setReferral(referralData);
     } catch (error) { setNotice(error.message); }
     finally { setBusy(false); }
   }
@@ -70,6 +72,14 @@ function App() {
       setAccount({provider:"",accountName:"",username:"",password:""});
     },"Đã lưu tài khoản liên kết.");
   }
+  async function redeemGiftcode(event) {
+    event.preventDefault();
+    await run(async () => {
+      const result = await api("/api/v1/giftcodes/redeem",{method:"POST",body:JSON.stringify({code:giftCode})});
+      setGiftCode("");
+      setNotice("Đã nhận phần thưởng " + result.rewardValue + " (" + result.rewardType + ").");
+    });
+  }
   async function createTicket(event) {
     event.preventDefault();
     await run(async () => {
@@ -96,6 +106,8 @@ function App() {
       {tab==="orders" && <><Head title="Đơn hàng" desc="Theo dõi trạng thái các đơn đã tạo."/><div className="panel">{orders.map(item=><Record key={item.id} title={item.item_name} sub={new Date(item.created_at).toLocaleString("vi-VN")} value={formatVnd(item.amount_vnd)} state={item.status}/>)}{orders.length===0&&<Empty text="Bạn chưa có đơn hàng."/>}</div></>}
       {tab==="deposits" && <><Head title="Nạp tiền" desc="Tạo yêu cầu chuyển khoản và xem lịch sử."/><form className="panel form" onSubmit={createDeposit}><label>Số tiền muốn nạp (VNĐ)<input type="number" min="10000" step="1000" value={amount} onChange={event=>setAmount(event.target.value)} required/></label><button disabled={busy}>Tạo yêu cầu nạp tiền</button></form>{depositInfo&&<div className="panel"><h3>Thông tin chuyển khoản</h3><b>{depositInfo.reference}</b><p>{formatVnd(depositInfo.amountVnd)}</p>{depositInfo.payment?.qrUrl&&<img className="qr" src={depositInfo.payment.qrUrl} alt="Mã QR chuyển khoản"/>}<p>{depositInfo.payment?.bankName} · {depositInfo.payment?.bankAccount}</p><p>{depositInfo.payment?.bankAccountName}</p><small>{depositInfo.payment?.instructions}</small></div>}<div className="panel"><h3>Lịch sử nạp tiền</h3>{deposits.map(item=><Record key={item.id} title={item.reference} sub={new Date(item.created_at).toLocaleString("vi-VN")} value={formatVnd(item.amount_vnd)} state={item.status}/>)}{deposits.length===0&&<Empty text="Chưa có giao dịch."/>}</div></>}
       {tab==="accounts" && <><Head title="Tài khoản liên kết" desc="Thông tin bí mật được mã hóa trước khi lưu."/><form className="panel form" onSubmit={createAccount}><label>Dịch vụ / Nhà cung cấp<input value={account.provider} onChange={e=>setAccount({...account,provider:e.target.value})} maxLength="50" required/></label><label>Tên tài khoản<input value={account.accountName} onChange={e=>setAccount({...account,accountName:e.target.value})} required/></label><label>Tên đăng nhập<input value={account.username} onChange={e=>setAccount({...account,username:e.target.value})}/></label><label>Mật khẩu hoặc mã bí mật<input type="password" value={account.password} onChange={e=>setAccount({...account,password:e.target.value})} required autoComplete="new-password"/></label><button disabled={busy}>Lưu tài khoản</button></form><div className="panel">{accounts.map(item=><Record key={item.id} title={item.provider+" · "+item.account_name} sub={item.username} state="Đã liên kết" action={<button className="text-button" onClick={()=>run(()=>api("/api/v1/linked-accounts/"+item.id,{method:"DELETE"}),"Đã xóa tài khoản.")}>Xóa</button>}/>) }{accounts.length===0&&<Empty text="Chưa có tài khoản liên kết."/>}</div></>}
+      {tab==="giftcodes" && <><Head title="Giftcode" desc="Nhập mã quà tặng do hệ thống phát hành."/><form className="panel form" onSubmit={redeemGiftcode}><label>Mã giftcode<input autoCapitalize="characters" value={giftCode} onChange={e=>setGiftCode(e.target.value.toUpperCase())} required maxLength="40"/></label><button disabled={busy}>Đổi quà</button><small>Mỗi tài khoản chỉ được sử dụng mỗi giftcode một lần.</small></form></>}
+      {tab==="referrals" && <><Head title="Giới thiệu bạn bè" desc="Chia sẻ liên kết và theo dõi hoa hồng giới thiệu."/><div className="stats"><article><b>{referral?.total||0}</b><small>Lượt giới thiệu</small></article><article><b>{formatVnd(referral?.commissionVnd)}</b><small>Hoa hồng đã nhận</small></article></div><div className="panel"><h3>Liên kết giới thiệu</h3>{referral?.link?<><p className="ref-link">{referral.link}</p><button className="copy-button" onClick={()=>navigator.clipboard?.writeText(referral.link).then(()=>setNotice("Đã sao chép liên kết.")).catch(()=>setNotice("Không thể sao chép liên kết."))}>Sao chép liên kết</button></>:<Empty text="Chưa cấu hình username Bot cho liên kết giới thiệu."/>}</div><div className="panel"><h3>Danh sách người được giới thiệu</h3>{(referral?.referrals||[]).map(item=><Record key={item.referred_id} title={"Thành viên "+item.referred_id} sub={new Date(item.created_at).toLocaleString("vi-VN")} value={formatVnd(item.commission_vnd)} state={item.status}/>)}{!referral?.referrals?.length&&<Empty text="Chưa có lượt giới thiệu."/>}</div></>}
       {tab==="tickets" && <><Head title="Hỗ trợ" desc="Gửi yêu cầu để đội ngũ hỗ trợ tiếp nhận."/><form className="panel form" onSubmit={createTicket}><label>Nội dung cần hỗ trợ<textarea rows="4" maxLength="2000" value={ticketText} onChange={e=>setTicketText(e.target.value)} required minLength="5"/></label><button disabled={busy}>Gửi yêu cầu</button></form><div className="panel">{tickets.map(item=><Record key={item.id} title={item.message} sub={item.reply||new Date(item.created_at).toLocaleString("vi-VN")} state={item.status}/>) }{tickets.length===0&&<Empty text="Chưa có yêu cầu hỗ trợ."/>}</div></>}
     </main>
     <footer>HENDY APP STORE <span>Hệ thống dịch vụ thành viên</span></footer>

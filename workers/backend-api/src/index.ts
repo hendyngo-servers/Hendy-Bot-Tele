@@ -1,7 +1,7 @@
 import type { BackendEnv, D1Result } from "../../../packages/shared/src/cloudflare";
 import { cleanText, safeInteger, safeObjectKey } from "../../../packages/shared/src/validation";
 import { decryptSecret, encryptSecret, parseCiphertext, serializeCiphertext } from "../../../packages/crypto/src/index";
-import { getTelegramUser, isAdmin } from "./auth";
+import { constantTimeEqual, getTelegramUser, isAdmin } from "./auth";
 import { audit, clientIp, consumeRateLimit, upsertTelegramUser } from "./db";
 import { handleTelegramWebhook, sendTelegramMessage } from "./telegram";
 
@@ -20,7 +20,7 @@ function corsHeaders(request: Request, env: BackendEnv): HeadersInit {
   if (!origin || !allowed.includes(origin)) return {};
   return {
     "access-control-allow-origin": origin,
-    "access-control-allow-headers": "content-type, x-telegram-init-data, authorization, x-file-content-type",
+    "access-control-allow-headers": "content-type, x-telegram-init-data, authorization, x-file-content-type, x-file-name, x-file-size",
     "access-control-allow-methods": "GET,POST,PUT,PATCH,DELETE,OPTIONS",
     "access-control-allow-credentials": "true",
     "vary": "Origin"
@@ -105,7 +105,7 @@ async function adminFiles(request: Request, env: BackendEnv, session: Session, p
     const contentType = request.headers.get("x-file-content-type") || "application/octet-stream";
     const allowed = new Set(["application/vnd.android.package-archive", "application/zip", "application/octet-stream", "image/png", "image/jpeg", "image/webp", "application/x-msdownload", "application/x-apple-diskimage"]);
     if (!allowed.has(contentType)) return failure("Định dạng tệp không được hỗ trợ.", 415);
-    const size = Number(request.headers.get("content-length") || 0);
+    const size = Number(request.headers.get("x-file-size") || request.headers.get("content-length") || 0);
     if (!request.body || size <= 0 || size > 100 * 1024 * 1024) return failure("Tệp phải có Content-Length từ 1 byte đến 100 MB.", 413);
     const rawName = cleanText(request.headers.get("x-file-name") || "package.bin", 120).replace(/[^a-zA-Z0-9._-]/g, "_");
     const key = "applications/" + new Date().toISOString().slice(0, 10) + "/" + crypto.randomUUID() + "-" + rawName;
@@ -133,8 +133,8 @@ async function routeApi(request: Request, env: BackendEnv): Promise<Response> {
   if (path === "/telegram/webhook" && method === "POST") return handleTelegramWebhook(request, env);
   if (path === "/internal/backup" && method === "POST") {
     const token = request.headers.get("x-backup-secret") || "";
-    if (!env.BACKUP_SECRET || token.length !== env.BACKUP_SECRET.length || token !== env.BACKUP_SECRET) return failure("Forbidden", 403);
-    const tables = ["users", "app_settings", "packages", "orders", "deposits", "linked_accounts", "tickets", "giftcodes", "referrals", "balance_transactions", "audit_logs"];
+    if (!env.BACKUP_SECRET || !constantTimeEqual(token, env.BACKUP_SECRET)) return failure("Forbidden", 403);
+    const tables = ["users", "app_settings", "packages", "orders", "deposits", "linked_accounts", "tickets", "giftcodes", "giftcode_redemptions", "referrals", "balance_transactions", "audit_logs"];
     const backup: Record<string, unknown> = { schemaVersion: 1, createdAt: new Date().toISOString(), tables: {} };
     for (const table of tables) {
       const rows = await env.DB.prepare("SELECT * FROM " + table).all();
@@ -240,6 +240,48 @@ async function routeApi(request: Request, env: BackendEnv): Promise<Response> {
       return Number(result.meta?.changes || 0) ? success({ deleted: true }) : failure("Không tìm thấy tài khoản.", 404);
     }
 
+    if (path === "/api/v1/giftcodes/redeem" && method === "POST") {
+      const body = await bodyJson(request);
+      const code = cleanText(body.code, 40).toUpperCase();
+      if (!/^[A-Z0-9_-]{4,40}$/.test(code)) return failure("Mã giftcode không hợp lệ.");
+      const gift = await env.DB.prepare("SELECT id,reward_type,reward_value,max_uses,uses,expires_at,active FROM giftcodes WHERE code=?")
+        .bind(code).first<any>();
+      if (!gift || !gift.active || Number(gift.uses) >= Number(gift.max_uses) ||
+        (gift.expires_at && new Date(gift.expires_at).getTime() < Date.now())) return failure("Giftcode không tồn tại, hết hạn hoặc đã hết lượt.", 404);
+      const redemptionId = crypto.randomUUID();
+      const results = await env.DB.batch([
+        env.DB.prepare("INSERT OR IGNORE INTO giftcode_redemptions (id,giftcode_id,telegram_id,reward_type,reward_value) " +
+          "SELECT ?,g.id,u.telegram_id,g.reward_type,g.reward_value FROM giftcodes g JOIN users u ON u.telegram_id=? " +
+          "WHERE g.code=? AND g.active=1 AND g.uses<g.max_uses AND (g.expires_at IS NULL OR datetime(g.expires_at)>CURRENT_TIMESTAMP) " +
+          "AND NOT EXISTS (SELECT 1 FROM giftcode_redemptions r WHERE r.giftcode_id=g.id AND r.telegram_id=u.telegram_id)")
+          .bind(redemptionId, session.id, code),
+        env.DB.prepare("UPDATE giftcodes SET uses=uses+1 WHERE id=? AND EXISTS (SELECT 1 FROM giftcode_redemptions WHERE id=?)")
+          .bind(gift.id, redemptionId),
+        env.DB.prepare("UPDATE users SET balance_vnd=balance_vnd+(SELECT reward_value FROM giftcode_redemptions WHERE id=? AND reward_type='balance'),updated_at=CURRENT_TIMESTAMP WHERE telegram_id=? AND EXISTS (SELECT 1 FROM giftcode_redemptions WHERE id=? AND reward_type='balance')")
+          .bind(redemptionId, session.id, redemptionId),
+        env.DB.prepare("UPDATE users SET vip_level=MAX(vip_level,(SELECT reward_value FROM giftcode_redemptions WHERE id=? AND reward_type='vip')),updated_at=CURRENT_TIMESTAMP WHERE telegram_id=? AND EXISTS (SELECT 1 FROM giftcode_redemptions WHERE id=? AND reward_type='vip')")
+          .bind(redemptionId, session.id, redemptionId)
+      ]);
+      if (Number(results[0]?.meta?.changes || 0) === 0) return failure("Giftcode đã được sử dụng hoặc hết lượt.", 409);
+      await audit(env, session.id, "giftcode.redeem", "giftcode", gift.id);
+      return success({ code, rewardType: gift.reward_type, rewardValue: gift.reward_value });
+    }
+    if (path === "/api/v1/referrals" && method === "GET") {
+      const [stats, referralRows] = await Promise.all([
+        env.DB.prepare("SELECT COUNT(*) AS total,COALESCE(SUM(commission_vnd),0) AS commission FROM referrals WHERE referrer_id=?")
+          .bind(session.id).first<any>(),
+        env.DB.prepare("SELECT referred_id,status,commission_vnd,created_at FROM referrals WHERE referrer_id=? ORDER BY created_at DESC LIMIT 100")
+          .bind(session.id).all()
+      ]);
+      const botName = (env.TELEGRAM_BOT_USERNAME || "").replace(/^@/, "");
+      return success({
+        total: Number(stats?.total || 0),
+        commissionVnd: Number(stats?.commission || 0),
+        link: botName ? "https://t.me/" + botName + "?start=ref_" + session.id : null,
+        referrals: referralRows.results || []
+      });
+    }
+
     if (path.startsWith("/api/v1/admin/")) {
       if (!isAdmin(session.id, env)) return failure("Bạn không có quyền quản trị.", 403);
       const adminLimit = await rateLimit(request, env, "admin:" + session.id);
@@ -299,16 +341,32 @@ async function routeApi(request: Request, env: BackendEnv): Promise<Response> {
         const deposit = await env.DB.prepare("SELECT telegram_id,amount_vnd,status FROM deposits WHERE id=?").bind(id).first<any>();
         if (!deposit) return failure("Không tìm thấy giao dịch.", 404);
         if (deposit.status !== "pending") return failure("Giao dịch đã được xử lý.", 409);
+        const settings = await paymentSettings(env);
+        const commission = action === "approve"
+          ? Math.floor(Number(deposit.amount_vnd) * Number(settings.referralCommissionPercent || 0) / 100)
+          : 0;
+        const referralReference = "REFERRAL-" + id + "-" + reviewId;
         const statements = [
           env.DB.prepare("UPDATE deposits SET status=?,review_id=?,reviewed_by=?,reviewed_at=CURRENT_TIMESTAMP WHERE id=? AND status='pending'").bind(status, reviewId, session.id, id),
           ...(action === "approve" ? [
             env.DB.prepare("UPDATE users SET balance_vnd=balance_vnd+(SELECT amount_vnd FROM deposits WHERE id=? AND review_id=?), updated_at=CURRENT_TIMESTAMP WHERE telegram_id=(SELECT telegram_id FROM deposits WHERE id=? AND review_id=?)")
               .bind(id, reviewId, id, reviewId),
             env.DB.prepare("INSERT INTO balance_transactions (id,telegram_id,amount_vnd,reference,description) SELECT ?,telegram_id,amount_vnd,reference,? FROM deposits WHERE id=? AND review_id=?")
-              .bind(crypto.randomUUID(), "Duyệt nạp tiền " + id, id, reviewId)
+              .bind(crypto.randomUUID(), "Duyệt nạp tiền " + id, id, reviewId),
+            ...(commission > 0 ? [
+              env.DB.prepare("INSERT OR IGNORE INTO balance_transactions (id,telegram_id,amount_vnd,reference,description) " +
+                "SELECT ?,referrer_id,?,?,? FROM referrals WHERE referred_id=? AND EXISTS (SELECT 1 FROM deposits WHERE id=? AND review_id=?)")
+                .bind(crypto.randomUUID(), commission, referralReference, "Hoa hồng từ nạp tiền " + id, deposit.telegram_id, id, reviewId),
+              env.DB.prepare("UPDATE users SET balance_vnd=balance_vnd+(SELECT amount_vnd FROM balance_transactions WHERE reference=?),updated_at=CURRENT_TIMESTAMP " +
+                "WHERE telegram_id=(SELECT telegram_id FROM balance_transactions WHERE reference=?) AND EXISTS (SELECT 1 FROM balance_transactions WHERE reference=?)")
+                .bind(referralReference, referralReference, referralReference),
+              env.DB.prepare("UPDATE referrals SET commission_vnd=commission_vnd+? WHERE referred_id=? AND EXISTS (SELECT 1 FROM balance_transactions WHERE reference=?)")
+                .bind(commission, deposit.telegram_id, referralReference)
+            ] : [])
           ] : [])
         ];
-        await env.DB.batch(statements);
+        const batchResult = await env.DB.batch(statements);
+        if (Number(batchResult[0]?.meta?.changes || 0) === 0) return failure("Giao dịch đã được xử lý ở một thao tác khác.", 409);
         await audit(env, session.id, "deposit." + action, "deposit", id, { amount: deposit.amount_vnd });
         try { await sendTelegramMessage(env, deposit.telegram_id, action === "approve" ? "Yêu cầu nạp tiền đã được duyệt." : "Yêu cầu nạp tiền đã bị từ chối."); } catch (error) { console.warn("Telegram notify failed", error instanceof Error ? error.message : "unknown"); }
         return success({ id, status });
@@ -321,22 +379,47 @@ async function routeApi(request: Request, env: BackendEnv): Promise<Response> {
       if (orderAction && method === "POST") {
         const id = orderAction[1];
         const action = orderAction[2];
-        const order = await env.DB.prepare("SELECT package_id,status FROM orders WHERE id=?").bind(id).first<any>();
+        const order = await env.DB.prepare("SELECT package_id,status,telegram_id,amount_vnd,vip_level,category,item_name FROM orders WHERE id=?").bind(id).first<any>();
         if (!order) return failure("Không tìm thấy đơn hàng.", 404);
         if (order.status !== "pending") return failure("Đơn hàng đã được xử lý.", 409);
         const newStatus = action === "approve" ? "approved" : "rejected";
-        const statements = [
-          env.DB.prepare(
-            "UPDATE orders SET status=?,processed_by=?,processed_at=CURRENT_TIMESTAMP WHERE id=? AND status='pending' " +
-            (action === "approve" ? "AND (package_id IS NULL OR EXISTS (SELECT 1 FROM packages WHERE packages.id=orders.package_id AND (packages.stock IS NULL OR packages.stock>0)))" : "")
-          ).bind(newStatus, session.id, id),
-          ...(action === "approve" && order.package_id ? [
-            env.DB.prepare("UPDATE packages SET stock=stock-1,updated_at=CURRENT_TIMESTAMP WHERE id=? AND stock IS NOT NULL AND stock>0").bind(order.package_id)
-          ] : [])
-        ];
-        const result = await env.DB.batch(statements);
-        if (Number(result[0]?.meta?.changes || 0) === 0) return failure("Đơn đã xử lý hoặc hết hàng.", 409);
+        if (action === "approve") {
+          if (order.category === "vip" && (Number(order.vip_level) < 1 || Number(order.vip_level) > 10)) return failure("Sản phẩm VIP chưa có cấp nâng cấp hợp lệ.", 409);
+          const approvalId = crypto.randomUUID();
+          const reference = "ORDER-" + id;
+          const result = await env.DB.batch([
+            env.DB.prepare(
+              "UPDATE orders SET status='approved',approval_id=?,processed_by=?,processed_at=CURRENT_TIMESTAMP " +
+              "WHERE id=? AND status='pending' " +
+              "AND EXISTS (SELECT 1 FROM users WHERE users.telegram_id=orders.telegram_id AND users.balance_vnd>=orders.amount_vnd) " +
+              "AND (package_id IS NULL OR EXISTS (SELECT 1 FROM packages WHERE packages.id=orders.package_id AND (packages.stock IS NULL OR packages.stock>0)))"
+            ).bind(approvalId, session.id, id),
+            env.DB.prepare(
+              "UPDATE users SET balance_vnd=balance_vnd-(SELECT amount_vnd FROM orders WHERE id=? AND approval_id=?), " +
+              "vip_level=CASE WHEN (SELECT category FROM orders WHERE id=? AND approval_id=?)='vip' THEN MAX(vip_level,(SELECT vip_level FROM orders WHERE id=? AND approval_id=?)) ELSE vip_level END, " +
+              "updated_at=CURRENT_TIMESTAMP WHERE telegram_id=? AND EXISTS (SELECT 1 FROM orders WHERE id=? AND approval_id=?)"
+            ).bind(id,approvalId,id,approvalId,id,approvalId,order.telegram_id,id,approvalId),
+            env.DB.prepare(
+              "INSERT INTO balance_transactions (id,telegram_id,amount_vnd,reference,description) " +
+              "SELECT ?,telegram_id,-amount_vnd,?,'Thanh toán đơn hàng ' || item_name FROM orders WHERE id=? AND approval_id=?"
+            ).bind(crypto.randomUUID(), reference, id, approvalId),
+            ...(order.package_id ? [
+              env.DB.prepare("UPDATE packages SET stock=stock-1,updated_at=CURRENT_TIMESTAMP WHERE id=? AND stock IS NOT NULL AND stock>0 AND EXISTS (SELECT 1 FROM orders WHERE id=? AND approval_id=?)")
+                .bind(order.package_id,id,approvalId)
+            ] : [])
+          ]);
+          if (Number(result[0]?.meta?.changes || 0) === 0) return failure("Số dư không đủ, đơn đã xử lý hoặc sản phẩm hết hàng.", 409);
+        } else {
+          const result = await env.DB.prepare("UPDATE orders SET status='rejected',processed_by=?,processed_at=CURRENT_TIMESTAMP WHERE id=? AND status='pending'")
+            .bind(session.id,id).run();
+          if (Number(result.meta?.changes || 0) === 0) return failure("Đơn đã được xử lý.",409);
+        }
         await audit(env, session.id, "order." + action, "order", id);
+        try {
+          await sendTelegramMessage(env, order.telegram_id, action === "approve"
+            ? "Đơn hàng " + order.item_name + " đã được duyệt và trừ số dư."
+            : "Đơn hàng " + order.item_name + " đã bị từ chối. Số dư chưa bị trừ.");
+        } catch { /* Không rollback giao dịch đã hoàn tất */ }
         return success({ id, status: newStatus });
       }
       if (path === "/api/v1/admin/tickets" && method === "GET") {
@@ -383,7 +466,7 @@ async function routeApi(request: Request, env: BackendEnv): Promise<Response> {
         const rewardType = ["balance","vip"].includes(body.rewardType) ? body.rewardType : "";
         const rewardValue = safeInteger(body.rewardValue, 1, 100000000);
         const maxUses = safeInteger(body.maxUses || 1, 1, 1000000);
-        if (!/^[A-Z0-9_-]{4,40}$/.test(code) || !rewardType || !rewardValue || !maxUses) return failure("Thông tin giftcode không hợp lệ.");
+        if (!/^[A-Z0-9_-]{4,40}$/.test(code) || !rewardType || !rewardValue || !maxUses || (rewardType === "vip" && rewardValue > 10)) return failure("Thông tin giftcode không hợp lệ.");
         const id = crypto.randomUUID();
         await env.DB.prepare("INSERT INTO giftcodes (id,code,reward_type,reward_value,max_uses) VALUES (?,?,?,?,?)")
           .bind(id, code, rewardType, rewardValue, maxUses).run();
