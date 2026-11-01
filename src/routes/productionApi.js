@@ -17,11 +17,17 @@ async function ensureUser(user) {
     "last_name=excluded.last_name,language_code=excluded.language_code,updated_at=datetime('now')",
     [telegramId, user.username || null, text(user.first_name, 100), text(user.last_name, 100), text(user.language_code || "vi", 12)]
   );
-  return d1First(
+  await executeD1Query(
+    "INSERT INTO referral_profiles(telegram_id,referral_code) VALUES(?,?) ON CONFLICT(telegram_id) DO NOTHING",
+    [telegramId, "HENDY-" + crypto.randomBytes(4).toString("hex").toUpperCase()]
+  );
+  const record = await d1First(
     "SELECT telegram_id AS id,username,first_name,last_name,language_code,role,status,balance," +
     "voucher_balance AS voucher,points,created_at,updated_at FROM users WHERE telegram_id=?",
     [telegramId]
   );
+  if (record && isTelegramAdmin(telegramId)) record.role = "admin";
+  return record;
 }
 
 async function sendTelegram(method, payload) {
@@ -213,7 +219,7 @@ router.post("/telegram/webhook", asyncRoute(async (req, res) => {
 }));
 
 router.get("/catalog", asyncRoute(async (req, res) => {
-  const category = text(req.query.category, 80);
+  const category = text(req.query.category || req.query.module, 80);
   const search = text(req.query.search, 100);
   const params = [];
   let sql = "SELECT id,title,slug,category,module,icon,developer,version,tagline,description,price,unit_price," +
@@ -252,7 +258,7 @@ router.use(requireTelegramAuth);
 router.get("/home", asyncRoute(async (req, res) => {
   const user = await ensureUser(req.telegramUser);
   const orderCount = await d1First("SELECT COUNT(*) AS total FROM orders WHERE telegram_id=?", [String(req.telegramUser.id)]);
-  res.json({ user, orderCount: Number(orderCount?.total || 0) });
+  res.json({ user, orderCount: Number(orderCount?.total || 0), orderSummary: { total: Number(orderCount?.total || 0) } });
 }));
 
 router.get("/wallet", asyncRoute(async (req, res) => {
