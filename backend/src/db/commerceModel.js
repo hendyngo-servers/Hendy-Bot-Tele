@@ -83,6 +83,42 @@ export async function saveCatalogItem(env, input) {
   return env.DB.prepare("SELECT * FROM catalog_items WHERE id = ?").bind(id).first();
 }
 
+export async function updateCatalogItem(env, itemId, input) {
+  if (!/^[0-9a-f-]{36}$/i.test(String(itemId || ""))) fail("Mã sản phẩm danh mục không hợp lệ.");
+  if (!input || typeof input !== "object" || Array.isArray(input)) fail("Dữ liệu danh mục không hợp lệ.");
+  const module = String(input.module || "");
+  if (!CATALOG_MODULES.has(module)) fail("Module danh mục không hợp lệ.");
+  const slug = safeText(input.slug, 80).toLowerCase();
+  const title = safeText(input.title, 100);
+  const description = safeText(input.description, 1000);
+  if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug) || title.length < 2) fail("Slug hoặc tên sản phẩm không hợp lệ.");
+  const unitPrice = input.unitPrice === "" || input.unitPrice === null || input.unitPrice === undefined ? null : Number(input.unitPrice);
+  const durationDays = input.durationDays === "" || input.durationDays === null || input.durationDays === undefined ? null : Number(input.durationDays);
+  const stock = input.stock === "" || input.stock === null || input.stock === undefined ? null : Number(input.stock);
+  const sortOrder = Number(input.sortOrder);
+  if (unitPrice !== null && (!Number.isSafeInteger(unitPrice) || unitPrice < 0)) fail("Đơn giá phải là số nguyên không âm.");
+  if (durationDays !== null && (!Number.isInteger(durationDays) || durationDays < 1 || durationDays > 3650)) fail("Thời hạn phải từ 1 đến 3650 ngày.");
+  if (stock !== null && (!Number.isInteger(stock) || stock < 0 || stock > 1000000)) fail("Tồn kho không hợp lệ.");
+  if (!Number.isInteger(sortOrder) || sortOrder < 0 || sortOrder > 100000) fail("Thứ tự hiển thị không hợp lệ.");
+
+  try {
+    const result = await env.DB.prepare(
+      `UPDATE catalog_items
+          SET module=?,slug=?,title=?,description=?,unit_price=?,currency='VND',
+              duration_days=?,stock=?,sort_order=?,updated_at=CURRENT_TIMESTAMP
+        WHERE id=?`
+    ).bind(module,slug,title,description,unitPrice,durationDays,stock,sortOrder,itemId).run();
+    if (!result.meta?.changes) {
+      const existing = await env.DB.prepare("SELECT id FROM catalog_items WHERE id=?").bind(itemId).first();
+      if (!existing) fail("Không tìm thấy sản phẩm danh mục.",404);
+    }
+  } catch (error) {
+    if (/UNIQUE|constraint/i.test(String(error?.message))) fail("Slug danh mục đã tồn tại.",409);
+    throw error;
+  }
+  return env.DB.prepare("SELECT * FROM catalog_items WHERE id = ?").bind(itemId).first();
+}
+
 export async function setCatalogItemActive(env, id, active) {
   const result = await env.DB.prepare(
     "UPDATE catalog_items SET is_active = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?"
