@@ -18,6 +18,8 @@ services:
         value: "86400"
       - key: BOT_TOKEN
         sync: false
+      - key: BOT_USERNAME
+        sync: false
       - key: WEBHOOK_SECRET
         sync: false
       - key: ADMIN_TELEGRAM_IDS
