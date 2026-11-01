@@ -74,7 +74,7 @@ const DEFAULT_CATEGORIES = [
 ];
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState("store"); // 'store' | 'member' | 'admin' | 'support' | 'bot'
+  const [activeTab, setActiveTab] = useState("store"); // store | member | admin | support
   const [activeCategory, setActiveCategory] = useState("all");
   const [searchQuery, setSearchQuery] = useState("");
 
@@ -84,6 +84,7 @@ export default function App() {
   const [wallet, setWallet] = useState(null);
   const [orders, setOrders] = useState([]);
   const [vipProfile, setVipProfile] = useState(null);
+  const [referralProfile, setReferralProfile] = useState(null);
   const [tickets, setTickets] = useState([]);
   const [adminOrders, setAdminOrders] = useState([]);
   const [adminDeposits, setAdminDeposits] = useState([]);
@@ -166,6 +167,11 @@ export default function App() {
       if (vipRes && vipRes.ok) {
         const vipData = await vipRes.json();
         setVipProfile(vipData);
+      }
+
+      const referralRes = await telegramFetch("/api/referral").catch(() => null);
+      if (referralRes && referralRes.ok) {
+        setReferralProfile(await referralRes.json());
       }
 
       const ticketRes = await telegramFetch("/api/support/tickets").catch(() => null);
@@ -281,16 +287,16 @@ export default function App() {
   // Handle Order Checkout from Wallet
   const handleBuyProduct = async (product) => {
     if (!product) return;
-    const finalAmount = Number(product.price ?? product.unit_price ?? 0);
     try {
       const res = await telegramFetch("/api/orders", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           title: `Đặt mua: ${product.title}`,
+          productId: product.id,
           module: product.category || "tools",
-          amountVnd: finalAmount,
-          details: { productId: product.id, version: product.version }
+          quantity: 1,
+          details: { version: product.version }
         })
       });
       const data = await res.json();
@@ -300,8 +306,10 @@ export default function App() {
       const orderId = data.order.id;
       const payRes = await telegramFetch(`/api/orders/${orderId}/pay`, { method: "POST" });
       const payData = await payRes.json();
-      if (payRes.ok) {
-        showToast(`🎉 Thanh toán thành công! Mã đơn: ${orderId}. Mã truy cập: ${payData.accessKey || "HENDY-R2-KEY"}`);
+      if (payRes.ok && payData.success) {
+        showToast(payData.alreadyPaid
+          ? `Đơn hàng ${orderId} đã được thanh toán trước đó.`
+          : `Thanh toán thành công cho đơn hàng ${orderId}.`);
       } else {
         showToast(`Đã tạo đơn ${orderId}. Số dư ví chưa đủ để thanh toán ngay.`, "warning");
       }
@@ -324,7 +332,7 @@ export default function App() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Mã Giftcode không hợp lệ hoặc đã hết hạn.");
-      showToast(`🎁 Chúc mừng! Bạn nhận được ${formatVnd(data.amount)} đ vào ví.`);
+      showToast(`🎁 Đổi mã thành công: ${formatVnd(data.rewardVoucher ?? data.amount)} điểm voucher.`);
       setRedeemCodeInput("");
       fetchData();
     } catch (err) {
@@ -527,7 +535,7 @@ export default function App() {
               className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-gradient-to-r from-emerald-500/20 to-teal-500/10 border border-emerald-500/30 text-emerald-300 hover:border-emerald-500/50 transition-all text-xs sm:text-sm font-semibold"
             >
               <Wallet className="w-4 h-4 text-emerald-400" />
-              <span>{formatVnd(wallet?.balance ?? userProfile?.balance ?? 1500000)} đ</span>
+              <span>{formatVnd(wallet?.balance ?? userProfile?.balance ?? 0)} đ</span>
               <Plus className="w-3.5 h-3.5 ml-0.5 text-emerald-400" />
             </button>
 
@@ -668,11 +676,11 @@ export default function App() {
                     <div className="flex flex-wrap items-center gap-4 pt-1">
                       <div className="star-rating">
                         <Star className="w-4 h-4 fill-amber-400" />
-                        <span>{featuredItem.rating || 4.9}</span>
-                        <span className="text-slate-400 text-xs font-normal">({featuredItem.reviewsCount || 128} đánh giá)</span>
+                        <span>{featuredItem.rating ?? "Chưa có đánh giá"}</span>
+                        <span className="text-slate-400 text-xs font-normal">({featuredItem.reviewsCount ?? "Chưa có đánh giá"} đánh giá)</span>
                       </div>
                       <span className="text-slate-500">•</span>
-                      <span className="text-xs text-slate-300 font-medium">{featuredItem.downloads || "10K+"} lượt cài</span>
+                      <span className="text-xs text-slate-300 font-medium">{featuredItem.downloads ?? "Chưa có dữ liệu"} lượt cài</span>
                       <span className="text-slate-500">•</span>
                       <span className="text-xs font-semibold px-2 py-0.5 rounded-md bg-white/10 text-cyan-300">
                         {featuredItem.r2Bucket ? "Lưu trữ Cloudflare R2" : "Cloudflare Pages"}
@@ -805,11 +813,11 @@ export default function App() {
                     <div className="flex items-center gap-2">
                       <h3 className="text-xl font-bold text-white">{userProfile?.name || "Hội viên Hendy"}</h3>
                       <span className="px-2 py-0.5 rounded-full text-xs font-bold uppercase bg-amber-500/20 text-amber-300 border border-amber-500/30">
-                        {vipProfile?.currentTier?.name || "VIP Kim Cương"}
+                        {vipProfile?.currentTier?.name || "Thành viên"}
                       </span>
                     </div>
                     <p className="text-xs text-slate-400 mt-1">
-                      Telegram ID: <span className="font-mono text-slate-300">{userProfile?.id || "99887766"}</span> • Điểm tích lũy: <span className="text-cyan-400 font-bold">{vipProfile?.points || 450} pts</span>
+                      Telegram ID: <span className="font-mono text-slate-300">{userProfile?.id || "Chưa xác định"}</span> • Điểm tích lũy: <span className="text-cyan-400 font-bold">{vipProfile?.points ?? userProfile?.points ?? 0} pts</span>
                     </p>
                   </div>
                 </div>
@@ -830,13 +838,13 @@ export default function App() {
                 <div className="p-3 rounded-xl bg-white/5">
                   <span className="text-[11px] text-slate-400 block">Số Dư Chính</span>
                   <span className="text-base sm:text-lg font-bold text-emerald-400">
-                    {formatVnd(wallet?.balance ?? 1500000)} đ
+                    {formatVnd(wallet?.balance ?? userProfile?.balance ?? 0)} đ
                   </span>
                 </div>
                 <div className="p-3 rounded-xl bg-white/5">
                   <span className="text-[11px] text-slate-400 block">Voucher Giảm Giá</span>
                   <span className="text-base sm:text-lg font-bold text-cyan-400">
-                    {formatVnd(wallet?.voucher ?? 0)} đ
+                    {formatVnd(wallet?.voucher ?? 0)} điểm
                   </span>
                 </div>
                 <div className="p-3 rounded-xl bg-white/5">
@@ -925,15 +933,24 @@ export default function App() {
                   </div>
                   <div>
                     <h4 className="font-bold text-white text-sm">5. Đổi Giftcode</h4>
-                    <p className="text-[11px] text-slate-400 mt-0.5">Nhận tiền vào ví ngay tức thì</p>
+                    <p className="text-[11px] text-slate-400 mt-0.5">Nhận điểm voucher theo mã hợp lệ</p>
                   </div>
                 </button>
 
                 {/* 6. Referral */}
                 <button
-                  onClick={() => {
-                    navigator.clipboard?.writeText(`https://t.me/hendy_bot?start=ref_${userProfile?.id || "99887766"}`);
-                    showToast("Đã sao chép liên kết giới thiệu (Hoa hồng 10% trọn đời)!");
+                  onClick={async () => {
+                    if (!referralProfile?.inviteUrl) {
+                      showToast("Chưa cấu hình BOT_USERNAME hoặc mã giới thiệu chưa sẵn sàng.", "error");
+                      return;
+                    }
+                    try {
+                      if (!navigator.clipboard?.writeText) throw new Error("Trình duyệt không hỗ trợ sao chép liên kết.");
+                      await navigator.clipboard.writeText(referralProfile.inviteUrl);
+                      showToast("Đã sao chép liên kết giới thiệu.");
+                    } catch (error) {
+                      showToast(error.message, "error");
+                    }
                   }}
                   className="glass-panel glass-panel-hover p-4 text-left flex flex-col justify-between"
                 >
@@ -942,7 +959,7 @@ export default function App() {
                   </div>
                   <div>
                     <h4 className="font-bold text-white text-sm">6. Giới Thiệu Bạn</h4>
-                    <p className="text-[11px] text-slate-400 mt-0.5">Nhận hoa hồng 10% hoa hồng</p>
+                    <p className="text-[11px] text-slate-400 mt-0.5">Nhận thưởng theo chính sách hoa hồng hiện hành</p>
                   </div>
                 </button>
 
@@ -1004,7 +1021,7 @@ export default function App() {
 
                 {/* 11. Bot Settings */}
                 <button
-                  onClick={() => setActiveTab("bot")}
+                  onClick={() => setActiveTab("admin")}
                   className="glass-panel glass-panel-hover p-4 text-left flex flex-col justify-between"
                 >
                   <div className="w-10 h-10 rounded-xl bg-pink-500/20 text-pink-400 flex items-center justify-center mb-3">
@@ -1018,7 +1035,7 @@ export default function App() {
 
                 {/* 12. Cloudflare Sync */}
                 <button
-                  onClick={() => showToast("Cloudflare D1 & R2 trạng thái: Sẵn sàng (Latency: 18ms)")}
+                  onClick={() => setActiveTab("admin")}
                   className="glass-panel glass-panel-hover p-4 text-left flex flex-col justify-between"
                 >
                   <div className="w-10 h-10 rounded-xl bg-sky-500/20 text-sky-400 flex items-center justify-center mb-3">
@@ -1169,18 +1186,18 @@ export default function App() {
               showToast={showToast}
             />
 
-            {/* Admin Stats Strip */}
+            {/* Admin Stats Strip — dữ liệu truy xuất trực tiếp từ Cloudflare D1 */}
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
               <div className="glass-panel p-4">
-                <span className="text-xs text-slate-400">Doanh Thu Đã Thu</span>
+                <span className="text-xs text-slate-400">Doanh Thu Đã Thanh Toán</span>
                 <span className="text-xl font-bold text-emerald-400 block mt-1">
-                  {formatVnd(adminStats?.totalRevenue || 0)} đ
+                  {formatVnd(adminStats?.totalRevenue ?? 0)} đ
                 </span>
               </div>
               <div className="glass-panel p-4">
-                <span className="text-xs text-slate-400">Sản Phẩm Đang Bán</span>
+                <span className="text-xs text-slate-400">Tổng Thành Viên</span>
                 <span className="text-xl font-bold text-white block mt-1">
-                  {catalog.length} ứng dụng
+                  {formatVnd(adminStats?.totalUsers ?? 0)}
                 </span>
               </div>
               <div className="glass-panel p-4">
@@ -1190,7 +1207,7 @@ export default function App() {
                 </span>
               </div>
               <div className="glass-panel p-4">
-                <span className="text-xs text-slate-400">Truy Vấn Cloudflare D1</span>
+                <span className="text-xs text-slate-400">Yêu Cầu Nạp Đang Chờ</span>
                 <span className="text-xl font-bold text-indigo-400 block mt-1">
                   {adminStats?.d1Queries ?? "—"}
                 </span>
@@ -1555,12 +1572,12 @@ export default function App() {
                 <div className="flex items-center gap-2 mt-2 text-xs">
                   <span className="star-rating">
                     <Star className="w-3.5 h-3.5 fill-amber-400" />
-                    <span>{selectedProduct.rating || "4.9"}</span>
+                    <span>{selectedProduct.rating ?? "Chưa có đánh giá"}</span>
                   </span>
                   <span className="text-slate-500">•</span>
-                  <span className="text-slate-300">{selectedProduct.downloads || "10K+"} tải</span>
+                  <span className="text-slate-300">{selectedProduct.downloads ?? "Chưa có dữ liệu"} tải</span>
                   <span className="text-slate-500">•</span>
-                  <span className="text-indigo-300 font-mono font-semibold">{selectedProduct.version || "v2.0.0"}</span>
+                  <span className="text-indigo-300 font-mono font-semibold">{selectedProduct.version || "Chưa cập nhật"}</span>
                 </div>
               </div>
             </div>
@@ -1605,11 +1622,11 @@ export default function App() {
               </div>
               <div className="flex justify-between">
                 <span className="text-slate-400">File gói:</span>
-                <span className="font-mono text-slate-300">{selectedProduct.r2ObjectKey || "package.zip"}</span>
+                <span className="font-mono text-slate-300">{selectedProduct.r2ObjectKey || "Chưa có tệp"}</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-slate-400">Cloudflare Pages:</span>
-                <span className="font-mono text-indigo-300">{selectedProduct.pagesDeployUrl || "hendy-web.pages.dev"}</span>
+                <span className="font-mono text-indigo-300">{selectedProduct.pagesDeployUrl || "Chưa cấu hình"}</span>
               </div>
             </div>
           </div>
@@ -1706,12 +1723,12 @@ export default function App() {
                   </div>
                   <div className="flex justify-between">
                     <span className="text-slate-400">Ngân hàng:</span>
-                    <span className="text-white font-semibold">MB Bank (Quân Đội)</span>
+                    <span className="text-white font-semibold">{depositResult.transfer?.bankId || "Chưa xác định"}</span>
                   </div>
                 </div>
 
                 <p className="text-[11px] text-amber-300/90">
-                  ⚠️ Vui lòng ghi chính xác nội dung chuyển khoản để hệ thống tự động cộng tiền vào ví trong vòng 1-3 phút.
+                  ⚠️ Vui lòng ghi chính xác nội dung chuyển khoản. Yêu cầu sẽ được lưu để đối soát và chờ quản trị viên xác nhận trước khi cộng tiền.
                 </p>
 
                 <button

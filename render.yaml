@@ -12,13 +12,13 @@ services:
         value: "24"
       - key: NODE_ENV
         value: production
-      - key: TELEGRAM_BOT_MODE
-        value: webhook
       - key: SET_WEBHOOK_ON_START
-        value: "false"
+        value: "true"
       - key: TELEGRAM_AUTH_MAX_AGE_SECONDS
         value: "86400"
       - key: BOT_TOKEN
+        sync: false
+      - key: BOT_USERNAME
         sync: false
       - key: WEBHOOK_SECRET
         sync: false
@@ -38,7 +38,7 @@ services:
         sync: false
       - key: CLOUDFLARE_D1_DATABASE_ID
         sync: false
-      - key: CLOUDFLARE_API_TOKEN
+      - key: CLOUDFLARE_D1_API_TOKEN
         sync: false
       - key: BACKUP_WORKER_URL
         sync: false

@@ -445,6 +445,7 @@ export default function App() {
         <p>Mini App chỉ nhận dữ liệu người dùng sau khi Worker xác thực chữ ký initData. Không dùng initDataUnsafe làm căn cứ đăng nhập.</p>
       </section>}
 
+      </section>}
       {error && <div className="notice error">{error}</div>}
       {notice && <div className="notice success">{notice}</div>}
 

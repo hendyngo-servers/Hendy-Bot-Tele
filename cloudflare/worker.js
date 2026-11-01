@@ -243,6 +243,6 @@ export default {
   },
 
   async scheduled(_controller, env, ctx) {
-    ctx.waitUntil(createBackup(env, "scheduled-cron"));
+    ctx.waitUntil(createBackup(env, "scheduled-cron").catch((error) => { console.error("Scheduled D1-to-R2 backup failed:", error?.message || error); }));
   }
 };

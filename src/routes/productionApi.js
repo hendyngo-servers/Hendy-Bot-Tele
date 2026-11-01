@@ -3,6 +3,7 @@ import crypto from "node:crypto";
 import multer from "multer";
 import { executeD1Query, d1First, getD1Health, getBotSettings, setBotSetting, writeAdminAudit } from "../services/productionD1.js";
 import { requireTelegramAuth, requireAdmin, isTelegramAdmin } from "../middlewares/telegramAuth.js";
+import { buildMainKeyboard } from "../services/telegramKeyboard.js";
 
 const router = express.Router();
 const releaseUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024, files: 1 } });
@@ -73,13 +74,6 @@ async function sendTelegram(method, payload) {
   return data.result;
 }
 
-function miniAppUrl(module = "home") {
-  const base = process.env.WEBAPP_URL || process.env.BASE_URL;
-  if (!base) return null;
-  const url = new URL(base);
-  url.searchParams.set("module", module);
-  return url.toString();
-}
 
 function mainKeyboard() {
   const web = (label, module) => {
@@ -112,7 +106,7 @@ async function handleTelegramUpdate(update) {
       await sendTelegram("sendMessage", {
         chat_id: chatId,
         text: "Vui lòng mở Mini App từ nút chức năng trong menu.",
-        reply_markup: mainKeyboard()
+        reply_markup: buildMainKeyboard()
       });
     }
     return;
@@ -163,7 +157,7 @@ async function handleTelegramUpdate(update) {
       "Chọn chức năng bạn cần ở menu bên dưới."
     ];
     if (admin) lines.push("", "Bạn có quyền quản trị. Sử dụng /admin để mở bảng điều khiển.");
-    await sendTelegram("sendMessage", { chat_id: chatId, text: lines.join("\n"), reply_markup: mainKeyboard() });
+    await sendTelegram("sendMessage", { chat_id: chatId, text: lines.join("\n"), reply_markup: buildMainKeyboard() });
   } else if (command === "/help") {
     await sendTelegram("sendMessage", {
       chat_id: chatId,
@@ -285,6 +279,19 @@ router.get("/releases/:id/download", asyncRoute(async (req, res) => {
 
 router.use(requireTelegramAuth);
 
+// Chế độ bảo trì được áp dụng cho toàn bộ API thành viên; admin vẫn có thể vận hành dashboard.
+router.use(asyncRoute(async (req, res, next) => {
+  if (isTelegramAdmin(req.telegramUser?.id)) return next();
+  const settings = await getBotSettings();
+  if (!settings.maintenance_mode) return next();
+  res.set("Retry-After", "60");
+  return res.status(503).json({
+    error: settings.maintenance_message || "Hệ thống đang bảo trì. Vui lòng quay lại sau.",
+    code: "BOT_MAINTENANCE",
+    maintenance: true
+  });
+}));
+
 router.get("/home", asyncRoute(async (req, res) => {
   const user = await ensureUser(req.telegramUser);
   const orderCount = await d1First("SELECT COUNT(*) AS total FROM orders WHERE telegram_id=?", [String(req.telegramUser.id)]);
@@ -293,6 +300,7 @@ router.get("/home", asyncRoute(async (req, res) => {
 
 router.get("/wallet", asyncRoute(async (req, res) => {
   const user = await ensureUser(req.telegramUser);
+  const paymentSettings = await getBotSettings();
   const ledger = await executeD1Query(
     "SELECT id,amount_delta AS amount_delta,balance_after,entry_type,note,created_at FROM wallet_ledger " +
     "WHERE telegram_id=? ORDER BY created_at DESC LIMIT 50",
@@ -316,11 +324,11 @@ router.get("/wallet", asyncRoute(async (req, res) => {
     voucherLedger: voucherRows.results,
     deposits: depositRows.results,
     payment: {
-      configured: Boolean(process.env.VIETQR_BANK_ID && process.env.VIETQR_ACCOUNT_NO && process.env.VIETQR_ACCOUNT_NAME),
-      bankName: process.env.VIETQR_BANK_ID || "",
-      bankBin: process.env.VIETQR_BANK_ID || "",
-      accountNumber: process.env.VIETQR_ACCOUNT_NO || "",
-      accountName: process.env.VIETQR_ACCOUNT_NAME || "",
+      configured: Boolean(paymentSettings.vietqr_bank && paymentSettings.vietqr_account_no && paymentSettings.vietqr_account_name),
+      bankName: paymentSettings.vietqr_bank || "",
+      bankBin: paymentSettings.vietqr_bank || "",
+      accountNumber: paymentSettings.vietqr_account_no || "",
+      accountName: paymentSettings.vietqr_account_name || "",
       instruction: "Chuyển khoản đúng số tiền và nội dung tham chiếu của yêu cầu nạp. Chờ quản trị viên đối soát."
     }
   });
@@ -558,10 +566,11 @@ router.post("/deposits", asyncRoute(async (req, res) => {
   const userId = String(req.telegramUser.id);
   await ensureUser(req.telegramUser);
   const amount = number(req.body?.amountVnd, 0);
+  const paymentSettings = await getBotSettings();
   if (amount < 10000 || amount > 50000000) return res.status(400).json({ error: "Số tiền nạp phải từ 10.000 đến 50.000.000 VNĐ." });
-  const bankId = text(process.env.VIETQR_BANK_ID, 20);
-  const accountNo = text(process.env.VIETQR_ACCOUNT_NO, 40);
-  const accountName = text(process.env.VIETQR_ACCOUNT_NAME, 120);
+  const bankId = text(paymentSettings.vietqr_bank, 20);
+  const accountNo = text(paymentSettings.vietqr_account_no, 40);
+  const accountName = text(paymentSettings.vietqr_account_name, 120);
   if (!bankId || !accountNo || !accountName) return res.status(503).json({ error: "Chưa cấu hình thông tin nhận thanh toán VietQR." });
   const depositId = "DEP-" + crypto.randomUUID().slice(0, 12).toUpperCase();
   const transferContent = "HENDY " + userId + " " + depositId;
