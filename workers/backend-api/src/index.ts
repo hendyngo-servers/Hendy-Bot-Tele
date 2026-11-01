@@ -4,7 +4,7 @@ type TgUser = { id: string; username: string; first_name: string; last_name: str
 const enc = new TextEncoder();
 const json = (data: unknown, status = 200, headers: HeadersInit = {}) => new Response(JSON.stringify(data), { status, headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store", "x-content-type-options": "nosniff", ...headers } });
 function cors(req: Request, env: Env): HeadersInit { const origin = req.headers.get("Origin") || ""; const allow = (env.ALLOWED_ORIGINS || "").split(",").map(x => x.trim()); return allow.includes(origin) ? { "access-control-allow-origin": origin, "access-control-allow-headers": "content-type,x-telegram-init-data", "access-control-allow-methods": "GET,POST,PUT,OPTIONS", "vary": "Origin" } : {}; }
-async function hmac(key: CryptoKey, value: string): Promise<Uint8Array> { return new Uint8Array(await crypto.subtle.sign("HMAC", key, enc.encode(value))); }
+async function hmac(key: CryptoKey, value: string): Promise<ArrayBuffer> { return crypto.subtle.sign("HMAC", key, enc.encode(value)); }
 const hex = (a: Uint8Array) => Array.from(a, x => x.toString(16).padStart(2, "0")).join("");
 function safeEqual(a: string, b: string): boolean { if (!a || a.length !== b.length) return false; let d = 0; for (let i = 0; i < a.length; i++) d |= a.charCodeAt(i) ^ b.charCodeAt(i); return d === 0; }
 async function verifyInitData(raw: string, token: string): Promise<TgUser | null> {
@@ -14,7 +14,7 @@ async function verifyInitData(raw: string, token: string): Promise<TgUser | null
  p.delete("hash"); const check = Array.from(p.entries()).sort(([a],[b]) => a.localeCompare(b)).map(([k,v]) => k + "=" + v).join("\n");
  const k1 = await crypto.subtle.importKey("raw", enc.encode("WebAppData"), {name:"HMAC",hash:"SHA-256"}, false, ["sign"]);
  const secret = await hmac(k1, token); const k2 = await crypto.subtle.importKey("raw", secret, {name:"HMAC",hash:"SHA-256"}, false, ["sign"]);
- if (!safeEqual(hex(await hmac(k2, check)), hash)) return null;
+ if (!safeEqual(hex(new Uint8Array(await hmac(k2, check))), hash)) return null;
  try { const u = JSON.parse(p.get("user") || "{}"); if (!u.id) return null; return {id:String(u.id),username:String(u.username||""),first_name:String(u.first_name||""),last_name:String(u.last_name||"")}; } catch { return null; }
 }
 const isAdmin = (id: string, env: Env) => (env.TELEGRAM_ADMIN_IDS || "").split(",").map(x=>x.trim()).includes(id);
