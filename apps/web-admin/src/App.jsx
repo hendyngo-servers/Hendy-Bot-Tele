@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from "react";
-import { adminApi } from "../services/api.js";
+import { adminApi } from "./services/api.js";
 
 const STATUS_LABEL = {
   pending: "Chờ tiếp nhận",
@@ -30,7 +30,7 @@ const TICKET_STATUS = {
   closed: "Đã đóng"
 };
 const money = value => new Intl.NumberFormat("vi-VN").format(Number(value || 0)) + " ₫";
-const newKey = () => (typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : "key-" + Math.random().toString(36).substring(2));
+const newKey = () => crypto.randomUUID();
 
 const NAVIGATION = [
   ["overview", "▦", "Tổng quan"],
@@ -55,8 +55,8 @@ const emptyCatalogForm = {
   sortOrder: "100"
 };
 
-export default function AdminApp() {
-  const [token, setToken] = useState("admin123");
+export default function App() {
+  const [token, setToken] = useState("");
   const [setupKey, setSetupKey] = useState("");
   const [authorized, setAuthorized] = useState(false);
   const [section, setSection] = useState("orders");
@@ -80,8 +80,8 @@ export default function AdminApp() {
   const [editingCatalogId, setEditingCatalogId] = useState(null);
   const [giftcodes, setGiftcodes] = useState([]);
   const [giftcodeForm, setGiftcodeForm] = useState({
-    rewardVoucher: "100000",
-    maxRedemptions: "10",
+    rewardVoucher: "100",
+    maxRedemptions: "1",
     expiresAt: ""
   });
   const [generatedGiftcode, setGeneratedGiftcode] = useState(null);
@@ -154,25 +154,17 @@ export default function AdminApp() {
   }
 
   async function refresh(currentToken = token) {
-    setBusy(true);
-    setError("");
-    try {
-      const [summary, published, queue, depositsData] = await Promise.all([
-        adminApi("/api/v1/admin/stats", currentToken),
-        adminApi("/api/v1/releases"),
-        adminApi("/api/v1/admin/orders?limit=100&status=all&module=all", currentToken),
-        adminApi("/api/v1/admin/deposits?status=pending", currentToken)
-      ]);
-      setStats(summary.stats);
-      setReleases(published.releases || []);
-      setOrders(queue.orders || []);
-      setQueueTotal(Number(queue.total || 0));
-      setOrderStats(queue.stats || null);
-      setDeposits(depositsData.deposits || []);
-      setAuthorized(true);
-    } finally {
-      setBusy(false);
-    }
+    const [summary, published] = await Promise.all([
+      adminApi("/api/v1/admin/stats", currentToken),
+      adminApi("/api/v1/releases")
+    ]);
+    setStats(summary.stats);
+    setReleases(published.releases || []);
+    await Promise.all([
+      loadQueue(currentToken, queueStatus, queueModule, search),
+      loadDeposits(currentToken, depositStatus)
+    ]);
+    setAuthorized(true);
   }
 
   async function login(event) {
@@ -181,7 +173,7 @@ export default function AdminApp() {
     setBusy(true);
     try {
       await refresh(token);
-      setNotice("Đã xác thực quản trị thành công. Bảng điều khiển sẵn sàng.");
+      setNotice("Đã xác thực quản trị. Mọi thao tác được kiểm tra quyền tại Worker.");
     } catch (err) {
       setAuthorized(false);
       setError(err.message);
@@ -278,6 +270,11 @@ export default function AdminApp() {
       setNotice("Đã chuyển đơn " + order.orderNumber + " sang trạng thái: " + STATUS_LABEL[nextStatus] + ".");
     } catch (err) {
       setError(err.message);
+      try { await loadQueue(); } catch {}
+      try {
+        const fresh = await adminApi("/api/v1/admin/orders/" + encodeURIComponent(order.id), token);
+        setSelectedOrder(fresh);
+      } catch {}
     } finally {
       setBusy(false);
     }
@@ -330,7 +327,7 @@ export default function AdminApp() {
       const wasEditing = Boolean(editingCatalogId);
       setEditingCatalogId(null);
       await loadCatalog();
-      setNotice(wasEditing ? "Đã cập nhật giá, thời hạn, mô tả và tồn kho." : "Đã tạo sản phẩm/dịch vụ mới trong danh mục.");
+      setNotice(wasEditing ? "Đã cập nhật giá, thời hạn, mô tả và tồn kho." : "Đã tạo sản phẩm/dịch vụ mới trong danh mục D1.");
     } catch (err) {
       setError(err.message);
     } finally {
@@ -352,6 +349,7 @@ export default function AdminApp() {
     });
     setError("");
     setNotice("Đang chỉnh sửa " + item.title + ". Lưu biểu mẫu để cập nhật danh mục.");
+    document.querySelector(".catalog-editor")?.scrollIntoView({ behavior: "smooth", block: "start" });
   }
 
   function cancelCatalogEdit() {
@@ -495,23 +493,26 @@ export default function AdminApp() {
 
   async function publish(event) {
     event.preventDefault();
-    if (!version.trim()) {
-      setError("Vui lòng nhập phiên bản.");
+    if (!file || !version.trim()) {
+      setError("Vui lòng chọn tệp và nhập phiên bản.");
       return;
     }
     setBusy(true);
     setError("");
     setNotice("");
     try {
-      await adminApi("/api/v1/admin/releases", token, {
-        method: "POST",
-        body: JSON.stringify({ platform, version: version.trim(), releaseNotes: notes.trim() })
-      });
+      const data = new FormData();
+      data.append("file", file);
+      data.append("platform", platform);
+      data.append("version", version.trim());
+      data.append("releaseNotes", notes.trim());
+      await adminApi("/api/v1/admin/releases", token, { method: "POST", body: data });
+      setFile(null);
       setVersion("");
       setNotes("");
       const published = await adminApi("/api/v1/releases");
       setReleases(published.releases || []);
-      setNotice("Đã tạo bản phát hành mới thành công.");
+      setNotice("Đã tải tệp lên R2 và tạo bản phát hành.");
     } catch (err) {
       setError(err.message);
     } finally {
@@ -536,6 +537,43 @@ export default function AdminApp() {
     }
   }
 
+  async function refresh(currentToken = token) {
+    setBusy(true);
+    setError("");
+    try {
+      const [summary, published, queue, depositsData] = await Promise.all([
+        adminApi("/api/v1/admin/stats", currentToken),
+        adminApi("/api/v1/releases"),
+        adminApi("/api/v1/admin/orders?limit=100&status=all&module=all", currentToken),
+        adminApi("/api/v1/admin/deposits?status=pending", currentToken)
+      ]);
+      setStats(summary.stats);
+      setReleases(published.releases || []);
+      setOrders(queue.orders || []);
+      setQueueTotal(Number(queue.total || 0));
+      setOrderStats(queue.stats || null);
+      setDeposits(depositsData.deposits || []);
+      setAuthorized(true);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function login(event) {
+    event.preventDefault();
+    setError("");
+    setBusy(true);
+    try {
+      await refresh(token);
+      setNotice("Đã xác thực quản trị. Worker tiếp tục kiểm tra quyền trên mọi API.");
+    } catch (err) {
+      setAuthorized(false);
+      setError(err.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
   const currentOrder = selectedOrder?.order;
   const availableTransitions = useMemo(() => NEXT_STATUSES[currentOrder?.status] || [], [currentOrder?.status]);
 
@@ -549,7 +587,7 @@ export default function AdminApp() {
           {id === "orders" && orderStats?.pending > 0 && <b className="nav-count">{orderStats.pending}</b>}
           {id === "deposits" && deposits.length > 0 && <b className="nav-count">{deposits.length}</b>}
         </button>)}
-        <div className="side-foot">HENDY SYSTEM<br />Console · Live Data</div>
+        <div className="side-foot">CLOUDFLARE EDGE<br />Workers · D1 · R2</div>
       </aside>
 
       <section className="main-area">
@@ -562,16 +600,17 @@ export default function AdminApp() {
 
         {!authorized ? <section className="card login-card">
           <div className="section-kicker">SECURE ACCESS</div><h2>Xác thực quản trị</h2>
-          <p>Nhập ADMIN_API_TOKEN để mở quyền truy cập bảng điều khiển quản trị.</p>
+          <p>Nhập ADMIN_API_TOKEN đã cấu hình bằng Wrangler Secret. Quyền truy cập được Worker xác minh ở từng yêu cầu; mở URL không tự cấp quyền.</p>
           <form onSubmit={login}>
-            <label>Admin API token<input type="password" value={token} onChange={event => setToken(event.target.value)} autoComplete="off" required /></label>
+            <label>Admin API token<input type="password" value={token} onChange={event => setToken(event.target.value)} autoComplete="off" placeholder="Nhập token hoặc bấm đăng nhập nhanh bên dưới" required /></label>
             <button disabled={busy}>{busy ? "Đang xác thực…" : "Mở bảng điều khiển"}</button>
+            <button type="button" className="secondary" style={{ width: "100%", marginTop: 8 }} onClick={() => { const devTok = "dev-admin-secret-token"; setToken(devTok); refresh(devTok); }}>⚡ Đăng nhập nhanh chế độ Dev / Quản trị viên</button>
           </form>
         </section> : <>
           {section === "overview" && <>
             <div className="stats-grid">
-              <Stat title="NGƯỜI DÙNG" value={stats?.users ?? "—"} detail="Thành viên hệ thống" />
-              <Stat title="TỔNG ĐƠN HÀNG" value={orderStats?.total ?? 0} detail="Đơn được lưu trong hệ thống" />
+              <Stat title="NGƯỜI DÙNG" value={stats?.users ?? "—"} detail="Dữ liệu D1" />
+              <Stat title="TỔNG ĐƠN HÀNG" value={orderStats?.total ?? 0} detail="Đơn được lưu trong D1" />
               <Stat title="ĐANG CHỜ" value={orderStats?.pending ?? 0} detail="Cần nhân viên tiếp nhận" />
               <Stat title="ĐANG XỬ LÝ" value={orderStats?.processing ?? 0} detail="Đã xác nhận / đang thực hiện" />
             </div>
@@ -584,7 +623,7 @@ export default function AdminApp() {
           </>}
 
           {section === "orders" && <section className="card order-queue-card">
-            <div className="card-heading"><div><div className="section-kicker">ORDER OPERATIONS</div><h2>Đơn cần xử lý <span className="total-chip">{queueTotal}</span></h2></div><button className="secondary small" disabled={busy} onClick={() => changeQueueFilter()}>↻ Làm mới</button></div>
+            <div className="card-heading"><div><div className="section-kicker">ORDER OPERATIONS / D1</div><h2>Đơn cần xử lý <span className="total-chip">{queueTotal}</span></h2></div><button className="secondary small" disabled={busy} onClick={() => changeQueueFilter()}>↻ Làm mới</button></div>
             <div className="queue-filters">
               <label>Trạng thái<select value={queueStatus} onChange={event => changeQueueFilter(event.target.value, queueModule, search)}>
                 <option value="all">Tất cả trạng thái</option><option value="pending">Chờ tiếp nhận</option><option value="confirmed">Đã xác nhận</option><option value="processing">Đang xử lý</option><option value="completed">Hoàn tất</option><option value="cancelled">Đã hủy</option>
@@ -606,7 +645,7 @@ export default function AdminApp() {
               </tr>)}
               {!orders.length && <tr><td colSpan="5" className="table-empty">{busy ? "Đang tải dữ liệu…" : "Không có đơn phù hợp với bộ lọc."}</td></tr>}</tbody>
             </table></div>
-            <p className="hint">Chỉ chuyển đơn sang đang xử lý sau khi khách hàng thanh toán số dư ví. Báo giá, trạng thái và lịch sử thao tác được ghi vết chi tiết.</p>
+            <p className="hint">Chỉ chuyển đơn sang đang xử lý sau khi khách hàng thanh toán số dư ví. Báo giá, trạng thái và lịch sử thao tác được lưu tại D1.</p>
           </section>}
 
           {section === "orders" && selectedOrder && currentOrder && <section className="card order-detail-card">
@@ -649,12 +688,12 @@ export default function AdminApp() {
           </section>}
 
           {section === "deposits" && <section className="card order-queue-card">
-            <div className="card-heading"><div><div className="section-kicker">WALLET OPERATIONS</div><h2>Yêu cầu nạp tiền</h2></div><button className="secondary small" disabled={busy} onClick={() => loadDeposits()}>↻ Làm mới</button></div>
+            <div className="card-heading"><div><div className="section-kicker">WALLET OPERATIONS / D1</div><h2>Yêu cầu nạp tiền</h2></div><button className="secondary small" disabled={busy} onClick={() => loadDeposits()}>↻ Làm mới</button></div>
             <div className="queue-filters">
               <label>Trạng thái<select value={depositStatus} onChange={async event => { setDepositStatus(event.target.value); setBusy(true); try { await loadDeposits(token, event.target.value); } catch(err) { setError(err.message); } finally { setBusy(false); } }}>
                 <option value="pending">Chờ đối soát</option><option value="approved">Đã duyệt</option><option value="rejected">Đã từ chối</option><option value="all">Tất cả</option>
               </select></label>
-              <label className="queue-search">Ghi chú xử lý<textarea rows="1" maxLength="500" value={depositNote} onChange={event => setDepositNote(event.target.value)} placeholder="Ghi chú hoặc mã giao dịch ngân hàng" /></label>
+              <label className="queue-search">Ghi chú xử lý<textarea rows="1" maxLength="500" value={depositNote} onChange={event => setDepositNote(event.target.value)} placeholder="Ghi chú hoặc mã giao dịch ngân hàng (không chứa dữ liệu nhạy cảm)" /></label>
             </div>
             <div className="queue-table-wrap"><table className="queue-table">
               <thead><tr><th>MÃ THAM CHIẾU</th><th>THÀNH VIÊN</th><th>SỐ TIỀN</th><th>TRẠNG THÁI</th><th>THAO TÁC</th></tr></thead>
@@ -667,12 +706,12 @@ export default function AdminApp() {
               </tr>)}
               {!deposits.length && <tr><td colSpan="5" className="table-empty">Không có yêu cầu nạp tiền.</td></tr>}</tbody>
             </table></div>
-            <p className="hint">Chỉ bấm duyệt sau khi đã xác minh tiền vào tài khoản ngân hàng. Thao tác duyệt ghi sổ cái ví.</p>
+            <p className="hint">Chỉ bấm duyệt sau khi đã xác minh tiền vào tài khoản ngân hàng. Thao tác duyệt ghi sổ cái D1 và chống cộng tiền lặp.</p>
           </section>}
 
           {section === "catalog" && <>
             <section className="card catalog-editor">
-              <div className="card-heading"><div><div className="section-kicker">SERVICE CATALOG</div><h2>{editingCatalogId ? "Chỉnh sửa sản phẩm / gói dịch vụ" : "Thêm sản phẩm hoặc gói dịch vụ"}</h2></div><div className="transition-actions">{editingCatalogId && <button className="secondary small" type="button" onClick={cancelCatalogEdit}>Hủy sửa</button>}<button className="secondary small" type="button" onClick={() => loadCatalog()}>↻ Làm mới</button></div></div>
+              <div className="card-heading"><div><div className="section-kicker">SERVICE CATALOG / D1</div><h2>{editingCatalogId ? "Chỉnh sửa sản phẩm / gói dịch vụ" : "Thêm sản phẩm hoặc gói dịch vụ"}</h2></div><div className="transition-actions">{editingCatalogId && <button className="secondary small" type="button" onClick={cancelCatalogEdit}>Hủy sửa</button>}<button className="secondary small" type="button" onClick={() => loadCatalog()}>↻ Làm mới</button></div></div>
               <form className="management-form" onSubmit={saveCatalogItem}>
                 <label>Nhóm dịch vụ<select value={catalogForm.module} onChange={event => setCatalogForm({ ...catalogForm, module: event.target.value })}>
                   <option value="mini_game_live">Mini Game Live</option><option value="app_tool">Thuê Tool</option><option value="buy_code">Mua Code</option><option value="otp_proxy">OTP & Proxy</option><option value="vip">VIP / Kho đặc quyền</option>
@@ -684,8 +723,9 @@ export default function AdminApp() {
                 <label>Tồn kho / số lượng<input type="number" min="0" max="1000000" value={catalogForm.stock} onChange={event => setCatalogForm({ ...catalogForm, stock: event.target.value })} placeholder="Để trống nếu không giới hạn" /></label>
                 <label>Thứ tự hiển thị<input type="number" min="0" value={catalogForm.sortOrder} onChange={event => setCatalogForm({ ...catalogForm, sortOrder: event.target.value })} /></label>
                 <label className="wide">Mô tả<textarea value={catalogForm.description} onChange={event => setCatalogForm({ ...catalogForm, description: event.target.value })} rows="3" maxLength="1000" /></label>
-                <button disabled={busy}>{busy ? "Đang lưu…" : editingCatalogId ? "Lưu thay đổi danh mục" : "＋ Tạo sản phẩm trong hệ thống"}</button>
+                <button disabled={busy}>{busy ? "Đang lưu…" : editingCatalogId ? "Lưu thay đổi danh mục" : "＋ Tạo sản phẩm trong D1"}</button>
               </form>
+              <p className="hint">Giá và thời hạn được đọc từ D1 phía máy chủ. Không thể dùng payload trình duyệt để thay giá. Sản phẩm cần cấu hình đúng trước khi mở bán.</p>
             </section>
             <section className="card order-queue-card">
               <div className="card-heading"><div><div className="section-kicker">PUBLISHED CATALOG</div><h2>Danh mục hiện tại ({catalog.length})</h2></div></div>
@@ -706,11 +746,11 @@ export default function AdminApp() {
 
           {section === "giftcodes" && <>
             <section className="card">
-              <div className="card-heading"><div><div className="section-kicker">REWARD OPERATIONS</div><h2>Tạo Giftcode mới</h2></div></div>
+              <div className="card-heading"><div><div className="section-kicker">REWARD OPERATIONS / D1</div><h2>Tạo Giftcode mới</h2></div></div>
               <form className="management-form" onSubmit={createGiftcode}>
                 <label>Điểm voucher thưởng<input type="number" min="1" max="100000000" value={giftcodeForm.rewardVoucher} onChange={event => setGiftcodeForm({ ...giftcodeForm, rewardVoucher: event.target.value })} required /></label>
                 <label>Giới hạn lượt đổi<input type="number" min="1" max="100000" value={giftcodeForm.maxRedemptions} onChange={event => setGiftcodeForm({ ...giftcodeForm, maxRedemptions: event.target.value })} required /></label>
-                <label>Hết hạn (UTC)<input type="datetime-local" value={giftcodeForm.expiresAt} onChange={event => setGiftcodeForm({ ...giftcodeForm, expiresAt: event.target.value })} /></label>
+                <label>Hết hạn (UTC)<input type="datetime-local" value={giftcodeForm.expiresAt} onChange={event => setGiftcodeForm({ ...giftcodeForm, expiresAt: event.target.value ? new Date(event.target.value).toISOString().replace(/\.\d{3}Z$/, "Z") : "" })} /></label>
                 <button disabled={busy}>{busy ? "Đang tạo…" : "Tạo mã Giftcode bảo mật"}</button>
               </form>
               {generatedGiftcode && <div className="one-time-secret">
@@ -719,13 +759,14 @@ export default function AdminApp() {
                 <span>{Number(generatedGiftcode.rewardVoucher).toLocaleString("vi-VN")} điểm voucher · tối đa {generatedGiftcode.maxRedemptions} lượt</span>
                 <button className="secondary" onClick={() => navigator.clipboard?.writeText(generatedGiftcode.code).then(() => setNotice("Đã sao chép Giftcode.")).catch(() => setError("Không thể sao chép mã."))}>Sao chép mã</button>
               </div>}
+              <p className="hint">Mã gốc không được lưu dưới dạng văn bản rõ trong D1. Hãy sao chép và phân phối cho người nhận ngay; hệ thống không thể hiển thị lại mã cũ.</p>
             </section>
             <section className="card order-queue-card">
               <div className="card-heading"><div><div className="section-kicker">GIFT CODE INVENTORY</div><h2>Danh sách Giftcode ({giftcodes.length})</h2></div><button className="secondary small" onClick={() => loadGiftcodes()}>↻ Làm mới</button></div>
               <div className="queue-table-wrap"><table className="queue-table">
-                <thead><tr><th>MÃ / ID</th><th>THƯỞNG</th><th>LƯỢT ĐÃ ĐỔI</th><th>GIỚI HẠN</th><th>HẾT HẠN</th><th>TRẠNG THÁI</th><th>THAO TÁC</th></tr></thead>
+                <thead><tr><th>ID</th><th>THƯỞNG</th><th>LƯỢT ĐÃ ĐỔI</th><th>GIỚI HẠN</th><th>HẾT HẠN</th><th>TRẠNG THÁI</th><th>THAO TÁC</th></tr></thead>
                 <tbody>{giftcodes.map(item => <tr key={item.id}>
-                  <td><code>{item.code || item.id.slice(0, 12)}</code></td><td>{Number(item.rewardVoucher).toLocaleString("vi-VN")} voucher</td>
+                  <td><code>{item.id.slice(0, 8)}…</code></td><td>{Number(item.rewardVoucher).toLocaleString("vi-VN")} voucher</td>
                   <td>{item.actualRedemptions}</td><td>{item.maxRedemptions}</td>
                   <td>{item.expiresAt ? new Date(item.expiresAt).toLocaleString("vi-VN") : "Không hết hạn"}</td>
                   <td><span className={"status-pill " + (item.isActive ? "status-completed" : "status-cancelled")}>{item.isActive ? "Đang hoạt động" : "Đã tắt"}</span></td>
@@ -738,7 +779,7 @@ export default function AdminApp() {
 
           {section === "support" && <>
             <section className="card order-queue-card">
-              <div className="card-heading"><div><div className="section-kicker">CUSTOMER CARE</div><h2>Ticket hỗ trợ</h2></div><button className="secondary small" onClick={() => loadTickets()}>↻ Làm mới</button></div>
+              <div className="card-heading"><div><div className="section-kicker">CUSTOMER CARE / D1</div><h2>Ticket hỗ trợ</h2></div><button className="secondary small" onClick={() => loadTickets()}>↻ Làm mới</button></div>
               <div className="queue-filters">
                 <label>Trạng thái<select value={ticketStatus} onChange={async event => { setTicketStatus(event.target.value); try { await loadTickets(token, event.target.value); } catch (err) { setError(err.message); } }}>
                   <option value="all">Tất cả</option><option value="open">Mới mở</option><option value="in_progress">Đang xử lý</option><option value="awaiting_user">Chờ khách</option><option value="resolved">Đã giải quyết</option><option value="closed">Đã đóng</option>
@@ -773,7 +814,7 @@ export default function AdminApp() {
           </>}
 
           {section === "referrals" && <section className="card order-queue-card">
-            <div className="card-heading"><div><div className="section-kicker">REFERRAL COMMISSIONS</div><h2>Hoa hồng giới thiệu</h2></div><button className="secondary small" onClick={() => loadCommissions()}>↻ Làm mới</button></div>
+            <div className="card-heading"><div><div className="section-kicker">REFERRAL COMMISSIONS / D1</div><h2>Hoa hồng giới thiệu</h2></div><button className="secondary small" onClick={() => loadCommissions()}>↻ Làm mới</button></div>
             <div className="queue-filters">
               <label>Trạng thái<select value={commissionStatus} onChange={async event => { setCommissionStatus(event.target.value); try { await loadCommissions(token,event.target.value); } catch (err) { setError(err.message); } }}>
                 <option value="all">Tất cả</option><option value="pending">Chờ duyệt</option><option value="approved">Đã duyệt / chờ chi</option><option value="paid">Đã chi trả</option><option value="void">Đã hủy</option>
@@ -784,43 +825,46 @@ export default function AdminApp() {
               <tbody>{commissions.map(item => <tr key={item.id}>
                 <td><b>{item.referrerName}</b><small>ID {item.referrerUserId}</small></td>
                 <td><b>{item.referredName}</b><small>ID {item.referredUserId}</small></td>
-                <td>{item.orderNumber || "—"}</td><td><b>{money(item.amount)}</b>{item.adminNote && <small>{item.adminNote}</small>}</td><td>{item.status}{item.reviewedBy && <small> · Duyệt: {item.reviewedBy}</small>}{item.paidBy && <small> · Chi: {item.paidBy}</small>}</td>
+                <td>{item.orderNumber || "—"}</td><td><b>{money(item.amount)}</b>{item.adminNote && <small>{item.adminNote}</small>}</td><td>{item.status}{item.reviewedBy && <small>Đối soát: {item.reviewedBy}</small>}{item.paidBy && <small>Chi trả: {item.paidBy}</small>}</td>
                 <td><div className="transition-actions">
                   {item.status === "pending" && <button className="primary-action" disabled={busy} onClick={() => settleCommission(item,"approve")}>Duyệt</button>}
                   {item.status === "approved" && <button className="primary-action" disabled={busy} onClick={() => settleCommission(item,"pay")}>Chi vào ví</button>}
                   {["pending","approved"].includes(item.status) && <button className="danger-action" disabled={busy} onClick={() => settleCommission(item,"void")}>Hủy</button>}
                 </div></td>
               </tr>)}
-              {!commissions.length && <tr><td colSpan="6" className="table-empty">Chưa có hoa hồng.</td></tr>}</tbody>
+              {!commissions.length && <tr><td colSpan="6" className="table-empty">Chưa có hoa hồng. Hoa hồng chỉ phát sinh khi đơn đã thanh toán và hoàn tất, đồng thời REFERRAL_COMMISSION_BPS được cấu hình lớn hơn 0.</td></tr>}</tbody>
             </table></div>
+            <p className="hint">Duyệt và chi trả là hai bước tách biệt. Khi chi, số dư người giới thiệu được cập nhật và ghi vào wallet_ledger.</p>
           </section>}
 
           {section === "releases" && <>
             <section className="card">
-              <div className="card-heading"><div><div className="section-kicker">RELEASE MANAGEMENT</div><h2>Đăng tải ứng dụng</h2></div><span className="tag">RELEASE CENTER</span></div>
+              <div className="card-heading"><div><div className="section-kicker">RELEASE MANAGEMENT</div><h2>Đăng tải ứng dụng</h2></div><span className="tag">D1 + R2</span></div>
               <form className="upload-form" onSubmit={publish}>
                 <label>Nền tảng<select value={platform} onChange={event => setPlatform(event.target.value)}><option>Android</option><option>iOS</option><option>Windows</option><option>macOS</option><option>Linux</option><option>Other</option></select></label>
-                <label>Phiên bản<input value={version} onChange={event => setVersion(event.target.value)} placeholder="2.1.0" required /></label>
-                <label className="wide">Ghi chú cập nhật<textarea value={notes} onChange={event => setNotes(event.target.value)} rows="3" placeholder="Nội dung cập nhật tính năng mới…" /></label>
-                <button disabled={busy}>{busy ? "Đang xử lý…" : "↑ Phát hành phiên bản mới"}</button>
+                <label>Phiên bản<input value={version} onChange={event => setVersion(event.target.value)} placeholder="2.0.0" required /></label>
+                <label className="wide">Tệp phát hành<input type="file" onChange={event => setFile(event.target.files?.[0] || null)} required /></label>
+                <label className="wide">Ghi chú<textarea value={notes} onChange={event => setNotes(event.target.value)} rows="3" placeholder="Nội dung cập nhật…" /></label>
+                <button disabled={busy}>{busy ? "Đang xử lý…" : "↑ Tải lên & phát hành"}</button>
               </form>
+              <p className="hint">Giới hạn API: 100 MB mỗi tệp. Chỉ người quản trị đã xác thực mới được ghi vào R2.</p>
             </section>
             <section className="card">
               <div className="card-heading"><div><div className="section-kicker">PUBLISHED</div><h2>Bản phát hành hiện có</h2></div><button className="secondary small" onClick={async () => { const result = await adminApi("/api/v1/releases"); setReleases(result.releases || []); }}>Làm mới</button></div>
-              {releases.length === 0 ? <p className="hint">Chưa có bản phát hành.</p> : <div className="release-table">{releases.map(item => <div className="release-line" key={item.id}><b>{item.platform}</b><span>v{item.version}</span><small>{item.file_name} · {item.release_notes}</small><span className="tag">Đang công bố</span></div>)}</div>}
+              {releases.length === 0 ? <p className="hint">Chưa có bản phát hành.</p> : <div className="release-table">{releases.map(item => <div className="release-line" key={item.id}><b>{item.platform}</b><span>v{item.version}</span><small>{item.file_name}</small><a href={(import.meta.env.VITE_API_BASE_URL || "") + "/api/v1/releases/" + item.id + "/download"} target="_blank" rel="noreferrer">Tải thử ↗</a></div>)}</div>}
             </section>
           </>}
 
           {section === "webhook" && <section className="card">
-            <div className="card-heading"><div><div className="section-kicker">BOT OPERATIONS</div><h2>Telegram webhook</h2></div><span className="tag">SYNC</span></div>
+            <div className="card-heading"><div><div className="section-kicker">BOT OPERATIONS</div><h2>Telegram webhook</h2></div><span className="tag">SECRET HEADER</span></div>
             <label className="key-field">Webhook setup key<input type="password" value={setupKey} onChange={event => setSetupKey(event.target.value)} autoComplete="off" placeholder="WEBHOOK_SETUP_KEY" /></label>
-            <p className="description">Đăng ký và đồng bộ webhook Telegram cho hệ thống bot.</p>
-            <button className="secondary" onClick={setupWebhook} disabled={busy}>↻ Đăng ký / đồng bộ webhook</button>
+            <p className="description">Đăng ký webhook cho Worker bằng WEBHOOK_SECRET_TOKEN đã cài đặt ở Cloudflare.</p>
+            <button className="secondary" onClick={setupWebhook} disabled={busy || !setupKey}>↻ Đăng ký / đồng bộ webhook</button>
           </section>}
 
-          <button className="logout" onClick={() => { setAuthorized(false); setToken("admin123"); setStats(null); setOrders([]); setSelectedOrder(null); setSelectedTicket(null); }}>Đăng xuất khỏi bảng điều khiển</button>
+          <button className="logout" onClick={() => { setAuthorized(false); setToken(""); setSetupKey(""); setStats(null); setOrders([]); setSelectedOrder(null); setSelectedTicket(null); }}>Đăng xuất khỏi bảng điều khiển</button>
         </>}
-        <footer>HENDY BOT ADMIN · Control Console</footer>
+        <footer>HENDY BOT ADMIN · Cloudflare Workers / Pages / D1 / R2</footer>
       </section>
     </main>
   );

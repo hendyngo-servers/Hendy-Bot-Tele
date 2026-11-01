@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { api, releaseDownloadUrl } from "../services/api.js";
+import { api, releaseDownloadUrl } from "./services/api.js";
 
 const BRANDS = ["QQ88", "78WIN", "SC88", "C168", "CM88", "F8BET"];
 const MODULES = [
@@ -18,7 +18,6 @@ const MODULES = [
   { id: "giftcode", title: "NHẬP GIFTCODE", subtitle: "Đổi mã · Kiểm tra phần thưởng", icon: "🎟️", tone: "coral", route: "giftcode" },
   { id: "contact_support", title: "LIÊN HỆ CSKH", subtitle: "Mở hỗ trợ hoặc gửi ticket riêng", icon: "🎧", tone: "green", external: "supportUrl", fallbackRoute: "support" }
 ];
-
 const STATUS_LABELS = {
   pending: "Chờ tiếp nhận",
   confirmed: "Đã xác nhận",
@@ -34,14 +33,15 @@ const TICKET_STATUS = {
   resolved: "Đã giải quyết",
   closed: "Đã đóng"
 };
-
 const money = value => new Intl.NumberFormat("vi-VN").format(Number(value || 0)) + " ₫";
-const idempotencyKey = () => (typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : "idemp-" + Math.random().toString(36).substring(2));
+const idempotencyKey = () => crypto.randomUUID();
 
-export default function UserApp() {
-  const telegram = useMemo(() => (typeof window !== "undefined" ? window.Telegram?.WebApp : null), []);
-  // Use Telegram initData if available, otherwise use preview session for full testability in browser
-  const [initData, setInitData] = useState(() => telegram?.initData || "tma_preview_user_6882049102");
+export default function App() {
+  const telegram = useMemo(() => window.Telegram?.WebApp || null, []);
+  const [demoInitData, setDemoInitData] = useState(() => {
+    return telegram?.initData || "query_id=preview_hendy&user=%7B%22id%22%3A88888888%2C%22first_name%22%3A%22Th%C3%A0nh%20vi%C3%AAn%20Hendy%22%2C%22username%22%3A%22hendy_member%22%7D&auth_date=1710000000&hash=dev_preview";
+  });
+  const initData = telegram?.initData || demoInitData;
   const [tab, setTab] = useState("home");
   const [home, setHome] = useState(null);
   const [orders, setOrders] = useState([]);
@@ -67,7 +67,7 @@ export default function UserApp() {
   const [ticketReply, setTicketReply] = useState("");
   const referralStartParam = String(
     telegram?.initDataUnsafe?.start_param ||
-    (typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("startapp") : "") ||
+    new URLSearchParams(window.location.search).get("startapp") ||
     ""
   );
   const referralStartCode = referralStartParam.replace(/^ref_/i, "").trim().toUpperCase();
@@ -78,6 +78,8 @@ export default function UserApp() {
   const [walletOverview, setWalletOverview] = useState(null);
   const [depositAmount, setDepositAmount] = useState("");
   const [depositTransfer, setDepositTransfer] = useState(null);
+  const requestedModule = useMemo(() => new URLSearchParams(window.location.search).get("module"), []);
+  const requestedSection = useMemo(() => new URLSearchParams(window.location.search).get("section"), []);
 
   const loadHomeData = useCallback(async () => {
     const [homeData, orderData, linkData, releaseData, configData] = await Promise.all([
@@ -95,8 +97,8 @@ export default function UserApp() {
   }, [initData]);
 
   useEffect(() => {
-    telegram?.ready?.();
-    telegram?.expand?.();
+    telegram?.ready();
+    telegram?.expand();
     telegram?.setHeaderColor?.("#101827");
     telegram?.setBackgroundColor?.("#090d18");
     if (!initData) {
@@ -173,7 +175,7 @@ export default function UserApp() {
 
     setSelectedModule(item);
     setOrderTitle(item.defaultTitle || "Yêu cầu " + item.title);
-    setOrderDescription(item.id === "pairing"
+    setOrderDescription(item.id === "pairing" || requestedSection === "pairing"
       ? "Yêu cầu sử dụng hệ thống ghép đôi. Vui lòng mô tả nền tảng và khung thời gian mong muốn."
       : "");
     setQuantity(1);
@@ -305,6 +307,7 @@ export default function UserApp() {
     finally { setBusy(false); }
   }
 
+
   function selectCatalogItem(item) {
     const module = MODULES.find(value => value.catalog && (value.apiModule || value.id) === item.module);
     if (!module) {
@@ -414,6 +417,14 @@ export default function UserApp() {
     }
   }
 
+  useEffect(() => {
+    if (loading || !initData || !requestedModule) return;
+    const item = requestedSection === "pairing"
+      ? MODULES.find(value => value.id === "pairing")
+      : MODULES.find(value => value.id === requestedModule);
+    if (item) openModule(item);
+  }, [loading, initData, requestedModule, requestedSection]);
+
   const orderCount = home?.orderSummary?.total || 0;
   const totalLinks = Object.values(links).reduce((count, rows) => count + (rows?.length || 0), 0);
   const selectedCatalogItem = catalogItems.find(item => item.id === catalogItemId) || null;
@@ -428,19 +439,21 @@ export default function UserApp() {
           <div className="brand-symbol">H</div>
           <div><strong>HENDY</strong><span>TELEGRAM MINI APP</span></div>
         </div>
-        <div className="connection"><i /> TELEGRAM HUB · CLOUD ACTIVE</div>
+        <div className="connection"><i /> CLOUDFLARE EDGE · D1</div>
       </header>
 
-      {!initData && (
-        <section className="auth-wall">
-          <div className="auth-icon">🔐</div>
-          <h1>Mở Hendy Bot từ Telegram</h1>
-          <p>Mini App nhận dữ liệu người dùng qua phiên Telegram. Bạn có thể kích hoạt phiên thử nghiệm để khám phá giao diện.</p>
-          <button className="primary-action" style={{ marginTop: "15px" }} onClick={() => setInitData("tma_preview_demo")}>
-            Kích hoạt phiên Telegram thử nghiệm
-          </button>
-        </section>
-      )}
+      {!initData && <section className="auth-wall">
+        <div className="auth-icon">🔐</div>
+        <h1>Mở Hendy Bot từ Telegram</h1>
+        <p>Mini App chỉ nhận dữ liệu người dùng sau khi Worker xác thực chữ ký initData. Không dùng initDataUnsafe làm căn cứ đăng nhập.</p>
+        <button type="button" className="download-link" style={{ marginTop: 14, cursor: "pointer", display: "inline-block" }} onClick={() => setDemoInitData("query_id=preview_hendy&user=%7B%22id%22%3A88888888%2C%22first_name%22%3A%22Th%C3%A0nh%20vi%C3%AAn%20Hendy%22%2C%22username%22%3A%22hendy_member%22%7D&auth_date=1710000000&hash=dev_preview")}>
+          Kích hoạt phiên thành viên xem trước ↗
+        </button>
+      </section>}
+      {demoInitData && !telegram?.initData && <div className="notice" style={{ background: "#132333", border: "1px solid #315c60", color: "#8de4ca", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
+        <span>📱 <b>Chế độ xem trước Telegram:</b> Đang chạy phiên thành viên mẫu (ID: 88888888)</span>
+        <button type="button" className="text-button" style={{ textDecoration: "underline" }} onClick={() => setDemoInitData("")}>Bật khóa bảo mật Telegram</button>
+      </div>}
 
       {error && <div className="notice error">{error}</div>}
       {notice && <div className="notice success">{notice}</div>}
@@ -476,7 +489,7 @@ export default function UserApp() {
           <button className="refresh-button" onClick={() => loadHomeData().catch(err => setError(err.message))}>↻</button>
         </nav>
 
-        {loading ? <div className="loading-panel">Đang đồng bộ dữ liệu…</div> : <>
+        {loading ? <div className="loading-panel">Đang đồng bộ dữ liệu D1…</div> : <>
           {tab === "home" && <>
             <section className="section-block">
               <div className="section-title"><div><span className="eyebrow">HENDY SERVICE DIRECTORY</span><h2>Danh mục chức năng</h2></div><span className="section-aside">{MODULES.length} LỐI TRUY CẬP</span></div>
@@ -496,17 +509,17 @@ export default function UserApp() {
             </section>
 
             {selectedModule?.catalog && <section className="section-block">
-              <div className="section-title"><div><span className="eyebrow">CATALOG DỊCH VỤ</span><h2>Danh mục {selectedModule.title}</h2></div></div>
+              <div className="section-title"><div><span className="eyebrow">CATALOG FROM D1</span><h2>Danh mục {selectedModule.title}</h2></div></div>
               {catalogItems.length ? <div className="release-list">{catalogItems.map(item => <article className="release-row" key={item.id}>
                 <div className="release-icon">✦</div>
                 <div className="release-info"><strong>{item.title}</strong><span>{item.description || item.slug} · {item.duration_days ? item.duration_days + " ngày · " : ""}{item.unit_price === null ? "Chờ báo giá" : money(item.unit_price)}{item.stock === null || item.stock === undefined ? "" : " · Tồn " + item.stock}</span></div>
                 <button className="download-link" type="button" disabled={item.stock !== null && item.stock !== undefined && Number(item.stock) < 1} onClick={() => selectCatalogItem(item)}>Chọn</button>
-              </article>)}</div> : <div className="empty-panel">Danh mục hiện chưa có sản phẩm đang mở bán. Admin có thể thêm sản phẩm từ Bảng quản trị → Danh mục dịch vụ.</div>}
+              </article>)}</div> : <div className="empty-panel">Danh mục hiện chưa có sản phẩm đang mở bán. Admin có thể thêm sản phẩm từ Bảng quản trị → Danh mục.</div>}
             </section>}
 
             {selectedModule && <section className="request-panel">
               <div className="section-title"><div><span className="eyebrow">SERVICE REQUEST</span><h2>{selectedModule.title}</h2></div><button className="close-button" onClick={() => { setSelectedModule(null); setCatalogItemId(""); }} aria-label="Đóng">×</button></div>
-              <p className="helper-copy">Yêu cầu được lưu vào hệ thống và chuyển tới hàng đợi Admin. Giá chỉ do danh mục hoặc Admin xác định; không gửi mật khẩu, OTP, cookie hay thông tin đăng nhập bên thứ ba.</p>
+              <p className="helper-copy">Yêu cầu được lưu vào D1 và chuyển tới hàng đợi Admin. Giá chỉ do danh mục hoặc Admin xác định; không gửi mật khẩu, OTP, cookie hay thông tin đăng nhập bên thứ ba.</p>
               <form className="request-form" onSubmit={submitOrder}>
                 <label>Tiêu đề yêu cầu<input value={orderTitle} onChange={event => setOrderTitle(event.target.value)} minLength={3} maxLength={100} required /></label>
                 <label>Số lượng<input type="number" min="1" max="50" value={quantity} onChange={event => setQuantity(event.target.value)} required /></label>
@@ -525,7 +538,7 @@ export default function UserApp() {
               {releases.length === 0 ? <div className="empty-panel">Chưa có bản phát hành được Admin công bố.</div> : <div className="release-list">{releases.slice(0, 5).map(release => <article className="release-row" key={release.id}>
                 <div className="release-icon">↓</div>
                 <div className="release-info"><strong>{release.platform} · v{release.version}</strong><span>{release.file_name || "Tệp phát hành"} · {release.release_notes || "Bản chính thức"}</span></div>
-                <a className="download-link" href={releaseDownloadUrl(release.id)} onClick={(e) => { e.preventDefault(); alert("Bắt đầu tải về bản phát hành: " + release.file_name); }}>Tải về</a>
+                <a className="download-link" href={releaseDownloadUrl(release.id)}>Tải về</a>
               </article>)}</div>}
             </section>
           </>}
@@ -540,7 +553,7 @@ export default function UserApp() {
             <div className="section-title"><div><span className="eyebrow">HENDY WALLET</span><h2>Ví điện tử</h2></div><button className="text-button" type="button" onClick={() => refreshWallet().catch(err => setError(err.message))}>↻ Làm mới</button></div>
             <div className="overview-grid">
               <article className="balance-card"><div className="overview-label">SỐ DƯ KHẢ DỤNG</div><strong>{money(walletOverview?.balance ?? home?.user?.balance)}</strong><span>Ví nội bộ · VND</span></article>
-              <article className="metric-card metric-violet"><span>VOUCHER GIFTCODE</span><strong>{Number(walletOverview?.voucher ?? home?.user?.voucher ?? 0).toLocaleString("vi-VN")}</strong><small>Điểm thưởng, không phải tiền mặt</small></article>
+              <article className="metric-card metric-violet"><span>VOUCHER GIFTcode</span><strong>{Number(walletOverview?.voucher ?? home?.user?.voucher ?? 0).toLocaleString("vi-VN")}</strong><small>Điểm thưởng, không phải tiền mặt</small></article>
             </div>
             <section className="request-panel">
               <div className="section-title"><div><span className="eyebrow">BANK TRANSFER</span><h2>Thông tin chuyển khoản</h2></div></div>
@@ -608,11 +621,11 @@ export default function UserApp() {
                 <article className="metric-card"><span>MÃ GIỚI THIỆU</span><strong>{referralSummary.code}</strong><small>Chia sẻ cho bạn bè</small></article>
                 <article className="metric-card"><span>ĐÃ GIỚI THIỆU</span><strong>{referralSummary.invited}</strong><small>Tài khoản đã ghi nhận</small></article>
               </div>
-              <div className="panel" style={{ margin: "14px 0", padding: "14px", background: "#131b2a", borderRadius: "12px" }}>
+              <div className="panel">
                 {referralSummary.inviteUrl ? <>
                   <p className="helper-copy">{referralSummary.inviteUrl}</p>
-                  <button type="button" className="secondary small" onClick={() => navigator.clipboard?.writeText(referralSummary.inviteUrl).then(() => setNotice("Đã sao chép liên kết giới thiệu.")).catch(() => setError("Không thể sao chép liên kết."))}>Sao chép liên kết</button>
-                </> : <p className="footnote">Mã giới thiệu của bạn: gửi trực tiếp mã này cho người được mời.</p>}
+                  <button type="button" onClick={() => navigator.clipboard?.writeText(referralSummary.inviteUrl).then(() => setNotice("Đã sao chép liên kết giới thiệu.")).catch(() => setError("Không thể sao chép liên kết."))}>Sao chép liên kết</button>
+                </> : <p className="footnote">Quản trị viên chưa cấu hình WEBAPP_URL chính thức. Mã giới thiệu của bạn vẫn dùng được: gửi trực tiếp mã này cho người được mời.</p>}
                 <p className="footnote">{referralSummary.commissionNote}</p>
                 {referralSummary.commissionAvailable && <p className="footnote">Tỷ lệ cấu hình: {(Number(referralSummary.commissionRateBps || 0) / 100).toFixed(2)}% trên giá trị đơn đã thanh toán và hoàn tất.</p>}
               </div>
@@ -631,7 +644,7 @@ export default function UserApp() {
             <div className="section-title"><div><span className="eyebrow">MEMBERSHIP</span><h2>Trung tâm VIP</h2></div></div>
             {vipProfile ? <>
               <div className="overview-grid"><article className="metric-card"><span>HẠNG HIỆN TẠI</span><strong>{vipProfile.currentTier?.name || "Cơ bản"}</strong></article><article className="metric-card"><span>ĐIỂM VIP</span><strong>{vipProfile.points || 0}</strong></article></div>
-              <div className="panel" style={{ margin: "14px 0", padding: "14px", background: "#131b2a", borderRadius: "12px" }}><p className="helper-copy">{Number(vipProfile.pointsPer10000Vnd || 0) > 0 ? "Mỗi 10.000 VNĐ giá trị đơn đã thanh toán và hoàn tất được cộng " + vipProfile.pointsPer10000Vnd + " điểm VIP. Hệ thống tự nâng hạng khi đạt ngưỡng." : "Chương trình tích điểm VIP."}</p></div>
+              <div className="panel"><p className="helper-copy">{Number(vipProfile.pointsPer10000Vnd || 0) > 0 ? "Mỗi 10.000 VNĐ giá trị đơn đã thanh toán và hoàn tất được cộng " + vipProfile.pointsPer10000Vnd + " điểm VIP. Hệ thống tự nâng hạng khi đạt ngưỡng." : "Chương trình tích điểm VIP đang tạm tắt. Quản trị viên cần cấu hình VIP_POINTS_PER_10000_VND trước khi tính điểm."}</p></div>
               <div className="account-grid">{(vipProfile.tiers || []).map(tier => {
                 const current = tier.code === vipProfile.currentTier?.code;
                 const remaining = Math.max(0,Number(tier.minPoints || 0)-Number(vipProfile.points || 0));
@@ -645,10 +658,8 @@ export default function UserApp() {
 
           {tab === "links" && <section className="section-block">
             <div className="section-title"><div><span className="eyebrow">MINI GAME LIVE · ACCOUNT CONNECTIONS</span><h2>Trung tâm quản lý tài khoản liên kết</h2></div><span className="section-aside">{totalLinks} LIÊN KẾT</span></div>
-            <div className="module-action-row" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "14px" }}>
-              <p className="helper-copy" style={{ margin: 0 }}>Quản lý mã/tên tài khoản của bạn, theo dõi đơn Mini Game Live trong mục Đơn hàng. Không gửi mật khẩu hay OTP.</p>
-              <button className="text-button" onClick={() => { const item = MODULES.find(value => value.id === "mini_game_live"); setSelectedModule(item); setOrderTitle("Yêu cầu Mini Game Live"); setOrderDescription(""); setQuantity(1); setTab("home"); }}>＋ Tạo yêu cầu Mini Game Live</button>
-            </div>
+            <div className="module-action-row"><p className="helper-copy">Quản lý mã/tên tài khoản của bạn, theo dõi đơn Mini Game Live trong mục Đơn hàng. Không gửi mật khẩu hay OTP.</p><button className="text-button" onClick={() => { const item = MODULES.find(value => value.id === "mini_game_live"); setSelectedModule(item); setOrderTitle("Yêu cầu Mini Game Live"); setOrderDescription(""); setQuantity(1); setTab("home"); }}>＋ Tạo yêu cầu Mini Game Live</button></div>
+            <p className="helper-copy">Chỉ lưu tên/mã tài khoản để bạn quản lý. Không nhập mật khẩu, OTP, cookie hoặc mã khôi phục.</p>
             <form className="link-form" onSubmit={addLink}>
               <label>Sảnh / nền tảng<select value={brand} onChange={event => setBrand(event.target.value)}>{BRANDS.map(item => <option key={item}>{item}</option>)}</select></label>
               <label>Mã tài khoản<input value={accountLabel} onChange={event => setAccountLabel(event.target.value)} maxLength={40} placeholder="Tên hoặc mã tài khoản" required /></label>
@@ -664,7 +675,7 @@ export default function UserApp() {
         </>}
       </>}
 
-      <footer className="app-footer"><span>HENDY BOT</span><span>REACT · VITE</span><span>SECURE MEMBER AREA</span></footer>
+      <footer className="app-footer"><span>HENDY BOT</span><span>WORKERS · D1 · R2</span><span>SECURE MEMBER AREA</span></footer>
     </main>
   );
 }
