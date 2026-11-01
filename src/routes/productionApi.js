@@ -673,7 +673,6 @@ router.get("/admin/stats", requireAdmin, asyncRoute(async (_req, res) => {
     "(SELECT COUNT(*) FROM deposits WHERE status='pending') AS pending_deposits," +
     "(SELECT COUNT(*) FROM support_tickets WHERE status IN ('open','pending')) AS open_tickets," +
     "(SELECT COUNT(*) FROM bot_events) AS total_updates," +
-    " +
     "(SELECT COALESCE(SUM(amount),0) FROM orders WHERE payment_status='paid' AND status<>'cancelled') AS total_revenue," +
     "(SELECT COUNT(DISTINCT telegram_user_id) FROM bot_events WHERE telegram_user_id IS NOT NULL AND created_at>=datetime('now','-1 day')) AS active_users_24h," +
     "(SELECT COUNT(*) FROM bot_events WHERE created_at>=datetime('now','-1 day')) AS updates_24h," +
