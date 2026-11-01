@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 
-const uri = process.env.MONGODB_URI;
+const uri = process.env.MONGODB_TEST_URI;
 const dbName = 'hendy_user_test_' + process.pid;
 const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'hendy-users-mongo-'));
 process.env.DATA_DIR = dataDir;
