@@ -77,8 +77,8 @@ Trong Cloudflare Dashboard → Workers & Pages → Create → Pages → Connect 
 
 | Project | Root directory | Build command | Output |
 |---|---|---|---|
-| hendy-web-user | apps/web-user | để trống (static) | apps/web-user |
-| hendy-web-admin | apps/web-admin | để trống (static) | apps/web-admin |
+| hendy-web-user | apps/web-user | để trống (static) | . |
+| hendy-web-admin | apps/web-admin | để trống (static) | . |
 
 Hoặc deploy thủ công:
 
