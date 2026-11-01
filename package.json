@@ -1,20 +1,19 @@
 {
-  "name": "hendy-bot-tele",
-  "version": "5.1.0",
+  "name": "hendy-bot-tele-cloudflare",
   "private": true,
-  "type": "module",
+  "version": "2.0.0",
+  "packageManager": "pnpm@9.15.5",
+  "engines": { "node": ">=20.0.0" },
   "scripts": {
-    "check": "tsc --noEmit",
-    "validate:config": "node scripts/validate-cloudflare-config.mjs",
-    "test:db": "python3 scripts/test_schema.py",
-    "deploy:api": "wrangler deploy --config workers/backend-api/wrangler.toml",
-    "deploy:router": "wrangler deploy --config workers/edge-router/wrangler.toml",
-    "deploy:healing": "wrangler deploy --config workers/self-healing/wrangler.toml",
-    "deploy:user": "wrangler pages deploy apps/web-user --project-name hendy-web-user",
-    "deploy:admin": "wrangler pages deploy apps/web-admin --project-name hendy-web-admin"
+    "dev": "pnpm --parallel --filter web-user --filter web-admin --filter backend run dev",
+    "build": "pnpm --filter web-user build && pnpm --filter web-admin build",
+    "test": "node --test",
+    "deploy:web-user": "pnpm --filter web-user deploy",
+    "deploy:web-admin": "pnpm --filter web-admin deploy",
+    "deploy:backend": "wrangler deploy --config backend/wrangler.toml",
+    "db:migrate:local": "wrangler d1 migrations apply DB --local --config backend/wrangler.toml",
+    "db:migrate:remote": "wrangler d1 migrations apply DB --remote --config backend/wrangler.toml",
+    "check": "pnpm build && pnpm test"
   },
-  "devDependencies": {
-    "typescript": "^5.9.3",
-    "wrangler": "^4.45.0"
-  }
+  "devDependencies": { "wrangler": "^4.40.0" }
 }

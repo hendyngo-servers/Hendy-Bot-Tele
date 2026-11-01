@@ -1,0 +1,70 @@
+name: Build and deploy Cloudflare Pages
+on:
+  push:
+    branches: [main]
+    paths:
+      - "apps/web-user/**"
+      - "apps/web-admin/**"
+      - "packages/shared-types/**"
+      - "pnpm-workspace.yaml"
+      - "package.json"
+      - ".github/workflows/build-and-deploy-frontend.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "apps/web-user/**"
+      - "apps/web-admin/**"
+      - "packages/shared-types/**"
+      - "pnpm-workspace.yaml"
+      - "package.json"
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: cloudflare-pages-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  build-user:
+    name: Build and deploy web-user
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.5
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: pnpm install --no-frozen-lockfile
+      - name: Build user app
+        run: pnpm --filter web-user build
+        env:
+          VITE_API_BASE_URL: ${{ vars.VITE_API_BASE_URL }}
+      - name: Deploy user Pages
+        if: github.event_name != 'pull_request'
+        run: pnpm exec wrangler pages deploy apps/web-user/dist --project-name hendy-web-user
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+  build-admin:
+    name: Build and deploy web-admin
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.5
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: pnpm install --no-frozen-lockfile
+      - name: Build admin app
+        run: pnpm --filter web-admin build
+        env:
+          VITE_API_BASE_URL: ${{ vars.VITE_API_BASE_URL }}
+      - name: Deploy admin Pages
+        if: github.event_name != 'pull_request'
+        run: pnpm exec wrangler pages deploy apps/web-admin/dist --project-name hendy-web-admin
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}

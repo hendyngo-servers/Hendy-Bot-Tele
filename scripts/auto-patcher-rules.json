@@ -1,0 +1,26 @@
+{
+  "version": 1,
+  "mode": "report-only",
+  "protectedPaths": ["backend/src/security/**", "backend/wrangler.toml", "packages/db-schema/migrations/**", ".github/workflows/**"],
+  "requiredChecks": ["pnpm test", "pnpm build"],
+  "rules": [
+    {
+      "id": "no-plaintext-credentials",
+      "description": "Never collect or persist third-party passwords, OTP values, bot tokens, or API secrets in user-facing forms or D1 records.",
+      "paths": ["apps/**", "backend/src/**"],
+      "severity": "block"
+    },
+    {
+      "id": "no-secret-commits",
+      "description": "Secrets must use Cloudflare Worker secrets or GitHub Actions secrets.",
+      "paths": ["**"],
+      "severity": "block"
+    },
+    {
+      "id": "preserve-migrations",
+      "description": "Do not add destructive DROP TABLE statements to production migrations.",
+      "paths": ["packages/db-schema/migrations/**"],
+      "severity": "block"
+    }
+  ]
+}
