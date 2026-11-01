@@ -1,6 +1,6 @@
 import { deleteLinkedAccount, getUser } from "../db/userModel.js";
 import { linksMenu, mainMenu, minigameMenu } from "./keyboards.js";
-import { answerCallback, editMessage } from "./telegram.js";
+import { answerCallback, editMessage, sendMessage } from "./telegram.js";
 
 export async function handleCallback(update, env) {
   const query = update.callback_query;
@@ -20,6 +20,12 @@ export async function handleCallback(update, env) {
     await editMessage(env, chatId, messageId, "QUẢN LÝ LIÊN KẾT\nChọn nền tảng:", linksMenu(user?.linked_accounts || {}));
   } else if (data === "menu_minigame") {
     await editMessage(env, chatId, messageId, "MINIGAME\nCác tiện ích sẽ được cập nhật tại đây.", minigameMenu());
+  } else if (data === "app_url_missing") {
+    await answerCallback(env, query.id, "Chưa cấu hình WEBAPP_URL hợp lệ.", true);
+    return true;
+  } else if (data === "group_link_missing" || data === "channel_link_missing") {
+    await answerCallback(env, query.id, "Quản trị viên chưa cấu hình liên kết này.", true);
+    return true;
   } else if (data.startsWith("manage_")) {
     const brand = data.slice(7);
     const user = await getUser(env, query.from.id);
@@ -39,7 +45,7 @@ export async function handleCallback(update, env) {
       return true;
     }
   } else if (data === "help") {
-    await editMessage(env, chatId, messageId, "HƯỚNG DẪN\nDùng Mini App để quản lý liên kết.\nKhông gửi mật khẩu hoặc mã OTP cho bot.", mainMenu(env));
+    await editMessage(env, chatId, messageId, "HƯỚNG DẪN\nDùng Mini App để quản lý tài khoản và dịch vụ.\nKhông gửi mật khẩu hoặc mã OTP cho bot.", mainMenu(env));
   } else {
     await answerCallback(env, query.id, "Chức năng chưa khả dụng.");
     return true;
