@@ -12,7 +12,8 @@
     "start": "node src/server.js",
     "build": "vite build --config mini-app/vite.config.mjs",
     "test": "node --test",
-    "lint": "node --check src/server.js && node --check src/routes/productionApi.js && node --check src/services/productionD1.js && node --check src/middlewares/telegramAuth.js && node --check src/security/telegramAuth.js && node --check src/services/telegramService.js && node --check src/services/telegramKeyboard.js && node --check cloudflare/worker.js"
+    "lint": "node --check src/server.js && node --check src/routes/productionApi.js && node --check src/services/productionD1.js && node --check src/middlewares/telegramAuth.js && node --check src/security/telegramAuth.js && node --check src/services/telegramService.js && node --check src/services/telegramKeyboard.js && node --check cloudflare/worker.js && node --check src/services/adminRealtime.js && node --check src/services/runtimeConfigSync.js && node --check src/services/configScanner.js",
+    "config:audit": "node scripts/config-audit.js"
   },
   "dependencies": {
     "cors": "^2.8.5",
@@ -21,7 +22,8 @@
     "lucide-react": "^1.16.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
-    "multer": "^2.0.2"
+    "multer": "^2.0.2",
+    "ws": "^8.18.3"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.0.0",
