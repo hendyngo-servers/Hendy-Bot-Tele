@@ -6,6 +6,10 @@ const path = require('node:path');
 
 const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'hendy-users-'));
 process.env.DATA_DIR = dataDir;
+process.env.NODE_ENV = 'test';
+delete process.env.RENDER;
+delete process.env.RENDER_EXTERNAL_URL;
+delete process.env.RENDER_SERVICE_ID;
 delete process.env.MONGODB_URI;
 
 const userService = require('./userService');
