@@ -38,10 +38,7 @@ const idempotencyKey = () => crypto.randomUUID();
 
 export default function App() {
   const telegram = useMemo(() => window.Telegram?.WebApp || null, []);
-  const [demoInitData, setDemoInitData] = useState(() => {
-    return telegram?.initData || "query_id=preview_hendy&user=%7B%22id%22%3A88888888%2C%22first_name%22%3A%22Th%C3%A0nh%20vi%C3%AAn%20Hendy%22%2C%22username%22%3A%22hendy_member%22%7D&auth_date=1710000000&hash=dev_preview";
-  });
-  const initData = telegram?.initData || demoInitData;
+  const initData = telegram?.initData || "";
   const [tab, setTab] = useState("home");
   const [home, setHome] = useState(null);
   const [orders, setOrders] = useState([]);
@@ -446,14 +443,7 @@ export default function App() {
         <div className="auth-icon">🔐</div>
         <h1>Mở Hendy Bot từ Telegram</h1>
         <p>Mini App chỉ nhận dữ liệu người dùng sau khi Worker xác thực chữ ký initData. Không dùng initDataUnsafe làm căn cứ đăng nhập.</p>
-        <button type="button" className="download-link" style={{ marginTop: 14, cursor: "pointer", display: "inline-block" }} onClick={() => setDemoInitData("query_id=preview_hendy&user=%7B%22id%22%3A88888888%2C%22first_name%22%3A%22Th%C3%A0nh%20vi%C3%AAn%20Hendy%22%2C%22username%22%3A%22hendy_member%22%7D&auth_date=1710000000&hash=dev_preview")}>
-          Kích hoạt phiên thành viên xem trước ↗
-        </button>
       </section>}
-      {demoInitData && !telegram?.initData && <div className="notice" style={{ background: "#132333", border: "1px solid #315c60", color: "#8de4ca", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
-        <span>📱 <b>Chế độ xem trước Telegram:</b> Đang chạy phiên thành viên mẫu (ID: 88888888)</span>
-        <button type="button" className="text-button" style={{ textDecoration: "underline" }} onClick={() => setDemoInitData("")}>Bật khóa bảo mật Telegram</button>
-      </div>}
 
       {error && <div className="notice error">{error}</div>}
       {notice && <div className="notice success">{notice}</div>}
