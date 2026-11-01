@@ -1,9 +1,11 @@
 import express from "express";
 import crypto from "node:crypto";
+import multer from "multer";
 import { executeD1Query, d1First, getD1Health, getBotSettings, setBotSetting, writeAdminAudit } from "../services/productionD1.js";
 import { requireTelegramAuth, requireAdmin, isTelegramAdmin } from "../middlewares/telegramAuth.js";
 
 const router = express.Router();
+const releaseUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024, files: 1 } });
 const asyncRoute = (handler) => (req, res, next) => Promise.resolve(handler(req, res, next)).catch(next);
 const id = () => crypto.randomUUID();
 const text = (value, max = 500) => String(value ?? "").trim().slice(0, max);
@@ -270,6 +272,15 @@ router.get("/public-config", asyncRoute(async (_req, res) => {
 router.get("/releases", asyncRoute(async (_req, res) => {
   const rows = await executeD1Query("SELECT id,title,version,platform,download_url AS downloadUrl,notes,created_at FROM app_releases WHERE is_active=1 ORDER BY created_at DESC LIMIT 100");
   res.json({ releases: rows.results });
+}));
+
+
+router.get("/releases/:id/download", asyncRoute(async (req, res) => {
+  const release = await d1First("SELECT download_url FROM app_releases WHERE id=? AND is_active=1", [text(req.params.id, 100)]);
+  if (!release?.download_url || !/^https:\/\//i.test(release.download_url)) {
+    return res.status(404).json({ error: "Không tìm thấy bản phát hành." });
+  }
+  res.redirect(302, release.download_url);
 }));
 
 router.use(requireTelegramAuth);
@@ -745,6 +756,65 @@ router.get("/admin/orders", requireAdmin, asyncRoute(async (req, res) => {
       cancelled: Number(totals?.cancelled || 0)
     }
   });
+}));
+
+
+router.get("/admin/releases", requireAdmin, asyncRoute(async (_req, res) => {
+  const rows = await executeD1Query("SELECT * FROM app_releases ORDER BY created_at DESC LIMIT 200");
+  res.json({ releases: rows.results });
+}));
+
+router.post("/admin/releases", requireAdmin, releaseUpload.single("file"), asyncRoute(async (req, res) => {
+  if (!req.file) return res.status(400).json({ error: "Vui lòng chọn tệp phát hành." });
+  const platform = text(req.body?.platform, 20);
+  const version = text(req.body?.version, 40);
+  const notes = text(req.body?.releaseNotes || req.body?.notes, 2000);
+  if (!["Android", "Windows", "macOS", "Linux", "Other"].includes(platform)) return res.status(400).json({ error: "Nền tảng không hợp lệ." });
+  if (!/^[0-9A-Za-z.+_-]{1,40}$/.test(version)) return res.status(400).json({ error: "Phiên bản không hợp lệ." });
+  const originalName = String(req.file.originalname || "release.bin");
+  const extension = originalName.toLowerCase().match(/\.(apk|zip|exe|msi|dmg|pkg|deb|rpm|tar\.gz)$/)?.[0];
+  if (!extension) return res.status(400).json({ error: "Chỉ chấp nhận APK, ZIP, EXE, MSI, DMG, PKG, DEB, RPM hoặc TAR.GZ." });
+
+  const workerBase = process.env.R2_UPLOAD_WORKER_URL || process.env.BACKUP_WORKER_URL;
+  const uploadSecret = process.env.R2_UPLOAD_SECRET;
+  if (!workerBase || !uploadSecret) return res.status(503).json({ error: "Chưa cấu hình R2_UPLOAD_WORKER_URL và R2_UPLOAD_SECRET trên Render." });
+  const safeName = originalName.normalize("NFKD").replace(/[^a-zA-Z0-9._-]+/g, "-").slice(-100) || "release" + extension;
+  const form = new FormData();
+  form.set("file", new Blob([req.file.buffer], { type: req.file.mimetype || "application/octet-stream" }), safeName);
+  form.set("platform", platform);
+  form.set("version", version);
+  form.set("filename", safeName);
+  const uploadUrl = new URL("/api/storage/upload", workerBase);
+  const uploaded = await fetch(uploadUrl, {
+    method: "POST",
+    headers: { Authorization: "Bearer " + uploadSecret },
+    body: form,
+    signal: AbortSignal.timeout(60000)
+  });
+  const uploadResult = await uploaded.json().catch(() => ({}));
+  if (!uploaded.ok || !uploadResult.success || !uploadResult.key) {
+    return res.status(502).json({ error: uploadResult.error || "Worker không lưu được tệp lên R2." });
+  }
+
+  const releaseId = "REL-" + crypto.randomUUID().slice(0, 12).toUpperCase();
+  const downloadUrl = new URL("/api/storage/download/" + encodeURIComponent(uploadResult.key), workerBase).toString();
+  await executeD1Query(
+    "INSERT INTO app_releases(id,title,version,platform,download_url,notes,is_active) VALUES(?,?,?,?,?,?,1)",
+    [releaseId, safeName, version, platform, downloadUrl, notes]
+  );
+  await writeAdminAudit(req.telegramUser.id, "release.publish", "release", releaseId, {
+    platform, version, filename: safeName, bytes: uploadResult.size, objectKey: uploadResult.key
+  });
+  const release = await d1First("SELECT * FROM app_releases WHERE id=?", [releaseId]);
+  res.status(201).json({ success: true, release });
+}));
+
+router.post("/admin/releases/:id/status", requireAdmin, asyncRoute(async (req, res) => {
+  const enabled = req.body?.active === true || req.body?.active === 1 || req.body?.active === "true";
+  const release = await d1First("UPDATE app_releases SET is_active=? WHERE id=? RETURNING *", [enabled ? 1 : 0, text(req.params.id, 100)]);
+  if (!release) return res.status(404).json({ error: "Không tìm thấy bản phát hành." });
+  await writeAdminAudit(req.telegramUser.id, "release.status", "release", release.id, { active: enabled });
+  res.json({ success: true, release });
 }));
 
 router.get("/admin/catalog", requireAdmin, asyncRoute(async (_req, res) => {
