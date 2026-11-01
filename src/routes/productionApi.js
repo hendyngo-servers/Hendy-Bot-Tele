@@ -806,9 +806,15 @@ router.post("/admin/settings", requireAdmin, asyncRoute(async (req, res) => {
   await writeAdminAudit(adminId, "bot.settings.update", "settings", null, {
     keys: Object.keys(updates).filter((key) => [...allowedText, ...allowedLinks, "ui_theme", "menu_config", "maintenance_message"].includes(key))
   });
-  const menuRefresh = updates.menu_config !== undefined || allowedLinks.some((key) => updates[key] !== undefined)
-    ? await refreshTelegramMenuMessages(settings)
-    : { updated: 0, failed: 0 };
+  let menuRefresh = { updated: 0, failed: 0, total: 0 };
+  if (updates.menu_config !== undefined || allowedLinks.some((key) => updates[key] !== undefined)) {
+    try {
+      menuRefresh = await refreshTelegramMenuMessages(settings);
+    } catch (error) {
+      // D1 setting changes remain committed even if the optional Telegram menu-history table is not migrated yet.
+      menuRefresh = { updated: 0, failed: 0, total: 0, warning: "Không thể đồng bộ menu đã gửi: " + error.message };
+    }
+  }
   await broadcastPublicConfigUpdate(settings);
   broadcastRealtime("admin.settings.updated", {
     updatedKeys: Object.keys(updates),
