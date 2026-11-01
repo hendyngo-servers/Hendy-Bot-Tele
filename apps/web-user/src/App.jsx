@@ -52,6 +52,7 @@ export default function App() {
   const [walletOverview, setWalletOverview] = useState(null);
   const [depositAmount, setDepositAmount] = useState("");
   const requestedModule = useMemo(() => new URLSearchParams(window.location.search).get("module"), []);
+  const requestedSection = useMemo(() => new URLSearchParams(window.location.search).get("section"), []);
 
   useEffect(() => {
     telegram?.ready();
@@ -123,8 +124,8 @@ export default function App() {
       return;
     }
     setSelectedModule(item);
-    setOrderTitle("Yêu cầu " + item.title);
-    setOrderDescription("");
+    setOrderTitle(item.id === "mini_game_live" && requestedSection === "pairing" ? "Yêu cầu ghép đôi" : "Yêu cầu " + item.title);
+    setOrderDescription(requestedSection === "pairing" ? "Yêu cầu sử dụng Hệ thống ghép đôi." : "");
     setQuantity(1);
     setTab("home");
     if (["app_tool", "buy_code", "otp_proxy"].includes(item.id)) await loadCatalog(item.id);
