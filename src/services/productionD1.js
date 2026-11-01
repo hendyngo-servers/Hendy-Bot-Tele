@@ -1,3 +1,5 @@
+import crypto from "node:crypto";
+
 const API_BASE = "https://api.cloudflare.com/client/v4";
 
 let queryCount = 0;
@@ -91,6 +93,9 @@ export async function getBotSettings() {
     welcome_message: values.welcome_message || "Xin chào! Chào mừng bạn đến với Hendy Bot.",
     support_telegram: values.support_telegram || "",
     language: values.language || "vi",
+    vietqr_bank: values.vietqr_bank || process.env.VIETQR_BANK_ID || "",
+    vietqr_account_no: values.vietqr_account_no || process.env.VIETQR_ACCOUNT_NO || "",
+    vietqr_account_name: values.vietqr_account_name || process.env.VIETQR_ACCOUNT_NAME || "",
     updated_at: result.results.reduce((latest, row) => row.updated_at > latest ? row.updated_at : latest, "")
   };
 }
