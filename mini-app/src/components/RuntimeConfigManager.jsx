@@ -13,7 +13,7 @@ function statusLabel(value) {
   return value ? "Đã khai báo" : "Chưa khai báo";
 }
 
-export function RuntimeConfigManager({ showToast, realtimeStatus = "disconnected" }) {
+export function RuntimeConfigManager({ showToast, realtimeStatus = "disconnected", registry: registryFromSocket = null, onRescan }) {
   const [form, setForm] = useState(EMPTY_FORM);
   const [registry, setRegistry] = useState(null);
   const [integration, setIntegration] = useState(null);
@@ -50,6 +50,10 @@ export function RuntimeConfigManager({ showToast, realtimeStatus = "disconnected
   };
 
   useEffect(() => { load(); }, []);
+
+  useEffect(() => {
+    if (registryFromSocket) setRegistry(registryFromSocket);
+  }, [registryFromSocket]);
 
   const update = (key, value) => setForm((current) => ({ ...current, [key]: value }));
 
@@ -122,8 +126,16 @@ export function RuntimeConfigManager({ showToast, realtimeStatus = "disconnected
           <h5 className="text-sm font-semibold text-white flex items-center gap-2"><FileSearch className="w-4 h-4 text-cyan-300" />Vị trí khai báo trong mã nguồn</h5>
           <p className="text-[11px] text-slate-500">Hiển thị file và dòng sử dụng. Không đọc hoặc hiển thị giá trị secret.</p>
         </div>
-        <button type="button" onClick={load} disabled={loading} className="px-3 py-2 rounded-lg bg-white/5 text-xs text-slate-200 disabled:opacity-50">
-          <RefreshCw className={"inline h-3.5 w-3.5 mr-1 " + (loading ? "animate-spin" : "")} />Quét lại
+        <button
+          type="button"
+          onClick={() => {
+            const sent = onRescan?.();
+            if (!sent) load();
+          }}
+          disabled={loading}
+          className="px-3 py-2 rounded-lg bg-white/5 text-xs text-slate-200 disabled:opacity-50"
+        >
+          <RefreshCw className={"inline h-3.5 w-3.5 mr-1 " + (loading ? "animate-spin" : "")} />Quét lại qua WebSocket
         </button>
       </div>
 
