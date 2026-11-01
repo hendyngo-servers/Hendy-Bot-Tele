@@ -8,6 +8,7 @@ import { envValidator, getAllowedOrigins, getRequiredSecret } from "./config/env
 import { getRelease, getReleaseStats, listReleases } from "./db/appModel.js";
 import { createOrder, createOrderQuote, getAdminOrder, getAdminOrderStats, getOrderForUser, getOrderStats, listAdminOrders, listOrders, respondToOrderQuote, updateOrderStatus } from "./db/orderModel.js";
 import { upsertUser } from "./db/userModel.js";
+import { createDepositRequest, getWalletOverview, listAdminDeposits, reviewDepositRequest } from "./db/walletModel.js";
 import {
   addSupportMessage, claimReferral, createGiftcode, createSupportTicket, ensureReferralCode,
   getReferralSummary, getSupportTicket, getVipProfile, listAdminCatalog, listCatalog,
@@ -151,6 +152,19 @@ async function route(request, env) {
 
   if (path === "/api/v1/catalog" && request.method === "GET") {
     return json({ items: await listCatalog(env, url.searchParams.get("module") || "all") });
+  }
+
+  if (path === "/api/v1/wallet" && request.method === "GET") {
+    const telegramUser = await authenticateTelegramRequest(request, env);
+    await upsertUser(env, telegramUser.id, telegramUser.first_name || "Khách");
+    return json(await getWalletOverview(env, telegramUser.id));
+  }
+
+  if (path === "/api/v1/deposits" && request.method === "POST") {
+    const telegramUser = await authenticateTelegramRequest(request, env);
+    await upsertUser(env, telegramUser.id, telegramUser.first_name || "Khách");
+    const result = await createDepositRequest(env, telegramUser.id, await readJsonLimited(request), request.headers.get("Idempotency-Key"));
+    return json(result, result.duplicate ? 200 : 201);
   }
 
   if (path === "/api/v1/vip" && request.method === "GET") {
@@ -341,6 +355,18 @@ async function route(request, env) {
   if (path === "/api/v1/admin/releases" && request.method === "POST") {
     await requireAdmin(request, env);
     return handleUploadApp(request, env);
+  }
+
+  if (path === "/api/v1/admin/deposits" && request.method === "GET") {
+    await requireAdmin(request, env);
+    return json({ deposits: await listAdminDeposits(env, url.searchParams.get("status") || "pending") });
+  }
+
+  const adminDepositMatch = path.match(/^\\/api\\/v1\\/admin\\/deposits\\/([0-9a-f-]{36})\\/review$/i);
+  if (adminDepositMatch && request.method === "POST") {
+    const admin = await requireAdmin(request, env);
+    const result = await reviewDepositRequest(env, adminDepositMatch[1], admin, await readJsonLimited(request));
+    return json(result);
   }
 
   if (path === "/api/v1/admin/stats" && request.method === "GET") {
