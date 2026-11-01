@@ -302,7 +302,6 @@ export default function App() {
   // Handle Order Checkout from Wallet
   const handleBuyProduct = async (product) => {
     if (!product) return;
-    const finalAmount = Number(product.price ?? product.unit_price ?? 0);
     try {
       const res = await telegramFetch("/api/orders", {
         method: "POST",
