@@ -362,10 +362,14 @@ async function route(request, env) {
     return json({ deposits: await listAdminDeposits(env, url.searchParams.get("status") || "pending") });
   }
 
-  const adminDepositMatch = path.match(/^\\/api\\/v1\\/admin\\/deposits\\/([0-9a-f-]{36})\\/review$/i);
-  if (adminDepositMatch && request.method === "POST") {
+  const adminDepositPrefix = "/api/v1/admin/deposits/";
+  const adminDepositSuffix = "/review";
+  const adminDepositId = path.startsWith(adminDepositPrefix) && path.endsWith(adminDepositSuffix)
+    ? path.slice(adminDepositPrefix.length, -adminDepositSuffix.length)
+    : "";
+  if (adminDepositId && /^[0-9a-f-]{36}$/i.test(adminDepositId) && request.method === "POST") {
     const admin = await requireAdmin(request, env);
-    const result = await reviewDepositRequest(env, adminDepositMatch[1], admin, await readJsonLimited(request));
+    const result = await reviewDepositRequest(env, adminDepositId, admin, await readJsonLimited(request));
     return json(result);
   }
 
