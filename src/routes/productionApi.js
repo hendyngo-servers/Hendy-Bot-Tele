@@ -322,6 +322,7 @@ router.get("/home", asyncRoute(async (req, res) => {
 
 router.get("/wallet", asyncRoute(async (req, res) => {
   const user = await ensureUser(req.telegramUser);
+  const paymentSettings = await getBotSettings();
   const ledger = await executeD1Query(
     "SELECT id,amount_delta AS amount_delta,balance_after,entry_type,note,created_at FROM wallet_ledger " +
     "WHERE telegram_id=? ORDER BY created_at DESC LIMIT 50",
@@ -345,11 +346,11 @@ router.get("/wallet", asyncRoute(async (req, res) => {
     voucherLedger: voucherRows.results,
     deposits: depositRows.results,
     payment: {
-      configured: Boolean(process.env.VIETQR_BANK_ID && process.env.VIETQR_ACCOUNT_NO && process.env.VIETQR_ACCOUNT_NAME),
-      bankName: process.env.VIETQR_BANK_ID || "",
-      bankBin: process.env.VIETQR_BANK_ID || "",
-      accountNumber: process.env.VIETQR_ACCOUNT_NO || "",
-      accountName: process.env.VIETQR_ACCOUNT_NAME || "",
+      configured: Boolean(paymentSettings.vietqr_bank && paymentSettings.vietqr_account_no && paymentSettings.vietqr_account_name),
+      bankName: paymentSettings.vietqr_bank || "",
+      bankBin: paymentSettings.vietqr_bank || "",
+      accountNumber: paymentSettings.vietqr_account_no || "",
+      accountName: paymentSettings.vietqr_account_name || "",
       instruction: "Chuyển khoản đúng số tiền và nội dung tham chiếu của yêu cầu nạp. Chờ quản trị viên đối soát."
     }
   });
@@ -587,10 +588,11 @@ router.post("/deposits", asyncRoute(async (req, res) => {
   const userId = String(req.telegramUser.id);
   await ensureUser(req.telegramUser);
   const amount = number(req.body?.amountVnd, 0);
+  const paymentSettings = await getBotSettings();
   if (amount < 10000 || amount > 50000000) return res.status(400).json({ error: "Số tiền nạp phải từ 10.000 đến 50.000.000 VNĐ." });
-  const bankId = text(process.env.VIETQR_BANK_ID, 20);
-  const accountNo = text(process.env.VIETQR_ACCOUNT_NO, 40);
-  const accountName = text(process.env.VIETQR_ACCOUNT_NAME, 120);
+  const bankId = text(paymentSettings.vietqr_bank, 20);
+  const accountNo = text(paymentSettings.vietqr_account_no, 40);
+  const accountName = text(paymentSettings.vietqr_account_name, 120);
   if (!bankId || !accountNo || !accountName) return res.status(503).json({ error: "Chưa cấu hình thông tin nhận thanh toán VietQR." });
   const depositId = "DEP-" + crypto.randomUUID().slice(0, 12).toUpperCase();
   const transferContent = "HENDY " + userId + " " + depositId;
