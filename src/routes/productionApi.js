@@ -184,11 +184,12 @@ async function handleTelegramUpdate(update) {
     if (admin) lines.push("", "Bạn có quyền quản trị. Sử dụng /admin để mở bảng điều khiển.");
     const sent = await sendTelegram("sendMessage", { chat_id: chatId, text: lines.join("\n"), reply_markup: buildMainKeyboard(process.env, settings) });
     if (sent?.message_id) {
+      // Menu persistence is best-effort during a rolling deployment where the D1 migration may still be applying.
       await executeD1Query(
         "INSERT INTO telegram_menu_messages(chat_id,message_id,updated_at) VALUES(?,?,datetime('now')) " +
         "ON CONFLICT(chat_id) DO UPDATE SET message_id=excluded.message_id,updated_at=datetime('now')",
         [String(chatId), Number(sent.message_id)]
-      );
+      ).catch((error) => console.warn("Could not track Telegram menu message:", error.message));
     }
   } else if (command === "/help") {
     await sendTelegram("sendMessage", {
