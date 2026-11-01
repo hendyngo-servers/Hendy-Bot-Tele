@@ -28,7 +28,10 @@ jobs:
       CLOUDFLARE_API_TOKEN: \${{ secrets.CLOUDFLARE_API_TOKEN }}
       CLOUDFLARE_ACCOUNT_ID: \${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
       D1_DATABASE_ID: \${{ vars.CLOUDFLARE_D1_DATABASE_ID }}
-      VITE_API_BASE_URL: \${{ vars.VITE_API_BASE_URL }}
+      VITE_API_BASE_URL: ${{ vars.VITE_API_BASE_URL }}
+      BACKUP_TRIGGER_SECRET: ${{ secrets.BACKUP_TRIGGER_SECRET }}
+      R2_UPLOAD_SECRET: ${{ secrets.R2_UPLOAD_SECRET }}
+      WEBHOOK_SECRET: ${{ secrets.WEBHOOK_SECRET }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -45,6 +48,12 @@ jobs:
           test -n "$CLOUDFLARE_ACCOUNT_ID" || { echo "Missing secret CLOUDFLARE_ACCOUNT_ID"; exit 1; }
           test -n "$D1_DATABASE_ID" || { echo "Missing repository variable CLOUDFLARE_D1_DATABASE_ID"; exit 1; }
           test -n "$VITE_API_BASE_URL" || { echo "Missing repository variable VITE_API_BASE_URL"; exit 1; }
+          test -n "$BACKUP_TRIGGER_SECRET" || { echo "Missing secret BACKUP_TRIGGER_SECRET"; exit 1; }
+          test -n "$R2_UPLOAD_SECRET" || { echo "Missing secret R2_UPLOAD_SECRET"; exit 1; }
+          test -n "$WEBHOOK_SECRET" || { echo "Missing secret WEBHOOK_SECRET"; exit 1; }
+          [[ "$BACKUP_TRIGGER_SECRET" =~ ^[A-Za-z0-9_-]{32,256}$ ]] || { echo "BACKUP_TRIGGER_SECRET must be 32-256 URL-safe characters"; exit 1; }
+          [[ "$R2_UPLOAD_SECRET" =~ ^[A-Za-z0-9_-]{32,256}$ ]] || { echo "R2_UPLOAD_SECRET must be 32-256 URL-safe characters"; exit 1; }
+          [[ "$WEBHOOK_SECRET" =~ ^[A-Za-z0-9_-]{32,256}$ ]] || { echo "WEBHOOK_SECRET must be 32-256 URL-safe characters"; exit 1; }
           [[ "$VITE_API_BASE_URL" == https://* ]] || { echo "VITE_API_BASE_URL must use HTTPS"; exit 1; }
 
       - name: Install dependencies
