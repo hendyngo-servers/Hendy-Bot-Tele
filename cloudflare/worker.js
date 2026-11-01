@@ -228,10 +228,7 @@ export default {
     }
 
     if (url.pathname === "/webhook" || url.pathname === "/api/telegram/webhook") {
-      const secret = env.WEBHOOK_SECRET;
-      if (secret && !constantTimeEqual(secret, request.headers.get("X-Telegram-Bot-Api-Secret-Token"))) {
-        return json({ error: "Unauthorized webhook" }, 401);
-      }
+      // Telegram secret is verified by the Render origin. The edge proxy does not keep a duplicate secret.
       if (!env.RENDER_BACKEND_URL) return json({ error: "RENDER_BACKEND_URL chưa được cấu hình." }, 503);
       const target = new URL("/api/telegram/webhook", env.RENDER_BACKEND_URL);
       return fetch(new Request(target, request));
