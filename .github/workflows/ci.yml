@@ -26,6 +26,7 @@ jobs:
           --health-retries 10
     env:
       MONGODB_URI: mongodb://localhost:27017
+      MONGODB_TEST_URI: mongodb://localhost:27017
       MONGODB_DB_NAME: hendy_ci
       MONGO_MAX_POOL_SIZE: 3
     steps:
