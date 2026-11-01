@@ -127,29 +127,58 @@ export async function createOrder(env, userId, input, idempotencyKey) {
   if (!Number.isSafeInteger(totalAmount) || totalAmount > 1000000000000) {
     throw httpError("Tổng giá trị đơn hàng vượt quá giới hạn.", 400);
   }
+  const isFreeCatalogItem = Boolean(catalogItem && unitPrice === 0);
   const insertOrder = env.DB.prepare(
     `INSERT INTO orders
-      (id, order_number, user_id, module, title, description, quantity, total_amount, currency, status, idempotency_key, request_hash, catalog_item_id)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'VND', 'pending', ?, ?, ?)
+      (id, order_number, user_id, module, title, description, quantity, total_amount, currency, status,
+       idempotency_key, request_hash, catalog_item_id, payment_status, paid_amount, paid_at)
+     SELECT ?, ?, ?, ?, ?, ?, ?, ?, 'VND', 'pending', ?, ?, ?,
+       CASE WHEN ? = 1 THEN 'paid' ELSE 'unpaid' END,
+       CASE WHEN ? = 1 THEN 0 ELSE NULL END,
+       CASE WHEN ? = 1 THEN CURRENT_TIMESTAMP ELSE NULL END
+     WHERE ? IS NULL OR EXISTS (
+       SELECT 1 FROM catalog_items ci
+        WHERE ci.id = ? AND ci.is_active = 1 AND (ci.stock IS NULL OR ci.stock >= ?)
+     )
      ON CONFLICT(user_id, idempotency_key) DO NOTHING`
-  ).bind(id, orderNumber, safeUserId, normalized.module, normalized.title, normalized.description, normalized.quantity, totalAmount, key, requestHash, normalized.catalogItemId);
+  ).bind(
+    id, orderNumber, safeUserId, normalized.module, normalized.title, normalized.description,
+    normalized.quantity, totalAmount, key, requestHash, normalized.catalogItemId,
+    isFreeCatalogItem ? 1 : 0, isFreeCatalogItem ? 1 : 0, isFreeCatalogItem ? 1 : 0,
+    normalized.catalogItemId, normalized.catalogItemId, normalized.quantity
+  );
 
-  const insertCreatedEvent = env.DB.prepare(
+  const statements = [insertOrder];
+  if (catalogItem && catalogItem.stock !== null) {
+    statements.push(env.DB.prepare(
+      `UPDATE catalog_items SET stock = stock - ?, updated_at = CURRENT_TIMESTAMP
+        WHERE id = ? AND stock >= ?
+          AND EXISTS (
+            SELECT 1 FROM orders
+             WHERE id = ? AND catalog_item_id = ? AND request_hash = ? AND changes() = 1
+          )`
+    ).bind(normalized.quantity, normalized.catalogItemId, normalized.quantity, id, normalized.catalogItemId, requestHash));
+  }
+
+  statements.push(env.DB.prepare(
     `INSERT INTO order_events
       (id, order_id, actor_user_id, from_status, to_status, event_key, note, actor_type, actor_label)
      SELECT ?, id, user_id, NULL, 'pending', 'created', 'Người dùng tạo yêu cầu', 'customer', 'Telegram user ' || user_id
        FROM orders
       WHERE user_id = ? AND idempotency_key = ? AND request_hash = ?
      ON CONFLICT(order_id, event_key) DO NOTHING`
-  ).bind(randomId(), safeUserId, key, requestHash);
+  ).bind(randomId(), safeUserId, key, requestHash));
 
-  // D1 batch executes these statements as one transaction.
-  await env.DB.batch([insertOrder, insertCreatedEvent]);
+  // D1 batch is transactional: the stock check, reservation, order and audit event
+  // either commit together or do not commit.
+  await env.DB.batch(statements);
 
   const saved = await env.DB.prepare(
     "SELECT * FROM orders WHERE user_id = ? AND idempotency_key = ?"
   ).bind(safeUserId, key).first();
-  if (!saved) throw new Error("Không thể lưu đơn hàng vào D1.");
+  if (!saved) {
+    throw httpError("Sản phẩm vừa hết hàng hoặc đã ngừng bán. Vui lòng tải lại danh mục.", 409);
+  }
   if (saved.request_hash !== requestHash) {
     throw httpError("Idempotency-Key đã được dùng cho nội dung đơn hàng khác.", 409);
   }
@@ -391,7 +420,9 @@ export async function updateOrderStatus(env, orderId, actor, input, idempotencyK
     return { ...(await getAdminOrder(env, orderId)), duplicate: true };
   }
 
-  const current = await env.DB.prepare("SELECT id, status, payment_status FROM orders WHERE id = ?").bind(orderId).first();
+  const current = await env.DB.prepare(
+    "SELECT id,status,payment_status,total_amount,paid_amount,user_id,catalog_item_id,quantity FROM orders WHERE id = ?"
+  ).bind(orderId).first();
   if (!current) {
     const error = new Error("Không tìm thấy đơn hàng.");
     error.status = 404;
@@ -403,13 +434,12 @@ export async function updateOrderStatus(env, orderId, actor, input, idempotencyK
     throw error;
   }
   if (nextStatus === "processing" && current.payment_status !== "paid") {
-    const error = new Error("Khách hàng phải thanh toán đơn hàng bằng số dư ví trước khi bắt đầu xử lý.");
+    const error = new Error("Khách hàng phải chấp nhận báo giá (nếu có) và thanh toán qua ví trước khi bắt đầu xử lý.");
     error.status = 409;
     throw error;
   }
 
-  // D1 batch is transactional: the event is inserted only when the guarded
-  // status update changed exactly one row. The unique event key prevents replay.
+  // The status transition, event, stock release and wallet refund are one D1 transaction.
   const statements = [
     env.DB.prepare(
       "UPDATE orders SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND status = ?"
@@ -423,6 +453,42 @@ export async function updateOrderStatus(env, orderId, actor, input, idempotencyK
        ON CONFLICT(order_id, event_key) DO NOTHING`
     ).bind(randomId(), expectedStatus, nextStatus, eventKey, note, actorLabel, orderId, nextStatus)
   ];
+
+  if (nextStatus === "cancelled" && current.catalog_item_id) {
+    statements.push(env.DB.prepare(
+      `UPDATE catalog_items SET stock = stock + ?, updated_at = CURRENT_TIMESTAMP
+        WHERE id = ? AND stock IS NOT NULL
+          AND EXISTS (SELECT 1 FROM order_events WHERE order_id = ? AND event_key = ?)`
+    ).bind(Number(current.quantity || 0), current.catalog_item_id, orderId, eventKey));
+  }
+
+  if (nextStatus === "cancelled" && current.payment_status === "paid" && Number(current.paid_amount || 0) > 0) {
+    const refundKey = "order-refund:" + orderId;
+    statements.push(env.DB.prepare(
+      `UPDATE users SET balance = balance + ?
+        WHERE id = ? AND EXISTS (SELECT 1 FROM order_events WHERE order_id = ? AND event_key = ?)`
+    ).bind(Number(current.paid_amount), current.user_id, orderId, eventKey));
+    statements.push(env.DB.prepare(
+      `UPDATE orders SET payment_status='refunded',updated_at=CURRENT_TIMESTAMP
+        WHERE id=? AND status='cancelled' AND payment_status='paid'
+          AND EXISTS (SELECT 1 FROM order_events WHERE order_id=? AND event_key=?)`
+    ).bind(orderId, orderId, eventKey));
+    statements.push(env.DB.prepare(
+      `INSERT INTO wallet_ledger(id,user_id,source_type,source_id,amount,balance_after,idempotency_key)
+       SELECT ?,o.user_id,'order_refund',o.id,o.paid_amount,u.balance,?
+         FROM orders o JOIN users u ON u.id=o.user_id
+        WHERE o.id=? AND o.payment_status='refunded'
+       ON CONFLICT(user_id,idempotency_key) DO NOTHING`
+    ).bind(randomId(), refundKey, orderId));
+    statements.push(env.DB.prepare(
+      `INSERT INTO wallet_transactions
+        (id,user_id,order_id,provider,provider_reference,idempotency_key,amount,currency,status)
+       SELECT ?,user_id,id,'internal_wallet',order_number,?,paid_amount,'VND','refunded'
+         FROM orders WHERE id=? AND payment_status='refunded'
+       ON CONFLICT(provider,idempotency_key) DO NOTHING`
+    ).bind(randomId(), refundKey, orderId));
+  }
+
   if (nextStatus === "completed") {
     const commissionBps = Number(env.REFERRAL_COMMISSION_BPS || 0);
     if (Number.isInteger(commissionBps) && commissionBps > 0 && commissionBps <= 10000) {
