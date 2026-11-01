@@ -12,6 +12,10 @@ migrations_dir = "migrations"
 binding = "BACKUPS"
 bucket_name = "hendy-bot-backups"
 
+[[r2_buckets]]
+binding = "STORAGE"
+bucket_name = "hendy-bot-assets"
+
 [triggers]
 crons = ["0 2 * * *"]
 
