@@ -86,19 +86,19 @@ function mainKeyboard() {
     const url = miniAppUrl(module);
     return url ? { text: label, web_app: { url } } : { text: label, callback_data: "open_" + module };
   };
-  return {
-    inline_keyboard: [
-      [web("🎮 MINI GAME LIVE", "mini_game_live"), web("🧰 THUÊ TOOL", "app_tool")],
-      [web("💻 MUA CODE", "buy_code"), web("💳 NẠP TIỀN", "wallet")],
-      [web("🛡️ OTP & PROXY", "otp_proxy"), web("👑 KHO VIP", "vip_tools")],
-      [web("💎 TRUNG TÂM KHÁCH HÀNG", "support"), web("💞 GHÉP ĐÔI", "pairing")],
-      [web("🤝 GIỚI THIỆU REF", "referral"), web("🎟️ GIFTCODE", "giftcode")],
-      [
-        { text: "👥 NHÓM CHAT", url: process.env.GROUP_CHAT_URL || "https://t.me/" },
-        { text: "📢 KÊNH THÔNG BÁO", url: process.env.NEWS_CHANNEL_URL || "https://t.me/" }
-      ]
-    ]
-  };
+  const rows = [
+    [web("🎮 MINI GAME LIVE", "mini_game_live"), web("🧰 THUÊ TOOL", "app_tool")],
+    [web("💻 MUA CODE", "buy_code"), web("💳 NẠP TIỀN", "wallet")],
+    [web("🛡️ OTP & PROXY", "otp_proxy"), web("👑 KHO VIP", "vip_tools")],
+    [web("💎 TRUNG TÂM KHÁCH HÀNG", "support"), web("💞 GHÉP ĐÔI", "pairing")],
+    [web("🤝 GIỚI THIỆU REF", "referral"), web("🎟️ GIFTCODE", "giftcode")]
+  ];
+  const community = [];
+  if (process.env.GROUP_CHAT_URL) community.push({ text: "👥 NHÓM CHAT", url: process.env.GROUP_CHAT_URL });
+  if (process.env.NEWS_CHANNEL_URL) community.push({ text: "📢 KÊNH THÔNG BÁO", url: process.env.NEWS_CHANNEL_URL });
+  if (community.length) rows.push(community);
+  if (process.env.SUPPORT_URL) rows.push([{ text: "🎧 LIÊN HỆ CSKH", url: process.env.SUPPORT_URL }]);
+  return { inline_keyboard: rows };
 }
 
 async function handleTelegramUpdate(update) {
