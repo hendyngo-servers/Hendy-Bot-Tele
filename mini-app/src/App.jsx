@@ -74,7 +74,7 @@ const DEFAULT_CATEGORIES = [
 ];
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState("store"); // 'store' | 'member' | 'admin' | 'support' | 'bot'
+  const [activeTab, setActiveTab] = useState("store"); // store | member | admin | support
   const [activeCategory, setActiveCategory] = useState("all");
   const [searchQuery, setSearchQuery] = useState("");
 
@@ -84,6 +84,7 @@ export default function App() {
   const [wallet, setWallet] = useState(null);
   const [orders, setOrders] = useState([]);
   const [vipProfile, setVipProfile] = useState(null);
+  const [referralProfile, setReferralProfile] = useState(null);
   const [tickets, setTickets] = useState([]);
   const [adminOrders, setAdminOrders] = useState([]);
   const [adminDeposits, setAdminDeposits] = useState([]);
@@ -120,15 +121,6 @@ export default function App() {
     description: "",
     tags: "cloudflare,r2,production"
   });
-
-  // Bot Simulator State
-  const [botChatMessages, setBotChatMessages] = useState([
-    {
-      sender: "bot",
-      text: "👋 Chào mừng bạn đến với Hendy Bot Telegram — Cloudflare Edition! Bạn muốn khám phá kho ứng dụng hay quản lý ví tiền?"
-    }
-  ]);
-  const [botChatInput, setBotChatInput] = useState("");
 
   // Helper toast notice
   const showToast = (message, type = "success") => {
@@ -190,6 +182,11 @@ export default function App() {
       if (vipRes && vipRes.ok) {
         const vipData = await vipRes.json();
         setVipProfile(vipData);
+      }
+
+      const referralRes = await telegramFetch("/api/referral").catch(() => null);
+      if (referralRes && referralRes.ok) {
+        setReferralProfile(await referralRes.json());
       }
 
       const ticketRes = await telegramFetch("/api/support/tickets").catch(() => null);
@@ -312,9 +309,10 @@ export default function App() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           title: `Đặt mua: ${product.title}`,
+          productId: product.id,
           module: product.category || "tools",
-          amountVnd: finalAmount,
-          details: { productId: product.id, version: product.version }
+          quantity: 1,
+          details: { version: product.version }
         })
       });
       const data = await res.json();
@@ -324,8 +322,10 @@ export default function App() {
       const orderId = data.order.id;
       const payRes = await telegramFetch(`/api/orders/${orderId}/pay`, { method: "POST" });
       const payData = await payRes.json();
-      if (payRes.ok) {
-        showToast(`🎉 Thanh toán thành công! Mã đơn: ${orderId}. Mã truy cập: ${payData.accessKey || "HENDY-R2-KEY"}`);
+      if (payRes.ok && payData.success) {
+        showToast(payData.alreadyPaid
+          ? `Đơn hàng ${orderId} đã được thanh toán trước đó.`
+          : `Thanh toán thành công cho đơn hàng ${orderId}.`);
       } else {
         showToast(`Đã tạo đơn ${orderId}. Số dư ví chưa đủ để thanh toán ngay.`, "warning");
       }
@@ -348,7 +348,7 @@ export default function App() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Mã Giftcode không hợp lệ hoặc đã hết hạn.");
-      showToast(`🎁 Chúc mừng! Bạn nhận được ${formatVnd(data.amount)} đ vào ví.`);
+      showToast(`🎁 Đổi mã thành công: ${formatVnd(data.rewardVoucher ?? data.amount)} điểm voucher.`);
       setRedeemCodeInput("");
       fetchData();
     } catch (err) {
@@ -533,33 +533,6 @@ export default function App() {
     }
   };
 
-  // Bot Simulator: Send message
-  const handleSendBotMessage = (text) => {
-    const input = text || botChatInput;
-    if (!input.trim()) return;
-
-    setBotChatMessages((prev) => [...prev, { sender: "user", text: input }]);
-    setBotChatInput("");
-
-    setTimeout(() => {
-      let reply = "Tôi có thể hỗ trợ gì cho bạn? Hãy chọn một tính năng trong menu 14 nút!";
-      const cmd = input.trim().toLowerCase();
-      if (cmd === "/start") {
-        reply = "👋 Chào mừng bạn đến với Hendy Bot Telegram — Cloudflare Edition! Hệ thống tích hợp R2, D1, và Mini App store!";
-      } else if (cmd === "/store") {
-        reply = "🛍️ Kho ứng dụng Hendy App Store đã sẵn sàng! Bạn có thể xem ngay tại tab Cửa hàng.";
-      } else if (cmd === "/wallet") {
-        reply = `💳 Số dư ví của bạn hiện tại là ${formatVnd(wallet?.balance ?? 1500000)} đ.`;
-      } else if (cmd === "/admin") {
-        reply = "🛡️ Chào mừng Quản trị viên! Bạn có thể quản lý đơn hàng, duyệt nạp tiền, và đóng gói sản phẩm.";
-      } else if (cmd === "/id") {
-        reply = `🆔 ID Telegram: ${userProfile?.id || "99887766"} | Tên: ${userProfile?.name || "Hội viên Hendy"}`;
-      }
-
-      setBotChatMessages((prev) => [...prev, { sender: "bot", text: reply }]);
-    }, 400);
-  };
-
   return (
     <div className="min-h-screen flex flex-col bg-[#0a0e17] text-[#e6edf3]">
       {/* Toast Notification */}
@@ -624,7 +597,7 @@ export default function App() {
               className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-gradient-to-r from-emerald-500/20 to-teal-500/10 border border-emerald-500/30 text-emerald-300 hover:border-emerald-500/50 transition-all text-xs sm:text-sm font-semibold"
             >
               <Wallet className="w-4 h-4 text-emerald-400" />
-              <span>{formatVnd(wallet?.balance ?? userProfile?.balance ?? 1500000)} đ</span>
+              <span>{formatVnd(wallet?.balance ?? userProfile?.balance ?? 0)} đ</span>
               <Plus className="w-3.5 h-3.5 ml-0.5 text-emerald-400" />
             </button>
 
@@ -695,17 +668,6 @@ export default function App() {
               <span>Hỗ Trợ (Tickets Hub)</span>
             </button>
 
-            <button
-              onClick={() => setActiveTab("bot")}
-              className={`px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold flex items-center gap-2 transition-all whitespace-nowrap ${
-                activeTab === "bot"
-                  ? "bg-blue-600 text-white shadow-lg shadow-blue-500/25"
-                  : "text-slate-400 hover:text-slate-200 hover:bg-white/5"
-              }`}
-            >
-              <Bot className="w-4 h-4" />
-              <span>Giả Lập Bot Telegram</span>
-            </button>
           </nav>
 
           <button
@@ -776,11 +738,11 @@ export default function App() {
                     <div className="flex flex-wrap items-center gap-4 pt-1">
                       <div className="star-rating">
                         <Star className="w-4 h-4 fill-amber-400" />
-                        <span>{featuredItem.rating || 4.9}</span>
-                        <span className="text-slate-400 text-xs font-normal">({featuredItem.reviewsCount || 128} đánh giá)</span>
+                        <span>{featuredItem.rating ?? "Chưa có đánh giá"}</span>
+                        <span className="text-slate-400 text-xs font-normal">({featuredItem.reviewsCount ?? "Chưa có đánh giá"} đánh giá)</span>
                       </div>
                       <span className="text-slate-500">•</span>
-                      <span className="text-xs text-slate-300 font-medium">{featuredItem.downloads || "10K+"} lượt cài</span>
+                      <span className="text-xs text-slate-300 font-medium">{featuredItem.downloads ?? "Chưa có dữ liệu"} lượt cài</span>
                       <span className="text-slate-500">•</span>
                       <span className="text-xs font-semibold px-2 py-0.5 rounded-md bg-white/10 text-cyan-300">
                         {featuredItem.r2Bucket ? "Lưu trữ Cloudflare R2" : "Cloudflare Pages"}
@@ -913,11 +875,11 @@ export default function App() {
                     <div className="flex items-center gap-2">
                       <h3 className="text-xl font-bold text-white">{userProfile?.name || "Hội viên Hendy"}</h3>
                       <span className="px-2 py-0.5 rounded-full text-xs font-bold uppercase bg-amber-500/20 text-amber-300 border border-amber-500/30">
-                        {vipProfile?.currentTier?.name || "VIP Kim Cương"}
+                        {vipProfile?.currentTier?.name || "Thành viên"}
                       </span>
                     </div>
                     <p className="text-xs text-slate-400 mt-1">
-                      Telegram ID: <span className="font-mono text-slate-300">{userProfile?.id || "99887766"}</span> • Điểm tích lũy: <span className="text-cyan-400 font-bold">{vipProfile?.points || 450} pts</span>
+                      Telegram ID: <span className="font-mono text-slate-300">{userProfile?.id || "Chưa xác định"}</span> • Điểm tích lũy: <span className="text-cyan-400 font-bold">{vipProfile?.points ?? userProfile?.points ?? 0} pts</span>
                     </p>
                   </div>
                 </div>
@@ -938,13 +900,13 @@ export default function App() {
                 <div className="p-3 rounded-xl bg-white/5">
                   <span className="text-[11px] text-slate-400 block">Số Dư Chính</span>
                   <span className="text-base sm:text-lg font-bold text-emerald-400">
-                    {formatVnd(wallet?.balance ?? 1500000)} đ
+                    {formatVnd(wallet?.balance ?? userProfile?.balance ?? 0)} đ
                   </span>
                 </div>
                 <div className="p-3 rounded-xl bg-white/5">
                   <span className="text-[11px] text-slate-400 block">Voucher Giảm Giá</span>
                   <span className="text-base sm:text-lg font-bold text-cyan-400">
-                    {formatVnd(wallet?.voucher ?? 0)} đ
+                    {formatVnd(wallet?.voucher ?? 0)} điểm
                   </span>
                 </div>
                 <div className="p-3 rounded-xl bg-white/5">
@@ -1033,15 +995,24 @@ export default function App() {
                   </div>
                   <div>
                     <h4 className="font-bold text-white text-sm">5. Đổi Giftcode</h4>
-                    <p className="text-[11px] text-slate-400 mt-0.5">Nhận tiền vào ví ngay tức thì</p>
+                    <p className="text-[11px] text-slate-400 mt-0.5">Nhận điểm voucher theo mã hợp lệ</p>
                   </div>
                 </button>
 
                 {/* 6. Referral */}
                 <button
-                  onClick={() => {
-                    navigator.clipboard?.writeText(`https://t.me/hendy_bot?start=ref_${userProfile?.id || "99887766"}`);
-                    showToast("Đã sao chép liên kết giới thiệu (Hoa hồng 10% trọn đời)!");
+                  onClick={async () => {
+                    if (!referralProfile?.inviteUrl) {
+                      showToast("Chưa cấu hình BOT_USERNAME hoặc mã giới thiệu chưa sẵn sàng.", "error");
+                      return;
+                    }
+                    try {
+                      if (!navigator.clipboard?.writeText) throw new Error("Trình duyệt không hỗ trợ sao chép liên kết.");
+                      await navigator.clipboard.writeText(referralProfile.inviteUrl);
+                      showToast("Đã sao chép liên kết giới thiệu.");
+                    } catch (error) {
+                      showToast(error.message, "error");
+                    }
                   }}
                   className="glass-panel glass-panel-hover p-4 text-left flex flex-col justify-between"
                 >
@@ -1050,7 +1021,7 @@ export default function App() {
                   </div>
                   <div>
                     <h4 className="font-bold text-white text-sm">6. Giới Thiệu Bạn</h4>
-                    <p className="text-[11px] text-slate-400 mt-0.5">Nhận hoa hồng 10% hoa hồng</p>
+                    <p className="text-[11px] text-slate-400 mt-0.5">Nhận thưởng theo chính sách hoa hồng hiện hành</p>
                   </div>
                 </button>
 
@@ -1112,7 +1083,7 @@ export default function App() {
 
                 {/* 11. Bot Settings */}
                 <button
-                  onClick={() => setActiveTab("bot")}
+                  onClick={() => setActiveTab("admin")}
                   className="glass-panel glass-panel-hover p-4 text-left flex flex-col justify-between"
                 >
                   <div className="w-10 h-10 rounded-xl bg-pink-500/20 text-pink-400 flex items-center justify-center mb-3">
@@ -1126,7 +1097,7 @@ export default function App() {
 
                 {/* 12. Cloudflare Sync */}
                 <button
-                  onClick={() => showToast("Cloudflare D1 & R2 trạng thái: Sẵn sàng (Latency: 18ms)")}
+                  onClick={() => setActiveTab("admin")}
                   className="glass-panel glass-panel-hover p-4 text-left flex flex-col justify-between"
                 >
                   <div className="w-10 h-10 rounded-xl bg-sky-500/20 text-sky-400 flex items-center justify-center mb-3">
@@ -1734,82 +1705,7 @@ export default function App() {
           </div>
         )}
 
-        {/* ========================================================= */}
-        {/* TAB 5: TELEGRAM BOT SIMULATOR */}
-        {/* ========================================================= */}
-        {activeTab === "bot" && (
-          <div className="max-w-2xl mx-auto glass-panel p-6 space-y-4 animate-fade-in border-blue-500/30">
-            <div className="flex items-center justify-between pb-3 border-b border-white/10">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-full bg-blue-600 flex items-center justify-center text-white">
-                  <Bot className="w-5 h-5" />
-                </div>
-                <div>
-                  <h3 className="font-bold text-white text-base">Hendy Bot Telegram (Giả Lập)</h3>
-                  <p className="text-xs text-emerald-400">● Hoạt động 24/7 trên Render</p>
-                </div>
-              </div>
-              <span className="text-[11px] font-mono px-2 py-0.5 rounded bg-white/10 text-slate-300">
-                Webhook Mode
-              </span>
-            </div>
-
-            {/* Quick Command Suggestions */}
-            <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-none pb-1">
-              {["/start", "/store", "/wallet", "/admin", "/id"].map((cmd) => (
-                <button
-                  key={cmd}
-                  onClick={() => handleSendBotMessage(cmd)}
-                  className="px-3 py-1 rounded-lg bg-white/5 hover:bg-white/10 text-blue-400 text-xs font-mono font-semibold border border-white/5"
-                >
-                  {cmd}
-                </button>
-              ))}
-            </div>
-
-            {/* Chat Messages */}
-            <div className="space-y-3 min-h-[300px] max-h-[400px] overflow-y-auto p-3 rounded-xl bg-black/30 border border-white/5">
-              {botChatMessages.map((msg, i) => (
-                <div
-                  key={i}
-                  className={`flex ${msg.sender === "user" ? "justify-end" : "justify-start"}`}
-                >
-                  <div
-                    className={`max-w-[85%] p-3 rounded-2xl text-xs sm:text-sm whitespace-pre-wrap ${
-                      msg.sender === "user"
-                        ? "bg-blue-600 text-white rounded-br-none"
-                        : "bg-[#1f293d] text-slate-200 border border-white/10 rounded-bl-none"
-                    }`}
-                  >
-                    {msg.text}
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            {/* Input Bar */}
-            <form
-              onSubmit={(e) => {
-                e.preventDefault();
-                handleSendBotMessage();
-              }}
-              className="flex items-center gap-2"
-            >
-              <input
-                type="text"
-                value={botChatInput}
-                onChange={(e) => setBotChatInput(e.target.value)}
-                placeholder="Nhập lệnh hoặc tin nhắn gửi tới bot..."
-                className="flex-1 px-4 py-2.5 rounded-xl bg-white/5 border border-white/10 text-sm text-white focus:outline-none focus:border-blue-500"
-              />
-              <button type="submit" className="btn-primary">
-                <Send className="w-4 h-4" />
-                <span>Gửi</span>
-              </button>
-            </form>
-          </div>
-        )}
-      </main>
+              </main>
 
       {/* ========================================================= */}
       {/* MODAL: PRODUCT DETAILS (Google Play Style Modal) */}
@@ -1837,12 +1733,12 @@ export default function App() {
                 <div className="flex items-center gap-2 mt-2 text-xs">
                   <span className="star-rating">
                     <Star className="w-3.5 h-3.5 fill-amber-400" />
-                    <span>{selectedProduct.rating || "4.9"}</span>
+                    <span>{selectedProduct.rating ?? "Chưa có đánh giá"}</span>
                   </span>
                   <span className="text-slate-500">•</span>
-                  <span className="text-slate-300">{selectedProduct.downloads || "10K+"} tải</span>
+                  <span className="text-slate-300">{selectedProduct.downloads ?? "Chưa có dữ liệu"} tải</span>
                   <span className="text-slate-500">•</span>
-                  <span className="text-indigo-300 font-mono font-semibold">{selectedProduct.version || "v2.0.0"}</span>
+                  <span className="text-indigo-300 font-mono font-semibold">{selectedProduct.version || "Chưa cập nhật"}</span>
                 </div>
               </div>
             </div>
@@ -1887,11 +1783,11 @@ export default function App() {
               </div>
               <div className="flex justify-between">
                 <span className="text-slate-400">File gói:</span>
-                <span className="font-mono text-slate-300">{selectedProduct.r2ObjectKey || "package.zip"}</span>
+                <span className="font-mono text-slate-300">{selectedProduct.r2ObjectKey || "Chưa có tệp"}</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-slate-400">Cloudflare Pages:</span>
-                <span className="font-mono text-indigo-300">{selectedProduct.pagesDeployUrl || "hendy-web.pages.dev"}</span>
+                <span className="font-mono text-indigo-300">{selectedProduct.pagesDeployUrl || "Chưa cấu hình"}</span>
               </div>
             </div>
           </div>
@@ -1988,12 +1884,12 @@ export default function App() {
                   </div>
                   <div className="flex justify-between">
                     <span className="text-slate-400">Ngân hàng:</span>
-                    <span className="text-white font-semibold">MB Bank (Quân Đội)</span>
+                    <span className="text-white font-semibold">{depositResult.transfer?.bankId || "Chưa xác định"}</span>
                   </div>
                 </div>
 
                 <p className="text-[11px] text-amber-300/90">
-                  ⚠️ Vui lòng ghi chính xác nội dung chuyển khoản để hệ thống tự động cộng tiền vào ví trong vòng 1-3 phút.
+                  ⚠️ Vui lòng ghi chính xác nội dung chuyển khoản. Yêu cầu sẽ được lưu để đối soát và chờ quản trị viên xác nhận trước khi cộng tiền.
                 </p>
 
                 <button
