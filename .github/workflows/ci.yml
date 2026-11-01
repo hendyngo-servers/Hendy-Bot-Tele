@@ -30,5 +30,8 @@ jobs:
       - name: Unit tests
         run: npm test
 
+      - name: Configuration source audit
+        run: npm run config:audit
+
       - name: Build Mini App
         run: npm run build
