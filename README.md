@@ -3,8 +3,8 @@
 Monorepo triển khai trên Cloudflare: hai ứng dụng Pages độc lập, một Worker API/Webhook, D1 lưu dữ liệu nghiệp vụ và R2 lưu tệp phát hành.
 
 ## Kiến trúc
-- apps/web-user: Telegram Mini App và khu vực thành viên, dashboard 9 module, danh sách đơn hàng, liên kết tài khoản và tải bản phát hành.
-- apps/web-admin: bảng quản trị riêng, upload bản phát hành và đồng bộ Telegram webhook.
+- apps/web-user: Telegram Mini App thành viên với 14 lối chức năng, menu màu theo ảnh, hồ sơ/số dư, Mini Game Live, Thuê Tool, Mua Code, Nạp tiền, OTP & Proxy, VIP, Trung tâm khách hàng, Ghép đôi, REF, Nhóm chat, Kênh thông báo, Giftcode và CSKH.
+- apps/web-admin: bảng quản trị riêng gồm tổng quan, hàng đợi đơn/báo giá, duyệt nạp, danh mục dịch vụ, tạo Giftcode, ticket hỗ trợ, hoa hồng REF, phát hành ứng dụng và Telegram webhook.
 - backend: một Cloudflare Worker cho REST API và Telegram webhook.
 - D1: hồ sơ người dùng, metadata bản phát hành, đơn hàng, nhật ký trạng thái và schema nền cho giao dịch ví.
 - R2: APK/AAB/IPA/EXE/MSI/DMG và các tệp phát hành.
@@ -49,7 +49,9 @@ Worker variables trong `backend/wrangler.toml`:
 - `ADMIN_WEBAPP_URL`: URL Pages của web-admin, nút /admin mở trang này.
 - `ADMIN_IDS`: danh sách Telegram ID quản trị, phân cách bằng dấu phẩy.
 - `GROUP_CHAT_URL`, `NEWS_CHANNEL_URL`: URL HTTPS cho nút Nhóm chat và Kênh thông báo.
+- `SUPPORT_URL` hoặc `SUPPORT_USERNAME`: liên kết CSKH; username Telegram được xác thực định dạng trước khi tạo URL.
 - `BANK_NAME`, `BANK_BIN`, `BANK_ACCOUNT`, `BANK_ACCOUNT_NAME`: thông tin tài khoản nhận chuyển khoản. Để trống thì không hiện form tạo yêu cầu nạp.
+- `REFERRAL_COMMISSION_BPS`: tỷ lệ hoa hồng theo basis points; ví dụ `500` = 5%. Giá trị mặc định `0` tắt tính hoa hồng cho tới khi chủ hệ thống chọn chính sách.
 - `ALLOWED_ORIGINS`: origin Pages được phép gọi API.
 
 Webhook ở /telegram/webhook xác minh X-Telegram-Bot-Api-Secret-Token; không nhúng secret vào URL path.
@@ -88,8 +90,14 @@ Public:
 Yêu cầu Telegram Mini App; mọi request gửi header Authorization: tma <Telegram initData>:
 - GET /api/v1/home — hồ sơ thành viên, số dư và số liệu tổng hợp đơn hàng.
 - GET /api/v1/me — hồ sơ cơ bản.
-- GET /api/v1/wallet — số dư, hướng dẫn chuyển khoản và lịch sử yêu cầu nạp.
-- POST /api/v1/deposits — tạo yêu cầu nạp thủ công, bắt buộc `Idempotency-Key`.
+- GET /api/v1/public-config — chỉ trả về URL nhóm chat, kênh thông báo và CSKH đã được cấu hình.
+- GET /api/v1/wallet — số dư, thông tin chuyển khoản, lịch sử nạp và wallet ledger.
+- POST /api/v1/deposits — tạo yêu cầu nạp thủ công có tham chiếu/QR, bắt buộc `Idempotency-Key`.
+- POST /api/v1/orders/:id/pay — thanh toán đơn đã được xác nhận bằng số dư ví; bắt buộc `Idempotency-Key`.
+- GET /api/v1/catalog?module=... — danh mục đang mở bán, giá và tồn kho từ D1.
+- GET /api/v1/vip và GET/POST /api/v1/referral — cấp bậc, mã giới thiệu và ghi nhận người mời.
+- POST /api/v1/giftcodes/redeem — đổi Giftcode sang voucher; mỗi lượt đổi được kiểm soát tại D1.
+- GET/POST /api/v1/support/tickets và các route detail/messages — tạo ticket, xem lịch sử và trao đổi với CSKH.
 - GET /api/v1/orders?limit=20&offset=0 — danh sách đơn của chính Telegram user.
 - GET /api/v1/orders/:id — chi tiết một đơn thuộc chính user.
 - POST /api/v1/orders — tạo yêu cầu dịch vụ, bắt buộc header Idempotency-Key (8–128 ký tự an toàn).
@@ -105,6 +113,11 @@ Ví dụ tạo đơn (không truyền số tiền; hệ thống chờ nhân viê
 Module tạo đơn ở giai đoạn này: mini_game_live, app_tool, buy_code, otp_proxy, vip. Giá trị tiền do server/admin/provider quyết định ở giai đoạn sau; payload phía trình duyệt không thể thiết lập giá.
 
 Admin:
+- GET/POST /api/v1/admin/catalog và POST /api/v1/admin/catalog/:id/activate|deactivate — quản lý danh mục, giá, thời hạn và tồn kho.
+- GET/POST /api/v1/admin/giftcodes — tạo Giftcode, danh sách chỉ hiển thị metadata; mã gốc chỉ trả một lần khi tạo.
+- GET/POST /api/v1/admin/support/tickets — xem ticket, chi tiết, gửi phản hồi và cập nhật trạng thái.
+- GET /api/v1/admin/referrals/commissions và POST /api/v1/admin/referrals/commissions/:id/settle — duyệt, chi trả vào ví hoặc hủy hoa hồng.
+- GET /api/v1/admin/orders — hàng đợi, tìm kiếm và lọc đơn; POST /:id/quote gửi báo giá; POST /:id/status chuyển trạng thái có nhật ký.
 - GET /api/v1/admin/deposits?status=pending — danh sách yêu cầu nạp.
 - POST /api/v1/admin/deposits/:id/review — duyệt/từ chối; chỉ duyệt sau khi xác minh tiền vào ngân hàng.
 - POST /api/v1/admin/releases — Bearer ADMIN_API_TOKEN hoặc Telegram admin allowlist.
@@ -118,7 +131,7 @@ Migration 0003 tạo:
 - order_events: nhật ký trạng thái append-only, unique(order_id, event_key).
 - wallet_transactions và wallet_ledger: schema nền cho kết nối ví ở giai đoạn sau; chưa có API ghi nhận tiền khi chưa tích hợp và xác minh nhà cung cấp.
 
-Worker tạo đơn bằng D1 batch gồm đơn hàng và sự kiện "created"; cùng một Idempotency-Key + payload trả lại đơn cũ, còn dùng lại key cho payload khác nhận HTTP 409. Người dùng không thể xem đơn của tài khoản Telegram khác. Đơn mới luôn là pending / awaiting_quote và không trừ số dư.
+Worker tạo đơn bằng D1 batch gồm kiểm tra/giữ tồn kho (nếu sản phẩm có giới hạn), đơn hàng và sự kiện "created"; cùng một Idempotency-Key + payload trả lại đơn cũ, còn dùng lại key cho payload khác nhận HTTP 409. Người dùng không thể xem đơn của tài khoản Telegram khác. Sản phẩm lấy giá từ D1; đơn không có giá chờ Admin báo giá.
 
 ## Bảo mật
 
@@ -163,7 +176,7 @@ GitHub Actions chỉ tự deploy khi có `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACC
 
     pnpm exec wrangler d1 migrations apply DB --remote --config backend/wrangler.toml
 
-Ví đã có luồng tạo yêu cầu nạp bằng chuyển khoản thủ công, lịch sử yêu cầu và Admin duyệt/từ chối. Tiền chỉ được cộng vào số dư khi Admin xác minh tiền vào ngân hàng; chưa có bank webhook tự động, nạp tự động hoặc rút tiền. Giftcode đã có API đổi voucher và giới hạn lượt dùng; REF đã có mã mời/ghi nhận người giới thiệu nhưng hoa hồng chưa được tính và chi trả. OTP/Proxy và Mini Game Live hiện tạo yêu cầu dịch vụ/đơn hàng; chưa kết nối nhà cung cấp để tự động cấp OTP, proxy hoặc điều khiển game.
+Ví hỗ trợ nạp chuyển khoản thủ công, QR/tham chiếu, lịch sử nạp và wallet ledger; Admin phải xác minh tiền vào ngân hàng trước khi duyệt. Không có webhook ngân hàng tự động hoặc rút tiền. Đơn hàng dùng giá danh mục hoặc báo giá Admin; thanh toán ví có idempotency, trừ tiền và ghi ledger; hủy đơn đã trả tiền sẽ hoàn lại ví. Giftcode được tạo bởi Admin, mã gốc chỉ trả một lần và đổi voucher được giới hạn tại D1. REF ghi nhận giới thiệu và có thể phát sinh hoa hồng sau khi đơn của người được mời đã thanh toán + hoàn tất; Admin duyệt rồi chi hoa hồng về ví. Tỷ lệ cần cấu hình bằng `REFERRAL_COMMISSION_BPS`; mặc định 0 (tắt). OTP/Proxy, Mini Game Live và Ghép đôi có hàng đợi yêu cầu, danh mục/đơn và Admin xử lý; tự động cấp OTP/proxy hoặc tự động ghép đôi cần tích hợp nhà cung cấp/quy tắc nghiệp vụ mà hệ thống chưa được cung cấp.
 
 
 ## Hàng đợi đơn hàng trong Admin
@@ -187,6 +200,8 @@ Luồng trạng thái được giới hạn:
 - confirmed → processing hoặc cancelled
 - processing → completed hoặc cancelled
 - completed / cancelled là trạng thái cuối.
+
+Đơn có giá phải được khách chấp nhận báo giá (nếu có) và thanh toán qua ví trước khi Admin chuyển sang `processing`. Khi hủy đơn đã thanh toán, hệ thống hoàn số tiền vào ví và ghi ledger; khi hủy đơn gắn tồn kho, số lượng đã giữ được trả lại.
 
 Migration 0004 bổ sung loại người thực hiện và nhãn admin vào nhật ký, không xóa đơn cũ. D1 batch thực hiện cập nhật trạng thái + ghi event trong cùng transaction; câu UPDATE có điều kiện theo trạng thái hiện tại để tránh hai nhân viên ghi đè lẫn nhau. Cùng một Idempotency-Key chỉ có thể phát lại đúng thao tác đã ghi.
 
