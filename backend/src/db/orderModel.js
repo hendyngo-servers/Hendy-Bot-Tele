@@ -184,7 +184,7 @@ export async function getOrderStats(env, userId) {
 
 
 export const ORDER_TRANSITIONS = Object.freeze({
-  pending: ["cancelled"],
+  pending: ["confirmed", "cancelled"],
   confirmed: ["processing", "cancelled"],
   processing: ["completed", "cancelled"],
   completed: [],
