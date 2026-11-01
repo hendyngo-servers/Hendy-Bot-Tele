@@ -13,7 +13,8 @@ import {
   addSupportMessage, claimReferral, createGiftcode, createSupportTicket, ensureReferralCode,
   getReferralSummary, getSupportTicket, getVipProfile, listAdminCatalog, listAdminGiftcodes,
   listAdminReferralCommissions, listCatalog, listSupportTickets, redeemGiftcode,
-  saveCatalogItem, setCatalogItemActive, setGiftcodeActive, settleReferralCommission, updateSupportTicketStatus
+  saveCatalogItem, setCatalogItemActive, setGiftcodeActive, settleReferralCommission,
+  updateCatalogItem, updateSupportTicketStatus
 } from "./db/commerceModel.js";
 import { errorHandler } from "./middlewares/errorHandler.js";
 import { rateLimitMiddleware } from "./middlewares/rateLimiter.js";
@@ -353,6 +354,12 @@ async function route(request, env) {
   if (path === "/api/v1/admin/catalog" && request.method === "POST") {
     await requireAdmin(request, env);
     return json({ item: await saveCatalogItem(env, await readJsonLimited(request)) }, 201);
+  }
+
+  const catalogItemMatch = path.match(/^\/api\/v1\/admin\/catalog\/([0-9a-f-]{36})$/i);
+  if (catalogItemMatch && request.method === "PUT") {
+    await requireAdmin(request, env);
+    return json({ item: await updateCatalogItem(env, catalogItemMatch[1], await readJsonLimited(request)) });
   }
 
   const catalogStatusMatch = path.match(/^\/api\/v1\/admin\/catalog\/([0-9a-f-]{36})\/(activate|deactivate)$/i);
