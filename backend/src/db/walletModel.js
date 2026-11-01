@@ -85,7 +85,7 @@ export async function reviewDepositRequest(env, requestId, admin, input) {
   const actor = safeText(admin?.id || "admin", 80);
   const ledgerId = randomId();
   const ledgerKey = "deposit:" + requestId;
-  await env.DB.batch([
+  const results = await env.DB.batch([
     env.DB.prepare("UPDATE deposit_requests SET status=?,admin_note=?,reviewed_by=?,reviewed_at=CURRENT_TIMESTAMP WHERE id=? AND status='pending'").bind(status, note, actor, requestId),
     env.DB.prepare("UPDATE users SET balance=balance+(SELECT amount FROM deposit_requests WHERE id=? AND status='approved') WHERE id=(SELECT user_id FROM deposit_requests WHERE id=? AND status='approved') AND changes()=1").bind(requestId, requestId),
     env.DB.prepare("INSERT INTO wallet_ledger(id,user_id,source_type,source_id,amount,balance_after,idempotency_key) SELECT ?,d.user_id,'deposit',d.id,d.amount,u.balance,? FROM deposit_requests d JOIN users u ON u.id=d.user_id WHERE d.id=? AND d.status='approved' AND changes()=1 ON CONFLICT(user_id,idempotency_key) DO NOTHING").bind(ledgerId, ledgerKey, requestId)
@@ -96,5 +96,5 @@ export async function reviewDepositRequest(env, requestId, admin, input) {
     if (saved.status === "approved" || saved.status === "rejected") fail("Yêu cầu đã được quản trị viên xử lý trước đó.", 409);
     fail("Không thể cập nhật trạng thái yêu cầu.");
   }
-  return { request: present(saved), duplicate: false };
+  return { request: present(saved), duplicate: Number(results?.[0]?.meta?.changes || 0) === 0 };
 }
